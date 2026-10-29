@@ -1,0 +1,4 @@
+[advisories]
+# Test-only rstest-bdd transitively requires unmaintained basic-toml.
+# Remove this narrow exception when a maintained replacement is available.
+ignore = ["RUSTSEC-2026-0374"]

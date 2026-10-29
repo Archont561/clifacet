@@ -1,0 +1,58 @@
+[workspace]
+name = "clifacet"
+version = "0.1.0"
+channels = ["https://prefix.dev/archont561/archont561", "conda-forge"]
+platforms = ["linux-64"]
+requires-pixi = ">=0.81.0"
+
+[dependencies]
+pixi-sandbox = "=0.9.0"
+bun = { version = ">=1.4.2,<1.5", channel = "conda-forge" }
+rust = "=1.99.1"
+cargo-nextest = ">=0.9.150,<0.10"
+cargo-llvm-cov = ">=0.9.1,<0.10"
+cargo-deny = ">=0.20.2,<0.21"
+cargo-audit = ">=0.22.1,<0.23"
+actionlint = ">=1.7.12,<1.8"
+lefthook = ">=2.2.2,<2.3"
+llvm-tools = ">=23.1.4,<24"
+python = ">=3.11,<4"
+
+[pypi-dependencies]
+alint = ">=0.20.1,<0.21"
+
+[activation.env]
+LLVM_COV = "$CONDA_PREFIX/bin/llvm-cov"
+LLVM_PROFDATA = "$CONDA_PREFIX/bin/llvm-profdata"
+
+[tasks]
+bun-install = "bun install --frozen-lockfile"
+bun-install-offline = "bun install --frozen-lockfile --offline"
+backlog = { cmd = "bun x --bun --no-install backlog", depends-on = ["bun-install"] }
+skills = { cmd = "bun x --bun --no-install skills", depends-on = ["bun-install"] }
+backlog-offline = { cmd = "bun x --bun --no-install backlog", depends-on = ["bun-install-offline"] }
+skills-offline = { cmd = "bun x --bun --no-install skills", depends-on = ["bun-install-offline"] }
+skills-check = "python scripts/check_skills.py"
+backlog-check = { cmd = "bun x --bun --no-install backlog doctor", depends-on = ["bun-install"] }
+check-base = "cargo check -p clifacet --lib --no-default-features --locked"
+check-interactive = "cargo check -p clifacet --lib --no-default-features --features interactive --locked"
+check-tui = "cargo check -p clifacet --lib --no-default-features --features tui --locked"
+check-json = "cargo check -p clifacet --lib --no-default-features --features json --locked"
+check-features = { depends-on = ["check-base", "check-interactive", "check-tui", "check-json"] }
+fmt = "cargo fmt --all"
+fmt-check = "cargo fmt --all -- --check"
+lint = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
+alint = "alint check --baseline .alint-baseline.json --strict-baseline --fail-on-warning"
+actionlint = "actionlint .github/workflows/*.yml"
+deny = "cargo deny check"
+audit = "cargo audit --deny warnings"
+test-src = "cargo nextest run --workspace --all-features --locked -E 'kind(lib)'"
+test-integration = "cargo nextest run --workspace --all-features --locked -E 'kind(test)'"
+test = { depends-on = ["test-src", "test-integration"] }
+test-doc = "cargo test --workspace --all-features --doc --locked"
+coverage = "mkdir -p coverage && cargo llvm-cov nextest --workspace --all-features --locked --lcov --output-path coverage/lcov.info --ignore-filename-regex '(^|/)tests/' && python scripts/check_coverage.py coverage/lcov.info"
+test-scripts = "python -m unittest discover -s scripts/tests"
+sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
+sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
+hooks-install = "lefthook install"
+quality = { depends-on = ["fmt-check", "lint", "alint", "skills-check", "backlog-check", "check-features", "actionlint", "deny", "audit", "sandbox-check"] }
