@@ -1,0 +1,165 @@
+# yaml-language-server: $schema=https://alint.org/_alint/configuration/schema.json
+version: 1
+
+extends:
+  - alint://bundled/ci/github-actions@v1
+
+rules:
+  - id: require-cargo-workspace
+    kind: file_exists
+    paths: "Cargo.toml"
+    level: error
+    message: "Required file Cargo.toml is missing."
+
+  - id: require-cargo-lock
+    kind: file_exists
+    paths: "Cargo.lock"
+    level: error
+    message: "Required file Cargo.lock is missing."
+
+  - id: require-pixi-manifest
+    kind: file_exists
+    paths: "pixi.toml"
+    level: error
+    message: "Required file pixi.toml is missing."
+
+  - id: require-pixi-lock
+    kind: file_exists
+    paths: "pixi.lock"
+    level: error
+    message: "Required file pixi.lock is missing."
+
+  - id: require-codecov-config
+    kind: file_exists
+    paths: "codecov.yml"
+    level: error
+    message: "Required file codecov.yml is missing."
+
+  - id: require-deny-config
+    kind: file_exists
+    paths: "deny.toml"
+    level: error
+    message: "Required file deny.toml is missing."
+
+  - id: require-lefthook-config
+    kind: file_exists
+    paths: "lefthook.yml"
+    level: error
+    message: "Required file lefthook.yml is missing."
+
+  - id: require-main-manifest
+    kind: file_exists
+    paths: "crates/clifacet/Cargo.toml"
+    level: error
+    message: "Required file crates/clifacet/Cargo.toml is missing."
+
+  - id: require-main-source
+    kind: file_exists
+    paths: "crates/clifacet/src/lib.rs"
+    level: error
+    message: "Required file crates/clifacet/src/lib.rs is missing."
+
+  - id: require-macro-manifest
+    kind: file_exists
+    paths: "crates/clifacet-macros/Cargo.toml"
+    level: error
+    message: "Required file crates/clifacet-macros/Cargo.toml is missing."
+
+  - id: require-macro-source
+    kind: file_exists
+    paths: "crates/clifacet-macros/src/lib.rs"
+    level: error
+    message: "Required file crates/clifacet-macros/src/lib.rs is missing."
+
+  - id: require-ci-workflow
+    kind: file_exists
+    paths: ".github/workflows/ci.yml"
+    level: error
+    message: "Required file .github/workflows/ci.yml is missing."
+
+  - id: require-sandbox-config
+    kind: file_exists
+    paths: "pixi-sandbox.toml"
+    level: error
+    message: "The sandbox policy is missing."
+
+  - id: require-sandbox-publisher
+    kind: file_exists
+    paths: ".github/workflows/publish-sandbox.yml"
+    level: error
+    message: "The generated sandbox publisher is missing."
+
+  - id: require-sandbox-relock
+    kind: file_exists
+    paths: ".github/workflows/relock.yml"
+    level: error
+    message: "The generated sandbox relock workflow is missing."
+
+  - id: require-sandbox-restore
+    kind: file_exists
+    paths: "scripts/restore.sh"
+    level: error
+    message: "The generated sandbox restore launcher is missing."
+
+  - id: require-agent-rules
+    kind: file_exists
+    paths: "AGENTS.md"
+    level: error
+    message: "The agent rules are missing."
+
+  - id: require-regain-direction-skill
+    kind: file_exists
+    paths: ".agents/skills/regain-direction/SKILL.md"
+    level: error
+    message: "The local regain-direction skill is missing."
+
+  - id: require-bun-package
+    kind: file_exists
+    paths: "package.json"
+    level: error
+    message: "Required file package.json is missing."
+
+  - id: require-bun-lock
+    kind: file_exists
+    paths: "bun.lock"
+    level: error
+    message: "Required file bun.lock is missing."
+
+  - id: require-session-skill
+    kind: file_exists
+    paths: ".agents/skills/session/SKILL.md"
+    level: error
+    message: "Required file .agents/skills/session/SKILL.md is missing."
+
+  - id: require-skills-check
+    kind: file_exists
+    paths: "scripts/check_skills.py"
+    level: error
+    message: "Required file scripts/check_skills.py is missing."
+
+  - id: require-devcontainer-config
+    kind: file_exists
+    paths: ".devcontainer/devcontainer.json"
+    level: error
+    message: "The devcontainer configuration is missing."
+
+  - id: require-devcontainer-setup
+    kind: file_exists
+    paths: ".devcontainer/setup.sh"
+    level: error
+    message: "The devcontainer setup script is missing."
+
+  - id: cargo-workspace-members
+    kind: toml_path_equals
+    paths: [Cargo.toml]
+    path: "$.workspace.members"
+    equals:
+      - crates/clifacet
+      - crates/clifacet-macros
+    level: error
+    message: Keep workspace membership explicitly reviewed.
+
+  - id: gha-workflow-contents-read
+    level: error
+  - id: gha-pin-actions-to-sha
+    level: error
