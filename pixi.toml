@@ -18,6 +18,9 @@ lefthook = ">=2.2.2,<2.3"
 llvm-tools = ">=23.1.4,<24"
 python = ">=3.11,<4"
 
+# alint is PyPI-only. The sandbox packs its wheel and restores it into the
+# environment, so it must stay a pure wheel (pixi-pack refuses non-wheel PyPI
+# dependencies). Keep it here rather than in `[dependencies]`.
 [pypi-dependencies]
 alint = ">=0.20.1,<0.21"
 
