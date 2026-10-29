@@ -1,0 +1,20 @@
+[advisories]
+yanked = "deny"
+# rstest-bdd -> i18n-embed -> i18n-config pulls basic-toml at test time.
+# This is an unmaintained-package advisory, not a vulnerability finding.
+# Revisit when rstest-bdd or its dependencies provide a maintained replacement.
+ignore = [{ id = "RUSTSEC-2026-0374", reason = "Test-only rstest-bdd transitively requires unmaintained basic-toml; revisit on dependency update" }]
+
+[licenses]
+allow = ["Apache-2.0", "MIT"]
+# proc-macro2 uses Unicode identifier data; scope the permissive Unicode
+# license to the reviewed locked crate rather than broadening the global list.
+exceptions = [{ name = "unicode-ident", version = "=1.0.27", allow = ["MIT", "Apache-2.0", "Unicode-3.0"] }]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

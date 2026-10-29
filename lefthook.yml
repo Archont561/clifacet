@@ -1,0 +1,10 @@
+pre-commit:
+  commands:
+    fmt:
+      run: pixi run fmt-check
+pre-push:
+  commands:
+    quality:
+      run: pixi run quality
+    tests:
+      run: pixi run test && pixi run test-doc

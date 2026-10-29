@@ -1,0 +1,37 @@
+[package]
+name = "clifacet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Composable command-line presentation modes"
+readme = "../../README.md"
+
+[features]
+# These feature names reserve the dependency boundaries; frontends are not yet implemented.
+default = []
+interactive = ["dep:inquire"]
+tui = ["dep:ratatui", "dep:crossterm"]
+json = ["dep:serde_json"]
+
+[dependencies]
+clifacet-macros.workspace = true
+clap.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+inquire = { workspace = true, optional = true }
+ratatui = { workspace = true, optional = true }
+crossterm = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+assert_cmd.workspace = true
+rstest.workspace = true
+rstest-bdd.workspace = true
+rstest-bdd-macros.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true
