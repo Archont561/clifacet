@@ -36,7 +36,7 @@ relock_paths = [
   "pixi.toml",
 ]
 permissions = true
-pixi_version = "0.83.0"
+pixi_version = "v0.83.0"
 setup_pixi_cache = false
 
 [workflow.concurrency]
