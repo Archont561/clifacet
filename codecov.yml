@@ -1,0 +1,14 @@
+coverage:
+  status:
+    project:
+      default: false
+      src:
+        target: 90%
+        threshold: 0%
+        paths:
+          - "crates/clifacet/src/"
+          - "crates/clifacet-macros/src/"
+    patch: false
+
+ignore:
+  - "**/tests/**"

@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Repository and Rust quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.83.0
+          cache: true
+          frozen: true
+      - name: Cache Cargo registry downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+          key: ${{ runner.os }}-cargo-registry-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-v1-
+      - name: Select weekly advisory cache
+        id: advisory-cache-key
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Cache advisory database clones
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/advisory-db
+            ~/.cargo/advisory-dbs
+          key: ${{ runner.os }}-rustsec-v1-${{ steps.advisory-cache-key.outputs.week }}
+          restore-keys: |
+            ${{ runner.os }}-rustsec-v1-
+      - name: Clean restored advisory databases
+        run: |
+          for db in "$HOME/.cargo/advisory-db" "$HOME"/.cargo/advisory-dbs/*; do
+            if [ -d "$db/.git" ]; then
+              git -C "$db" reset --hard HEAD
+              git -C "$db" clean -ffdx
+            fi
+          done
+      - name: Alint repository policy
+        run: pixi run --frozen alint
+      - name: Check agent skills
+        run: pixi run --frozen skills-check
+      - name: Check Backlog and frozen Bun dependencies
+        run: pixi run --frozen backlog-check
+      - name: Check generated sandbox files
+        run: pixi run --frozen sandbox-check
+      - name: Lint GitHub Actions
+        run: pixi run --frozen actionlint
+      - name: Check feature boundaries
+        run: pixi run --frozen check-features
+      - name: Check Rust formatting
+        run: pixi run --frozen fmt-check
+      - name: Lint Rust
+        run: pixi run --frozen lint
+      - name: Check Cargo dependency policy
+        run: pixi run --frozen deny
+      - name: Audit Cargo dependencies
+        run: pixi run --frozen audit
+
+  coverage:
+    name: Tests and source coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.83.0
+          cache: true
+          frozen: true
+      - name: Cache Cargo registry downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+          key: ${{ runner.os }}-cargo-registry-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-v1-
+      - name: Test repository scripts
+        run: pixi run --frozen test-scripts
+      - name: Run coverage suite
+        run: pixi run --frozen coverage
+      - name: Run documentation tests
+        run: pixi run --frozen test-doc
+      - name: Upload source coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
