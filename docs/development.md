@@ -146,8 +146,24 @@ for an offline host, the sandbox branch must already be present in its Git copy.
 ```sh
 bash scripts/restore.sh
 export PATH="$HOME/.local/bin:$PATH"
-pixi install --frozen --offline
+pixi run --no-install --offline alint
+pixi run --no-install --offline test
 ```
+
+The restore already materialises the complete environment, including the PyPI
+wheel for `alint`. It is packed under
+`.pixi-sandbox/envs/default/pack/pypi/` on the sandbox branch, installed into
+`.pixi/envs/default/`, and verified file by file against the manifest, so no
+post-restore install is needed or possible offline. Bun-backed tasks
+(`backlog-check`, and the `bun-install` prerequisites of `quality`) still follow
+the rules above and are not covered by the sandbox.
+
+Run tasks with `--no-install`. Do **not** run `pixi install --frozen --offline`
+after a restore: it re-syncs the environment instead of treating it as current,
+deletes the PyPI-installed files that restore wrote (leaving no `bin/alint`),
+and then fails with `Failed to download alint==0.20.1 … network connectivity is
+disabled`. The wheel is not in Pixi's own cache, so nothing can satisfy that
+step on a disconnected host, and recovery means running the restore again.
 
 The launcher can replace an existing `.pixi` environment and, by default,
 register user tools under `~/.local/bin`. On shared machines, review its effects
