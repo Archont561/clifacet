@@ -21,8 +21,10 @@ python = ">=3.11,<4"
 # alint is PyPI-only. The sandbox packs its wheel and restores it into the
 # environment, so it must stay a pure wheel (pixi-pack refuses non-wheel PyPI
 # dependencies). Keep it here rather than in `[dependencies]`.
+# Pinned exactly: `.alint-baseline.json` records `alint_version: 0.20.1`, so a
+# minor bump would need a baseline re-check rather than a silent range widening.
 [pypi-dependencies]
-alint = ">=0.20.1,<0.21"
+alint = "==0.20.1"
 
 [activation.env]
 LLVM_COV = "$CONDA_PREFIX/bin/llvm-cov"
