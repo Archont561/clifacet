@@ -1,0 +1,67 @@
+# convco configuration. https://convco.github.io/configuration/
+#
+# Commit messages are the input to the changelog, the version bump and the release notes, so the
+# type-to-section mapping lives here rather than in each tool. The headings match the
+# Keep a Changelog sections `scripts/bump_version.py` promotes, and `header` is the preamble
+# already at the top of CHANGELOG.md, so a regenerated changelog starts the same way.
+header: |
+  # Changelog
+
+  All notable changes to this project are documented here.
+
+  The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
+  this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+  `scripts/bump_version.py` promotes the `Unreleased` section when a release is
+  prepared, so the headings below are managed by that script.
+
+types:
+  - type: feat
+    section: Added
+    hidden: false
+  - type: fix
+    section: Fixed
+    hidden: false
+  - type: perf
+    section: Performance
+    hidden: false
+  - type: refactor
+    section: Changed
+    hidden: false
+  - type: revert
+    section: Reverted
+    hidden: false
+  - type: docs
+    section: Documentation
+    hidden: false
+  - type: build
+    section: Build
+    hidden: false
+  - type: ci
+    section: CI
+    hidden: false
+  # Repository upkeep: it belongs in the history, not in what a user reads when upgrading.
+  - type: test
+    section: Tests
+    hidden: true
+  - type: chore
+    section: Maintenance
+    hidden: true
+  - type: style
+    section: Styling
+    hidden: true
+
+# Before 1.0 a breaking change advances the minor version (0.1 -> 0.2), not 0.1 -> 1.0.
+preMajor: true
+releaseCommitMessageFormat: "chore(release): {{currentTag}}"
+issuePrefixes:
+  - "#"
+host: https://github.com
+owner: Archont561
+repository: clifacet
+scopeRegex: "[[:alnum:]]+(?:[-_/][[:alnum:]]+)*"
+lineLength: 100
+wrapDisabled: false
+linkCompare: true
+linkReferences: true
+merges: false
+firstParent: false
