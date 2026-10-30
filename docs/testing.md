@@ -1,0 +1,90 @@
+# Testing the command core
+
+The suite has four kinds of test, because they answer different questions. A case
+table is not a scenario, and neither is a property; decision-6 assigns each one a
+job, and this page records what is actually installed and how to run it.
+
+| Question | Tool | Command | Lives in |
+| --- | --- | --- | --- |
+| Which value does each layer produce, for this argv? | `rstest` cases | `pixi run test` | `crates/clifacet/tests/validation_matrix.rs` |
+| Does the user-facing promise hold, end to end? | `rstest-bdd` | `pixi run test` | `crates/clifacet/tests/features/`, `facet_bdd.rs` |
+| Does it hold for inputs no table would enumerate? | `proptest` | `pixi run test` | `crates/clifacet/tests/properties.rs` |
+| Does a mistake in the derive read clearly? | `trybuild` | `pixi run test` | `crates/clifacet/tests/ui/`, `crates/clifacet-macros/tests/ui/` |
+
+`pixi run test-local` runs all of them plus fmt, clippy, alint, the Python checks
+and `cargo deny`; it is the gate before a feature is claimed.
+
+## What each layer asserts
+
+`validation_matrix.rs` keeps the layers apart, because they are separate promises:
+
+- **draft** — what `clap` collected, before any application rule runs. A later
+  frontend fills in this state, so its shape is a contract, and out-of-range values
+  are allowed to appear here (`--repeat 9` parses).
+- **input** — the validated value. Normalization (trimming, the `world` default,
+  the range check) happens on the way in, and every value is runnable.
+- **validation** — what is refused, with the exact message the user reads.
+
+Stream and exit-code behavior stays in `example_command.rs`, which drives the
+application through buffers; the matrix does not repeat it.
+
+## Properties, and what they are allowed to claim
+
+`properties.rs` states four invariants:
+
+1. a canonical input survives a round trip through argv — no field is lost in the
+   bridge, and the flags render the input faithfully;
+2. the same argv never produces two different answers;
+3. every argv lands on one of the three documented exit codes, without panicking,
+   and a run explains itself on exactly one stream;
+4. an accepted name is trimmed and non-blank; a refused one was blank to begin with.
+
+Point 1 is deliberately stated over *canonical* input. Validation normalizes, so
+`--name " ada "` does not round trip unchanged — claiming it would be a false
+invariant, and point 4 covers the normalization instead.
+
+Point 3 caught a real mistake while it was being written: the first draft asserted
+that every run writes to the data stream, which a usage error does not. The
+invariant was corrected, not the assertion weakened: failure must explain itself on
+the diagnostic stream, and the two streams never carry output at the same time.
+
+Failing seeds are written to `crates/clifacet/tests/proptest-regressions/` and are
+committed, so a failure found on one machine re-runs on every other.
+
+## Installed versions, as measured
+
+Taken from the workspace manifest and the crates' own manifests on 2026-10-30:
+
+| Component | Version | Declared `rust-version` | Role |
+| --- | --- | --- | --- |
+| `clap` | 4.6.7 | 1.85 | grammar authority |
+| `rstest` | 0.28.0 | 1.85 | fixtures and case tables |
+| `rstest-bdd` | 0.6.0 | 1.88 | scenario bindings |
+| `rstest-bdd-macros` | 0.6.0 | 1.88 | `#[scenario]`, `#[given]`, `#[when]`, `#[then]` |
+| `proptest` | 1.12.0 | 1.88 | invariants |
+| `trybuild` | 1.0.122 | 1.88 | compile-pass and compile-fail diagnostics |
+| `assert_cmd` | 2.2.2 | 1.85 | reserved for process-level tests |
+| `cargo-nextest` | 0.9.150 | — | test runner |
+| `cargo-llvm-cov` | 0.9.1 | — | coverage, `pixi run coverage` |
+| `rustc` (pinned environment) | 1.99.1 | — | what every command above uses |
+
+`rstest-bdd` and its macros are pinned with `=`, because the scenario macros and the
+runtime have to agree exactly; a floating patch would silently mix versions.
+
+## Compatibility, and the limits of what is proven
+
+- The pairing above compiles and passes together in the pinned environment; the
+  scenario bindings, the case tables and the properties all run in one `nextest`
+  invocation.
+- The workspace MSRV is 1.88, and CI proves the *library* at that version across
+  every feature boundary. The MSRV job runs `cargo check`, which does not build
+  dev-dependencies, so the test-only crates above are covered by their declared
+  `rust-version` floors (all at or below 1.88) rather than by a 1.88 build. Stating
+  the difference is cheaper than discovering it later.
+- Coverage is enforced on source files only, counted by `scripts/check_coverage.py`
+  at a 90% line target. The derive's own unit tests are selected by
+  `kind(proc-macro)` in the `test-src` task; without that selector `nextest` would
+  classify them out of `kind(lib)` and skip them.
+- `rstest-bdd` currently pulls the unmaintained `basic-toml` through `gherkin`,
+  which is why `.cargo/audit.toml` carries a dated exception (decision-11). CLI-19
+  owns revisiting it.
