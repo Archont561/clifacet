@@ -11,6 +11,13 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- `clifacet::Facet`, the companion derive: it connects an existing `clap`
+  command to validated typed input without a second grammar, reports `clap`'s own
+  command (aliases, defaults and value parsers included), and builds the input
+  either by mirroring fields or through a declared bridge. Unsupported shapes and
+  attribute mistakes are compile errors with `trybuild` golden files. The
+  reference application now demonstrates an alias, a clap default, a custom
+  value parser and a scenario-driven test.
 - A UI-free command core: the `Command` seam, a library-owned `Failure` with
   validation and execution categories, and a reference application
   (`clifacet::example`) that keeps parsing, validation, execution and

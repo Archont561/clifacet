@@ -45,8 +45,14 @@
               documents; qualifying them twice would read worse at every call site"
 )]
 
+// The derive emits `::clifacet::…` paths, and this crate is its own dependency
+// from the macro's point of view. This alias is the documented way to make that
+// resolve, and it is why `#[derive(Facet)]` works inside this crate too.
+extern crate self as clifacet;
+
 pub mod command;
 pub mod example;
+pub mod facet;
 pub mod failure;
 
 /// The version of the `clifacet` package.
@@ -59,6 +65,7 @@ pub const fn version() -> &'static str {
 }
 
 pub use command::Command;
+pub use facet::Facet;
 pub use failure::{Failure, FailureKind};
 
 /// `clap`, re-exported because [`example::Cli`] implements its traits.
@@ -70,6 +77,12 @@ pub use clap;
 
 /// Expands to the version of the `clifacet-macros` package.
 pub use clifacet_macros::version;
+
+/// Derives [`Facet`], the companion derive for a clap command.
+///
+/// Re-exported so an application depends on `clifacet` alone; the trait and the
+/// macro share the name `Facet` the way `serde`'s `Serialize` does.
+pub use clifacet_macros::Facet;
 
 #[cfg(test)]
 mod tests;

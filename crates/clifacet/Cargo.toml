@@ -28,6 +28,7 @@ serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd.workspace = true
+trybuild.workspace = true
 rstest.workspace = true
 rstest-bdd.workspace = true
 rstest-bdd-macros.workspace = true

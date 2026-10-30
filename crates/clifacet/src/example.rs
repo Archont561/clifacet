@@ -4,8 +4,9 @@
 //! meant to copy. It holds the three layers apart on purpose:
 //!
 //! 1. [`Cli`] is the `clap` surface: flags, help and usage errors.
-//! 2. [`ExampleInput`] is validated input, built by [`TryFrom<Cli>`]. Everything
-//!    that can be wrong with a value is rejected here, so [`Input`] is total.
+//! 2. [`ExampleInput`] is validated input, built by [`TryFrom<Cli>`] — the
+//!    documented bridge the derived [`Facet`] calls. Everything that can be wrong
+//!    with a value is rejected there, so [`Input`] is total.
 //! 3. [`Example`] is the command: it implements [`Command`], touches no stream and
 //!    knows nothing about `clap`.
 //!
@@ -13,14 +14,17 @@
 //! codes below and writes machine data to one stream and diagnostics to the other.
 //! None of that lives in [`Command`], which is what keeps the seam UI-free.
 //!
+//! [`Facet`]: crate::Facet
 //! [`Input`]: Command::Input
 
 use std::fmt;
 use std::io::Write;
+use std::str::FromStr;
 
 use clap::Parser;
 
 use crate::command::Command;
+use crate::facet::Facet;
 use crate::failure::Failure;
 
 /// The process exited after doing what was asked.
@@ -41,8 +45,55 @@ pub const EXIT_USAGE: i32 = 2;
 /// The largest `--repeat` this command accepts.
 pub const MAX_REPEAT: u8 = 8;
 
+/// How much detail the command reports.
+///
+/// Parsed by [`parse_level`] rather than by a derived parser, so the error text is
+/// the command's own. An unknown level never reaches validation: `clap` rejects it
+/// while parsing, which is the whole point of a value parser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Level {
+    /// One greeting. The default.
+    #[default]
+    Basic,
+    /// The greeting plus the repeat count.
+    Verbose,
+}
+
+impl fmt::Display for Level {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Basic => "basic",
+            Self::Verbose => "verbose",
+        })
+    }
+}
+
+impl FromStr for Level {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "basic" => Ok(Self::Basic),
+            "verbose" => Ok(Self::Verbose),
+            other => Err(format!(
+                "`{other}` is not a level; expected basic or verbose"
+            )),
+        }
+    }
+}
+
+/// Parses a [`Level`], so `clap` reports [`Level`]'s own wording.
+fn parse_level(value: &str) -> Result<Level, String> {
+    value.parse()
+}
+
 /// The `clap` surface of the example command.
-#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+///
+/// The derived [`Facet`] points at [`ExampleInput`] and at [`build_input`], so the
+/// only route to typed input is the bridge below; aliases, the `--repeat` default
+/// and the [`Level`] parser all stay `clap`'s.
+#[derive(Debug, Clone, PartialEq, Eq, Parser, crate::Facet)]
+#[facet(input = ExampleInput, bridge = build_input)]
 #[command(
     name = "example",
     version = crate::VERSION,
@@ -54,12 +105,19 @@ pub const MAX_REPEAT: u8 = 8;
 )]
 pub struct Cli {
     /// Who to greet. Defaults to `world`.
-    #[arg(long, value_name = "NAME")]
+    ///
+    /// `--nickname` is an alias and `-n` a short flag: three spellings, one field,
+    /// one validation rule.
+    #[arg(long, short = 'n', alias = "nickname", value_name = "NAME")]
     pub name: Option<String>,
 
     /// How many times to greet, from 1 to 8.
     #[arg(long, value_name = "COUNT", default_value_t = 1)]
     pub repeat: u8,
+
+    /// How much detail to report.
+    #[arg(long, value_name = "LEVEL", default_value_t = Level::Basic, value_parser = parse_level)]
+    pub level: Level,
 
     /// Fail on purpose, to demonstrate the execution-failure seam.
     #[arg(long)]
@@ -78,6 +136,8 @@ pub struct ExampleInput {
     pub repeat: u8,
     /// Whether to fail on purpose instead of producing output.
     pub explode: bool,
+    /// How much detail to report.
+    pub level: Level,
 }
 
 impl TryFrom<Cli> for ExampleInput {
@@ -105,8 +165,25 @@ impl TryFrom<Cli> for ExampleInput {
             name: name.to_owned(),
             repeat: cli.repeat,
             explode: cli.explode,
+            level: cli.level,
         })
     }
+}
+
+/// The documented bridge from the parsed command to validated input.
+///
+/// `#[derive(Facet)]` names this function, so there is exactly one path from
+/// `clap`'s struct to [`ExampleInput`] — reachable through [`Facet::validate`] and
+/// nowhere else. It is a free function because that is what the derive calls; the
+/// rules themselves stay in [`TryFrom<Cli>`], which has no `clap` dependency of
+/// its own beyond the struct.
+///
+/// # Errors
+///
+/// Returns whatever [`TryFrom<Cli>`] rejects: a `--repeat` outside `1..=MAX_REPEAT`
+/// or a blank `--name`.
+pub fn build_input(cli: Cli) -> Result<ExampleInput, Failure> {
+    ExampleInput::try_from(cli)
 }
 
 /// What the command produces for the application to render.
@@ -155,10 +232,15 @@ impl Command for Example {
                 "the example operation failed on purpose (--explode)",
             ));
         }
-        let line = format!("hello, {}", input.name);
-        Ok(ExampleOutput {
-            lines: vec![line; usize::from(input.repeat)],
-        })
+        let lines = (1..=input.repeat)
+            .map(|index| match input.level {
+                Level::Basic => format!("hello, {}", input.name),
+                Level::Verbose => {
+                    format!("hello, {} ({index} of {})", input.name, input.repeat)
+                }
+            })
+            .collect();
+        Ok(ExampleOutput { lines })
     }
 }
 
@@ -169,7 +251,7 @@ impl Command for Example {
 /// is already a diagnostic and an exit code by the time this returns; a writer
 /// that fails becomes [`EXIT_EXECUTION_FAILED`].
 pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
-    let input = match ExampleInput::try_from(cli) {
+    let input = match Facet::validate(cli) {
         Ok(input) => input,
         Err(failure) => {
             report(&failure, err);

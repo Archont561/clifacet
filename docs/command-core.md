@@ -11,7 +11,7 @@ than a terminal.
 | Layer | Lives in | Owns | Must not |
 | --- | --- | --- | --- |
 | `clap` surface | `example::Cli` | flags, help, usage errors | know about the command |
-| Validation | `TryFrom<Cli> for ExampleInput` | rejecting bad values, defaults | run anything |
+| Validation | `TryFrom<Cli> for ExampleInput`, reached through `Facet::validate` | rejecting bad values, defaults | run anything |
 | Command | `impl Command for Example` | the operation | touch a stream, read a terminal, know `clap` exists |
 | Application | `example::run`, `example::main` | streams, exit codes, diagnostics | contain the operation |
 
@@ -66,6 +66,54 @@ Two details worth keeping:
   result the caller asked for. `clap` decides that with `Error::use_stderr`, and
   the application follows it instead of guessing.
 
+## The companion derive
+
+`clifacet::Facet` lets an existing clap command produce validated input without a
+second grammar:
+
+```rust
+#[derive(clap::Parser, clifacet::Facet)]
+#[facet(input = ExampleInput, bridge = build_input)]
+pub struct Cli { /* clap attributes unchanged */ }
+
+let input = Cli::try_parse_from(argv)?.validate()?;   // Facet::validate
+```
+
+The derive adds no parser. `Facet::command()` *is* `<Cli as CommandFactory>::command()`
+— same aliases, same defaults, same value parsers — and `Facet::validate` is the
+only route from the parsed struct to `Input`. There are exactly two ways to build
+that input, and the derive implements one of them:
+
+| Attribute | Effect |
+| --- | --- |
+| `#[facet(input = Type)]` | required; the type `validate` returns |
+| — (no `bridge`) | copies fields by name, so a renamed or missing field is a compile error |
+| `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input that normalizes |
+
+The example uses the bridge, because `--name` normalizes from `Option<String>` to a
+trimmed `String` and a blank value is rejected; both rules live in
+`TryFrom<Cli> for ExampleInput`, next to the data they constrain.
+
+### What the slice proves
+
+| Case | Where |
+| --- | --- |
+| an alias (`--nickname`, `-n`) resolves to the same typed input as `--name` | `tests/facet_bridge.rs`, `tests/features/facet_bridge.feature` |
+| the generated command is clap's own, help and aliases included | `tests/facet_bridge.rs` |
+| a clap `default_value_t` survives the bridge | `tests/facet_bridge.rs`, `tests/example_command.rs` |
+| a custom `value_parser` (`--level`) rejects unknown values while parsing, in its own words | `tests/facet_bridge.rs` |
+| a validation rule the parser cannot express still rejects (`--repeat 9`) | `tests/facet_bridge.rs` |
+| the bridge carries every declared field | `tests/facet_bridge.rs` |
+| valid and invalid derives, with the diagnostic text as a golden file | `tests/compile_fail.rs`, `tests/ui/` |
+
+Unsupported shapes fail while compiling rather than at runtime, and each has a
+`trybuild` case: a derive without `#[facet(input = …)]`, an unknown attribute key,
+an enum, and an input missing a field the mirror would copy.
+
+The private-API check is structural: `clifacet` enables no `clap` feature that
+exposes internals (`unstable-*`), and both the derive and the trait mention only
+`Command`, `CommandFactory`, `Arg` and `ArgMatches` — the documented surface.
+
 ## Known unsupported behavior
 
 Documented so nobody reads absence as oversight:
@@ -79,8 +127,8 @@ Documented so nobody reads absence as oversight:
   one mode: flags in, data out.
 - **Cancellation.** Interactive cancellation needs its own category, so
   `FailureKind` is `#[non_exhaustive]` and adding one is not a break.
-- **The companion derive.** [`TryFrom<Cli>`] is written by hand here; CLI-7 adds
-  the derive and the `trybuild` cases. Canonical argv replay and any construct
-  `clap` cannot re-validate stay out of scope until that task proves them.
+- **Canonical argv replay.** The derive proves the command that was parsed; it
+  does not rebuild argv or re-parse it, so constructs `clap` cannot re-validate
+  stay out of scope.
 - **Secret handling.** No input is marked secret, so nothing redacts. CLI-14 owns
   the contract, including what may appear in previews and logs.
