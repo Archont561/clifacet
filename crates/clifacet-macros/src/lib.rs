@@ -51,3 +51,6 @@ pub fn version(input: TokenStream) -> TokenStream {
 
     TokenTree::Literal(Literal::string(env!("CARGO_PKG_VERSION"))).into()
 }
+
+#[cfg(test)]
+mod tests;
