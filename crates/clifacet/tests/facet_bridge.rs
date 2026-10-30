@@ -106,6 +106,7 @@ fn the_bridge_carries_every_field_it_declares() {
             repeat: 2,
             explode: true,
             level: Level::Verbose,
+            token: None,
         },
         "a field the derive forgets would silently fall back to its default"
     );

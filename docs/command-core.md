@@ -56,6 +56,7 @@ Measured on `crates/clifacet` at this commit:
 | `example --explode` | 1 | empty | `example: the example operation failed on purpose (--explode)` |
 | `example --nope` | 2 | empty | `clap` usage error |
 | `example --help` | 0 | help text | empty |
+| `example --token <revoked…>` | 1 | empty | `example: the credential [redacted] was rejected` |
 | `example --tui` (built with `tui`) | 0 | the form, then `hello, world` | empty |
 | `example --tui` (built without `tui`) | 2 | empty | `example: a TUI is not available: this command allows at most interactive use` |
 | `example --interactive` (a terminal) | 0 | `hello, ada` after answering `ada` | empty |
@@ -262,6 +263,62 @@ which is the point.
 | an execution failure costs the same exit code | `tests/harness_parity.rs` |
 | measuring, recording and comparing, without any frontend | `tests/harness.rs` |
 
+## Secrets and provenance
+
+A value wrapped in `clifacet::secret::Secret` is redacted wherever the framework
+speaks, and `clifacet::provenance` records where a value came from without recording
+the value.
+
+```rust
+#[arg(long, value_name = "TOKEN")]
+pub token: Option<Secret<String>>,          // clap parses it, nothing prints it
+```
+
+Redaction is a property of the type, not a scrubbing pass:
+
+| Surface | Why it is covered |
+| --- | --- |
+| a diagnostic the application writes | `format!("{token}")` is `[redacted]` |
+| a `Debug` record, such as a parity harness effect | `Secret([redacted])` |
+| a preview, such as a form field | a secret field draws `[redacted]`, and its length is not reported |
+| a failing test's panic message | the record it prints is the `Debug` above |
+
+- **Nothing keeps a list of secret values.** A registry of live credentials would
+  itself be a place to leak them, and it would have to be cleansed. Since the marker
+  is produced by the value's own formatting, there is nothing to cleanse.
+- **`Secret::expose` is the only read.** No `Deref`, no `AsRef`, no `Serialize`: a
+  credential reaches a log, a file or a URL only through a line someone wrote, which
+  is what makes review possible.
+- **Provenance has no field for a value.** `Origin` holds a name, a `Source` and
+  whether the value is secret, so "the record cannot leak a secret" is structural. It
+  answers the question a parity test asks after it has already asserted that the answer
+  itself was the same in every mode.
+- **Masking is presentation.** A secret form field submits its real value; only the
+  drawing changes. Masking the characters instead of replacing them would still report
+  the length.
+
+### What this cannot do
+
+The framework's promise is about the framework's own output. Everything below is the
+application's, and is listed so absence is not mistaken for oversight:
+
+- **Application-owned logs.** If the application calls `expose()` and writes the value
+  to a log, a file or a telemetry event, no framework type is involved and nothing here
+  can redact it.
+- **Command-line arguments are public on most systems.** A secret passed as a flag is
+  visible in `ps`, in `/proc/<pid>/cmdline`, to the process supervisor and in shell
+  history. Prefer an environment variable or a prompt; the framework cannot fix argv.
+- **Environment variables are readable by the same user,** through
+  `/proc/<pid>/environ` and through any crash dump or core file. They are safer than
+  argv, not safe.
+- **A prompted secret is echoed.** `prompt::Terminal` reads a line from stdin, so a
+  terminal shows what is typed and keeps it in scrollback. A no-echo prompt is not
+  implemented.
+- **Plain values are not protected.** A credential held as a `String` prints as usual;
+  the guarantee starts at `Secret<T>`.
+- **Errors from outside the framework** — a `clap` value parser's message, an I/O
+  error, a third-party crate's diagnostic — are formatted by their authors.
+
 ## The companion derive
 
 `clifacet::Facet` lets an existing clap command produce validated input without a
@@ -332,5 +389,6 @@ Documented so nobody reads absence as oversight:
 - **Canonical argv replay.** The derive proves the command that was parsed; it
   does not rebuild argv or re-parse it, so constructs `clap` cannot re-validate
   stay out of scope.
-- **Secret handling.** No input is marked secret, so nothing redacts. CLI-14 owns
-  the contract, including what may appear in previews and logs.
+- **Secret-aware prompting.** A credential cannot be asked for without echo, and
+  `Provenance` is recorded by the application rather than inferred. Redaction itself
+  is covered; see "What this cannot do" above for the boundaries.

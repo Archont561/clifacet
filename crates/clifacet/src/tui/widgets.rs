@@ -50,8 +50,13 @@ impl<'a> Field<'a> {
         } else {
             Style::default()
         };
+        // A secret is drawn as the marker every other redacted thing uses, and its
+        // length is not reported either: a mask of the right width would be a fact
+        // about the value.
         let shown = if self.field.is_empty() {
             String::from("…")
+        } else if self.field.is_secret() {
+            String::from(crate::secret::REDACTED)
         } else {
             self.field.value().to_owned()
         };

@@ -28,7 +28,8 @@ That covers formatting, Clippy, alint, both nextest groups, the script tests,
 
 ## Command core
 
-The UI-free command seam lives in `crates/clifacet/src/{command,failure,example}.rs`, and
+The UI-free command seam lives in `crates/clifacet/src/{command,failure,example}.rs`,
+secrets and their provenance in `crates/clifacet/src/{secret,provenance}.rs`, and
 `docs/command-core.md` records the four layers, the ownership rules and what is deliberately
 not implemented yet. Run the reference command against the real streams with:
 

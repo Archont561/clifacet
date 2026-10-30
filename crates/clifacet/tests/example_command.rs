@@ -96,6 +96,7 @@ fn the_command_seam_runs_without_the_application_layer() {
         repeat: 2,
         explode: false,
         level: Level::Basic,
+        token: None,
     };
 
     let output = Example.execute(input).expect("a valid input runs");
@@ -110,6 +111,7 @@ fn a_verbose_run_reports_how_far_it_has_got() {
         repeat: 2,
         explode: false,
         level: Level::Verbose,
+        token: None,
     };
 
     let output = Example.execute(input).expect("a valid input runs");
@@ -129,6 +131,7 @@ fn the_command_seam_reports_execution_failures_as_that_kind() {
             repeat: 1,
             explode: true,
             level: Level::Basic,
+            token: None,
         })
         .expect_err("--explode fails");
 
@@ -193,6 +196,7 @@ fn a_closed_data_stream_becomes_an_execution_failure() {
             repeat: 1,
             level: Level::Basic,
             explode: false,
+            token: None,
             interaction: example::InteractionFlags::default(),
         },
         &mut Broken,
