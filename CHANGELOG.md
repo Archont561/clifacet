@@ -11,6 +11,14 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- `clifacet::harness`, the cross-mode parity harness: `Outcome` reduces a run to the
+  four subjects two runs can disagree about, `Recording` wraps a `Command` and records
+  the input each execution received (failures included), and `Parity` compares runs
+  and names the mode and subject that disagreed. It is public API, exercised by the
+  crate's tests and by `examples/parity_report.rs`, which can only use what a consumer
+  can use. The example's entry points gained `main_with_command`, `run_with_command`,
+  `tui_submit_with` and `run_tui_with`, so a command can be observed without a
+  test-only copy of the pipeline.
 - Two explicit escape hatches for the full-screen form: `tui::CustomField` lets an
   application draw one answer with its own widget, and `app::run_with` (with
   `run_on_with` for the alternate screen) replaces the whole drawing while keeping

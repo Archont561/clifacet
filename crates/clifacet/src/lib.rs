@@ -29,15 +29,20 @@
 //! validation, which stream the data goes to, and which exit code a failure
 //! costs. [`example`] shows that division end to end.
 //!
+//! # Four frontends, one command
+//!
+//! Parsing stays the application's: [`example`] shows a `clap` command, its validated
+//! input ([`Facet`]), and the [`policy`] that decides how interactive a run may be.
+//! Everything after that is shared:
+//!
+//! - flags — the command line the user typed;
+//! - [`prompt`] — questions asked only for what the flags left out;
+//! - [`tui`] — a full-screen form built from public components (`tui` feature);
+//! - [`harness`] — the public way to prove the mode changed nothing else.
+//!
 //! # Not implemented yet
 //!
-//! - Interactive and TUI frontends: the `interactive` and `tui` features reserve
-//!   their dependency boundaries only.
 //! - JSON output: the `json` feature reserves `serde_json`; no flag selects it yet.
-//! - Runtime mode resolution, prompts and cancellation: M2. Cancellation will need
-//!   its own failure category, so [`FailureKind`] is `#[non_exhaustive]`.
-//! - The companion derive that builds the `clap` surface and the input conversion
-//!   is M1's next task; [`example`] writes that conversion by hand today.
 
 #![allow(
     clippy::module_name_repetitions,
@@ -54,6 +59,7 @@ pub mod command;
 pub mod example;
 pub mod facet;
 pub mod failure;
+pub mod harness;
 pub mod policy;
 pub mod prompt;
 

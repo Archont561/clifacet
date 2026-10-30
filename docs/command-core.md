@@ -213,6 +213,55 @@ probe, the raw-mode restore and the live event stream. Everything they wrap is
 covered, which is why `cargo llvm-cov` reports 815 of 820 lines rather than all of
 them.
 
+## Cross-mode parity, as a published API
+
+A flag run, a prompted run and a full-screen form are the same command, and
+`clifacet::harness` is how an application proves it instead of promising it:
+
+```rust
+let (command, effects) = Recording::new(MyCommand, describe);
+let flags = Outcome::measured(|out, err| app::main_with_command(&command, argv, headless(), .., out, err))
+    .with_effects(effects.recorded());
+
+Parity::new("flags", flags)
+    .compare("scripted prompt", prompted)
+    .compare("headless tui", typed)
+    .assert_parity();
+```
+
+Three pieces, and deliberately no fourth:
+
+| Piece | What it does |
+| --- | --- |
+| `Outcome` | one run reduced to the four comparable subjects: exit code, data, diagnostic, effects |
+| `Recording` | wraps a `Command` and records the input each execution received, failures included |
+| `Parity` | compares runs, and names the mode and the subject that disagreed |
+
+- **The harness runs nothing itself.** Each mode is the application's own entry
+  point, so a comparison covers the real path — `clap` parsing, the policy, the
+  prompt session, the form — rather than a test-only runner that could drift. There
+  is no mode enum and no runner trait, because describing frontends to the library is
+  the global registration decision-4 forbids.
+- **Recording is "what reached the command", not "what was typed".** A rejected
+  answer leaves the record empty, which is how "nothing ran" becomes an assertion
+  instead of an inference from an empty data stream.
+- **Subjects are selectable.** Frontends word a cancellation differently on purpose —
+  one names the question, the other names the form — so `Parity::comparing` names the
+  subjects a scenario is actually about. Everything else compares all four.
+
+`examples/parity_report.rs` runs the example command three ways and prints whether the
+modes agree; it lives outside the crate, so it can only use this published surface,
+which is the point.
+
+| Case | Where |
+| --- | --- |
+| three modes reach the command with the same validated input | `tests/harness_parity.rs`, `tests/features/parity.feature` |
+| a successful run is identical in every mode | `tests/harness_parity.rs` |
+| a validation failure keeps the flags' words, and runs nothing in any mode | `tests/harness_parity.rs` |
+| dismissing a question and leaving the form are the same outcome | `tests/harness_parity.rs` |
+| an execution failure costs the same exit code | `tests/harness_parity.rs` |
+| measuring, recording and comparing, without any frontend | `tests/harness.rs` |
+
 ## The companion derive
 
 `clifacet::Facet` lets an existing clap command produce validated input without a
@@ -271,6 +320,9 @@ Documented so nobody reads absence as oversight:
   `TestBackend`, which is why `tui::ratatui` is re-exported.
 - **`--json`.** The `json` feature reserves `serde_json`; no flag selects it, so
   only the human data line exists.
+- **A parity runner.** `clifacet::harness` measures and compares runs; it does not
+  provide a mode enum or run an application's frontends for it. Each application
+  knows how its own entry points are called.
 - **Mode detection heuristics.** `Capabilities::detected` reports a terminal and
   nothing else; no `TERM`, locale or window-size probing. A false positive there
   would resolve to a mode that cannot render.

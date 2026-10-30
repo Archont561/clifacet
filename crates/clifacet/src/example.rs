@@ -337,6 +337,27 @@ pub fn run_with(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
+    run_with_command(&Example, cli, capabilities, build_frontend, out, err)
+}
+
+/// Runs one validated invocation of any command that accepts this example's input.
+///
+/// The example's own [`Example`] is the ordinary case; a different command with the
+/// same input and output types is how a caller observes what the run did — see
+/// [`crate::harness::Recording`]. Because the input type is fixed, "a different
+/// command" cannot quietly be a different pipeline: it is the same parse, the same
+/// validation and the same stream policy.
+pub fn run_with_command<C>(
+    command: &C,
+    cli: Cli,
+    capabilities: Capabilities,
+    build_frontend: impl FnOnce() -> Box<dyn Prompter>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32
+where
+    C: Command<Input = ExampleInput, Output = ExampleOutput>,
+{
     let plan = match POLICY.resolve(request(cli.interaction), capabilities) {
         Ok(plan) => plan,
         Err(refusal) => {
@@ -350,11 +371,17 @@ pub fn run_with(
     // dead code rather than a fallback — it exists only to keep the two in step.
     #[cfg(feature = "tui")]
     if plan.mode() == Mode::Tui {
-        return run_tui(std::io::stdout(), crate::tui::live_keys(), out, err);
+        return run_tui_with(
+            command,
+            std::io::stdout(),
+            crate::tui::live_keys(),
+            out,
+            err,
+        );
     }
 
     let mut session = Session::start(plan, build_frontend);
-    match session.run(&Example, move |session| collect(session, cli)) {
+    match session.run(command, move |session| collect(session, cli)) {
         Ok(output) => match output.write_to(out) {
             Ok(()) => EXIT_SUCCESS,
             Err(error) => {
@@ -434,8 +461,26 @@ pub fn main_with(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
+    main_with_command(&Example, argv, capabilities, build_frontend, out, err)
+}
+
+/// Parses `argv`, then runs it against `command`.
+///
+/// The whole path a real invocation takes — `clap` first, usage errors included — so a
+/// parity check compares entry points rather than pieces.
+pub fn main_with_command<C>(
+    command: &C,
+    argv: impl IntoIterator<Item = String>,
+    capabilities: Capabilities,
+    build_frontend: impl FnOnce() -> Box<dyn Prompter>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32
+where
+    C: Command<Input = ExampleInput, Output = ExampleOutput>,
+{
     match Cli::try_parse_from(argv) {
-        Ok(cli) => run_with(cli, capabilities, build_frontend, out, err),
+        Ok(cli) => run_with_command(command, cli, capabilities, build_frontend, out, err),
         Err(error) => report_usage(&error, out, err),
     }
 }
@@ -471,8 +516,31 @@ pub fn run_tui<W: Write>(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
+    run_tui_with(&Example, screen, keys, out, err)
+}
+
+/// Runs the form and hands its answers to `command`.
+///
+/// The screen, the keys and the command are all parameters: a test drives the real
+/// form — the same state machine, the same submission path — against a buffer, a
+/// script, and a command that records what it received.
+///
+/// # Errors and exit codes
+///
+/// As [`run_tui`].
+#[cfg(feature = "tui")]
+pub fn run_tui_with<W: Write, C>(
+    command: &C,
+    screen: W,
+    keys: impl IntoIterator<Item = crate::tui::Key>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32
+where
+    C: Command<Input = ExampleInput, Output = ExampleOutput>,
+{
     let mut state = tui_form();
-    let outcome = crate::tui::run_on(screen, &mut state, keys, tui_submit);
+    let outcome = crate::tui::run_on(screen, &mut state, keys, tui_submit_with(command));
     match outcome {
         Ok(lines) => match write_lines(&lines, out) {
             Ok(()) => EXIT_SUCCESS,
@@ -521,15 +589,31 @@ pub fn tui_form() -> crate::tui::FormState {
 /// show, because a form that closes on a typo makes the user start again.
 #[cfg(feature = "tui")]
 pub fn tui_submit(state: &crate::tui::FormState) -> Result<Vec<String>, String> {
-    let argv = std::iter::once(String::from("example")).chain(state.arguments());
-    let cli = match Cli::try_parse_from(argv) {
-        Ok(cli) => cli,
-        Err(error) => return Err(error.to_string()),
-    };
+    tui_submit_with(&Example)(state)
+}
 
-    match Facet::validate(cli).and_then(|input| Example.execute(input)) {
-        Ok(output) => Ok(output.lines),
-        Err(failure) => Err(failure.message().to_owned()),
+/// The submission path, for a command other than the example's own.
+///
+/// The closure it returns is the same one [`tui_submit`] is: answers become arguments,
+/// `clap` parses them, the validation bridge runs, and the command executes.
+#[cfg(feature = "tui")]
+pub fn tui_submit_with<C>(
+    command: &C,
+) -> impl Fn(&crate::tui::FormState) -> Result<Vec<String>, String> + '_
+where
+    C: Command<Input = ExampleInput, Output = ExampleOutput>,
+{
+    move |state: &crate::tui::FormState| {
+        let argv = std::iter::once(String::from("example")).chain(state.arguments());
+        let cli = match Cli::try_parse_from(argv) {
+            Ok(cli) => cli,
+            Err(error) => return Err(error.to_string()),
+        };
+
+        match Facet::validate(cli).and_then(|input| command.execute(input)) {
+            Ok(output) => Ok(output.lines),
+            Err(failure) => Err(failure.message().to_owned()),
+        }
     }
 }
 

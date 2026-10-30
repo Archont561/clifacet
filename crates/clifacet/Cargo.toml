@@ -22,6 +22,11 @@ json = ["dep:serde_json"]
 name = "tui_custom_screen"
 required-features = ["tui"]
 
+# The parity harness, used the way an outside crate would use it.
+[[example]]
+name = "parity_report"
+required-features = ["tui"]
+
 [dependencies]
 clifacet-macros.workspace = true
 clap.workspace = true
