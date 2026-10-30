@@ -63,6 +63,10 @@ test-scripts = "python -m pytest scripts/tests"
 # Proves the declared MSRV. CI installs that toolchain; locally this needs rustup,
 # or `--toolchain ""` to reuse the pinned compiler as a plumbing check.
 prove-msrv = "python scripts/prove_msrv.py"
+bump-version = "python scripts/bump_version.py"
+# The offline, no-install subset worth running before every commit; `quality`
+# also fetches Bun packages and the RustSec database, so it stays a CI command.
+test-local = { depends-on = ["fmt-check", "lint", "alint", "test", "test-scripts", "deny", "sandbox-check"] }
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
 hooks-install = "lefthook install"

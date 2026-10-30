@@ -83,6 +83,18 @@ rules:
     level: error
     message: "The sandbox policy is missing."
 
+  - id: require-changelog
+    kind: file_exists
+    paths: "CHANGELOG.md"
+    level: error
+    message: "The changelog is missing; releases need notes."
+
+  - id: require-bump-version
+    kind: file_exists
+    paths: "scripts/bump_version.py"
+    level: error
+    message: "The version bump script is missing."
+
   - id: require-prove-msrv
     kind: file_exists
     paths: "scripts/prove_msrv.py"
