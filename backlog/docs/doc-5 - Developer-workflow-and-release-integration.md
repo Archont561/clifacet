@@ -17,7 +17,7 @@ Alint validates declarative structure and generated-workflow policy. Python scri
 
 The user reports crates.io trusted publishing configured for this GitHub repo's `release.yml` and environment `crates`. The release publishes the macro crate before the main crate, waiting for availability. The release job requests only required permissions and exchanges OIDC for a short-lived token. Validate the registry bindings and exact commit, preserve resumability and require authorization before live publication.
 
-`release.yml` is authored in this repository rather than generated, so the two-crate sequence in decision-7 is reviewed as a normal workflow file. The file does not exist yet: CLI-4 authors it and CLI-18 rehearses it. No live publish happens without explicit authorization.
+`release.yml` is authored in this repository rather than generated, so the two-crate sequence in decision-7 is reviewed as a normal workflow file. It exists now: a manual dispatch, dry run by default, with `workflow_dispatch` reachable only from `main`. A release unchecks `dry_run` and passes the `crates` environment approval; each crate publishes only when its version is absent from the registry index, so a partial release is recovered by re-running. CLI-18 rehearses the contract. No live publish has happened.
 
 # Compiler
 

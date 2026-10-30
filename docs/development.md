@@ -51,6 +51,24 @@ below. It is not an offline image, and it neither publishes nor fetches the
 sandbox branch automatically. Re-running `.devcontainer/setup.sh` installs or
 rechecks the tools and can use the network again.
 
+## Release
+
+Publishing is manual and never triggered by a push. `.github/workflows/release.yml`
+uses crates.io trusted publishing, exchanging a GitHub OIDC token for a
+short-lived registry token, so no crates.io secret is stored here.
+
+```sh
+gh workflow run release.yml            # dry run: packages both crates, publishes nothing
+gh workflow run release.yml -f dry_run=false   # real release, still gated by the `crates` environment
+```
+
+The dispatch only runs from `main`, and the `crates` environment approval is the
+release authorization. The macro crate is published first, the workflow waits
+until its version appears in the registry index, and only then publishes the
+main crate. Both steps skip a version that is already indexed, so a run that
+fails after the first publish is finished by re-running it rather than by
+reverting anything.
+
 ## Rust dependencies and features
 
 The root Cargo manifest centralizes dependency versions. The main crate includes
