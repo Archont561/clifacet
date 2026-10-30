@@ -11,6 +11,11 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- A deterministic interaction policy: `clifacet::policy` resolves the runtime mode
+  from an explicit request, then the application's policy, then the environment,
+  with a plan that is the only route to a frontend. Refusals explain themselves and
+  execute nothing, `--yes` affects confirmations only, and cancellation is its own
+  `FailureKind` with its own exit code in the example.
 - Case tables, properties and their documented limits: the command core's three
   layers (draft, input, validation) are covered by `rstest` fixtures, four
   invariants by `proptest` with committed regression seeds, and `docs/testing.md`

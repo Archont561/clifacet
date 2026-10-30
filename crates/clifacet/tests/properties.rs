@@ -112,8 +112,13 @@ proptest! {
         let (code, out, err) = run(&argv);
 
         prop_assert!(
-            [example::EXIT_SUCCESS, example::EXIT_EXECUTION_FAILED, example::EXIT_VALIDATION_FAILED]
-                .contains(&code),
+            [
+                example::EXIT_SUCCESS,
+                example::EXIT_EXECUTION_FAILED,
+                example::EXIT_VALIDATION_FAILED,
+                example::EXIT_CANCELLED,
+            ]
+            .contains(&code),
             "argv {:?} produced exit {}",
             argv,
             code
@@ -160,6 +165,9 @@ fn argument() -> impl Strategy<Value = String> {
         Just(String::from("--repeat")),
         Just(String::from("--level")),
         Just(String::from("--explode")),
+        Just(String::from("--interactive")),
+        Just(String::from("--tui")),
+        Just(String::from("--yes")),
         Just(String::from("--help")),
         Just(String::from("-h")),
         Just(String::from("--version")),

@@ -193,6 +193,7 @@ fn a_closed_data_stream_becomes_an_execution_failure() {
             repeat: 1,
             level: Level::Basic,
             explode: false,
+            interaction: example::InteractionFlags::default(),
         },
         &mut Broken,
         &mut err,

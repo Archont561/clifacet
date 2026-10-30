@@ -56,6 +56,9 @@ Measured on `crates/clifacet` at this commit:
 | `example --explode` | 1 | empty | `example: the example operation failed on purpose (--explode)` |
 | `example --nope` | 2 | empty | `clap` usage error |
 | `example --help` | 0 | help text | empty |
+| `example --tui` | 2 | empty | `example: a TUI is not available: this command allows at most non-interactive` |
+| `example --yes` | 0 | `hello, world` | empty |
+| `example --interactive --tui` | 2 | empty | `clap` usage error (the two conflict) |
 | closed data stream | 1 | — | `example: cannot write the output: …` |
 
 Two details worth keeping:
@@ -65,6 +68,48 @@ Two details worth keeping:
 - **Help and `--version` are success on the data stream**, because they are the
   result the caller asked for. `clap` decides that with `Error::use_stderr`, and
   the application follows it instead of guessing.
+
+## Interaction policy
+
+Which mode a run uses is decided before anything happens, and the decision is a
+pure function of three inputs (decision-3): the **explicit request**, the
+**application's policy**, then what the **environment can offer**.
+
+```rust
+let plan = Policy::up_to(Mode::Interactive)
+    .resolve(Request::mode(Mode::Interactive), Capabilities::terminal())?;
+match plan.mode() { Mode::Interactive => …, Mode::NonInteractive => … }
+```
+
+Two properties make this more than a preference list:
+
+- **A policy is a ceiling, not a wish.** `Policy::up_to(Mode::Interactive)` means
+  prompts are allowed and a TUI is not; without an explicit request the most
+  interactive permitted mode the environment supports is chosen, so interaction
+  can only ever *decrease*. A terminal on its own is never consent to prompt.
+- **A refusal has no plan, so it has no frontend.** `Plan` is the only value that
+  can build one, through `Plan::with_frontend`, which answers `None` when the mode
+  asks nothing. There is no second door, which is why "forbidden modes do not
+  construct a prompter" is a testable claim rather than a promise.
+
+`--yes` answers confirmations and decides nothing else: it does not change the
+mode, does not imply a mode, and does not affect the exit code.
+
+### The example's ceiling
+
+`example::POLICY` is `Policy::non_interactive()`, so `--tui` and `--interactive`
+are refused with exit `2` and a message naming what was asked for. That is honest
+for this slice: no prompt or TUI frontend exists yet, and resolving to a mode
+nothing can host would be a lie. CLI-10 raises the ceiling by one line when the
+prompt adapter lands, and CLI-11 when the TUI does.
+
+### Cancellation is its own category
+
+`FailureKind::Cancelled` exists so a frontend can report "the user changed their
+mind" without pretending the input was invalid. The example maps it to exit `130`
+— conventional for interruption, and deliberately not `2`. A cancelled run and a
+refused mode both execute nothing, but only one of them is a mistake in the
+invocation.
 
 ## The companion derive
 
@@ -119,14 +164,18 @@ exposes internals (`unstable-*`), and both the derive and the trait mention only
 Documented so nobody reads absence as oversight:
 
 - **Interactive and TUI frontends.** The `interactive` and `tui` features reserve
-  dependency boundaries only; no code constructs a prompter or a terminal.
+  dependency boundaries only; no code constructs a prompter or a terminal. The
+  policy that will gate them is implemented and tested; the ceiling is
+  [`Mode::NonInteractive`] until a frontend exists, so a request for prompts is
+  refused rather than silently downgraded.
 - **`--json`.** The `json` feature reserves `serde_json`; no flag selects it, so
   only the human data line exists.
-- **Runtime mode resolution.** Explicit request, application policy and capability
-  detection (decision-3's precedence) arrive with M2. Until then there is exactly
-  one mode: flags in, data out.
-- **Cancellation.** Interactive cancellation needs its own category, so
-  `FailureKind` is `#[non_exhaustive]` and adding one is not a break.
+- **Mode detection heuristics.** `Capabilities::detected` reports a terminal and
+  nothing else; no `TERM`, locale or window-size probing. A false positive there
+  would resolve to a mode that cannot render.
+- **Cancellation from a real frontend.** The category, the message and the exit
+  code exist and are tested, but nothing can cancel yet because nothing asks. A
+  frontend dismissed by the user reports [`Failure::cancelled`].
 - **Canonical argv replay.** The derive proves the command that was parsed; it
   does not rebuild argv or re-parse it, so constructs `clap` cannot re-validate
   stay out of scope.

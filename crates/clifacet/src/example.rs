@@ -10,8 +10,9 @@
 //! 3. [`Example`] is the command: it implements [`Command`], touches no stream and
 //!    knows nothing about `clap`.
 //!
-//! [`run`] is the application layer that joins them: it maps failures to the exit
-//! codes below and writes machine data to one stream and diagnostics to the other.
+//! [`run`] is the application layer that joins them: it validates, settles the
+//! interaction mode against [`POLICY`], maps failures to the exit codes below and
+//! writes machine data to one stream and diagnostics to the other.
 //! None of that lives in [`Command`], which is what keeps the seam UI-free.
 //!
 //! [`Facet`]: crate::Facet
@@ -25,7 +26,8 @@ use clap::Parser;
 
 use crate::command::Command;
 use crate::facet::Facet;
-use crate::failure::Failure;
+use crate::failure::{Failure, FailureKind};
+use crate::policy::{self, Capabilities, Mode, Policy, Request};
 
 /// The process exited after doing what was asked.
 pub const EXIT_SUCCESS: i32 = 0;
@@ -41,6 +43,12 @@ pub const EXIT_VALIDATION_FAILED: i32 = 2;
 /// The same value as validation on purpose: both mean "nothing ran, fix the
 /// invocation", and `clap` itself documents 2 for usage errors.
 pub const EXIT_USAGE: i32 = 2;
+
+/// The user cancelled an interactive flow, so nothing ran.
+///
+/// `130` is the conventional shell code for interruption, and it is deliberately
+/// not `2`: a cancellation is a decision, not a mistake in the invocation.
+pub const EXIT_CANCELLED: i32 = 130;
 
 /// The largest `--repeat` this command accepts.
 pub const MAX_REPEAT: u8 = 8;
@@ -122,6 +130,54 @@ pub struct Cli {
     /// Fail on purpose, to demonstrate the execution-failure seam.
     #[arg(long)]
     pub explode: bool,
+
+    /// How the user wants to be asked, if at all.
+    ///
+    /// Presentation, not command input: [`ExampleInput`] does not carry any of it,
+    /// and the application refuses what it cannot honor instead of ignoring it.
+    #[command(flatten)]
+    pub interaction: InteractionFlags,
+}
+
+/// The interaction flags, kept together because they are one decision.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::Args)]
+pub struct InteractionFlags {
+    /// Ask for prompts rather than flags.
+    #[arg(long, conflicts_with = "tui")]
+    pub interactive: bool,
+
+    /// Ask for a full-screen interface.
+    ///
+    /// Refused for now: 0.1 ships no TUI, and the policy below says so.
+    #[arg(long)]
+    pub tui: bool,
+
+    /// Answer confirmations with yes instead of asking.
+    ///
+    /// It decides nothing else — not the mode, not the input, not the exit code.
+    #[arg(long)]
+    pub yes: bool,
+}
+
+/// How interactive this application is willing to be.
+///
+/// The ceiling is [`Mode::NonInteractive`] because 0.1 has no prompt or TUI
+/// frontend to build: claiming otherwise would let a request resolve to a mode
+/// that cannot run. CLI-10 raises the ceiling when the prompt adapter exists, and
+/// that is the only line that has to change.
+pub const POLICY: Policy = Policy::non_interactive();
+
+/// The mode the user asked for, if any.
+///
+/// `clap` rejects `--interactive --tui` before this runs, so at most one of them
+/// is set and the order here never decides anything.
+fn request(flags: InteractionFlags) -> Request {
+    let request = match (flags.tui, flags.interactive) {
+        (true, _) => Request::mode(Mode::Tui),
+        (false, true) => Request::mode(Mode::Interactive),
+        (false, false) => Request::none(),
+    };
+    request.assuming_yes(flags.yes)
 }
 
 /// Validated input for [`Example`].
@@ -251,29 +307,47 @@ impl Command for Example {
 /// is already a diagnostic and an exit code by the time this returns; a writer
 /// that fails becomes [`EXIT_EXECUTION_FAILED`].
 pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
+    let request = request(cli.interaction);
     let input = match Facet::validate(cli) {
         Ok(input) => input,
         Err(failure) => {
             report(&failure, err);
-            return EXIT_VALIDATION_FAILED;
+            return exit_code(&failure);
         }
     };
 
-    match Example.execute(input) {
+    // One path from a request to a run: a mode this application forbids, or an
+    // environment that cannot host it, returns before `execute` is reachable.
+    match policy::invoke(&Example, input, request, POLICY, Capabilities::detected()) {
         Ok(output) => match output.write_to(out) {
             Ok(()) => EXIT_SUCCESS,
             Err(error) => {
-                report(
-                    &Failure::execution(format!("cannot write the output: {error}")),
-                    err,
-                );
-                EXIT_EXECUTION_FAILED
+                let failure = Failure::execution(format!("cannot write the output: {error}"));
+                report(&failure, err);
+                exit_code(&failure)
             }
         },
         Err(failure) => {
             report(&failure, err);
-            EXIT_EXECUTION_FAILED
+            exit_code(&failure)
         }
+    }
+}
+
+/// The exit code a failure costs this application.
+///
+/// The numbers are the application's, not the library's (decision-3), and each
+/// failure category gets its own: cancelled, execution, and anything else — mode
+/// refusals and validation — meaning "nothing ran, fix the invocation".
+#[must_use]
+pub const fn exit_code(failure: &Failure) -> i32 {
+    match failure.kind() {
+        FailureKind::Cancelled => EXIT_CANCELLED,
+        FailureKind::Execution => EXIT_EXECUTION_FAILED,
+        FailureKind::Validation => EXIT_VALIDATION_FAILED,
+        // Exhaustive here because this crate defines the enum; an application
+        // outside it needs a catch-all arm for the same `#[non_exhaustive]` reason,
+        // and should report an unknown category as a failure, never as success.
     }
 }
 

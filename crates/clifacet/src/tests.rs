@@ -88,3 +88,48 @@ mod example {
         assert_eq!(failure.kind(), FailureKind::Execution);
     }
 }
+
+mod interaction {
+    use crate::example::{
+        self, EXIT_CANCELLED, EXIT_EXECUTION_FAILED, EXIT_VALIDATION_FAILED, exit_code,
+    };
+    use crate::failure::Failure;
+    use crate::policy::{Mode, Policy};
+
+    /// Every category gets its own number, so a caller can tell them apart without
+    /// reading the message.
+    #[test]
+    fn each_failure_kind_has_its_own_exit_code() {
+        let cancelled = exit_code(&Failure::cancelled("changed their mind"));
+        let execution = exit_code(&Failure::execution("broke"));
+        let validation = exit_code(&Failure::validation("bad input"));
+
+        assert_eq!(cancelled, EXIT_CANCELLED);
+        assert_eq!(execution, EXIT_EXECUTION_FAILED);
+        assert_eq!(validation, EXIT_VALIDATION_FAILED);
+        assert_ne!(
+            cancelled, validation,
+            "a cancel is not a mistake in the invocation"
+        );
+        assert_ne!(cancelled, execution);
+        assert_ne!(
+            cancelled,
+            example::EXIT_SUCCESS,
+            "nothing ran, so the process did not succeed"
+        );
+    }
+
+    #[test]
+    fn a_policy_reports_the_ceiling_it_was_given() {
+        assert_eq!(Policy::non_interactive().ceiling(), Mode::NonInteractive);
+        assert_eq!(
+            Policy::up_to(Mode::Interactive).ceiling(),
+            Mode::Interactive
+        );
+        assert_eq!(Policy::up_to(Mode::Tui).ceiling(), Mode::Tui);
+
+        // The default is the least interactive policy, so a forgotten ceiling can
+        // never prompt.
+        assert_eq!(Policy::default().ceiling(), Mode::NonInteractive);
+    }
+}
