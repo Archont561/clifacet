@@ -30,6 +30,8 @@ prepared, so the headings below are managed by that script.
 - `scripts/bootstrap.sh`, which brings any checkout to a working session in one
   command: fast-forward to the remote head without touching local work, restore
   the sandbox environment, install the hooks, and smoke-check the result.
+- `shellcheck` is pinned in the Pixi environment, so the local `actionlint`
+  task also checks workflow shell scripts, exactly as CI does.
 - Conventional commit messages are enforced in CI, and the advisory gates work
   offline: `audit-offline` audits against a local RustSec clone or steps aside
   with a message, while CI keeps running the fetching audit.

@@ -54,10 +54,11 @@ so `convco changelog` and `scripts/bump_version.py` agree on headings. CI enforc
 `commit-messages` job runs `convco check` over the pull request's commits, so a contributor
 without hooks cannot merge a message the changelog cannot read.
 
-One gap is worth knowing: `actionlint` runs embedded shellcheck only when a `shellcheck`
-binary is present. The CI runner has one; the Pixi environment does not, so a shell issue
-that fails CI's `actionlint` can pass locally. Quote expansions in workflow scripts, or run
-`shellcheck` yourself when a change touches a `run:` block.
+`actionlint` only runs its embedded shell checks when a `shellcheck` binary is on `PATH`, and
+it used to find one on the CI runner but not in the Pixi environment — so a `run:` block could
+pass locally and fail CI. `shellcheck` is now a pinned Pixi dependency, which removes that gap
+and pins the version both places run: `pixi run actionlint` checks the workflow shell exactly
+as CI does.
 
 ## Dev container
 
