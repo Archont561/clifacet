@@ -25,6 +25,9 @@ python = ">=3.11,<4"
 # minor bump would need a baseline re-check rather than a silent range widening.
 [pypi-dependencies]
 alint = "==0.20.1"
+# Test runner for scripts/tests. A pure `py3-none-any` wheel, so the sandbox can
+# pack it alongside alint; pinned exactly for the same reason as alint.
+pytest = "==9.2.0"
 
 [activation.env]
 LLVM_COV = "$CONDA_PREFIX/bin/llvm-cov"
@@ -56,7 +59,7 @@ test-integration = "cargo nextest run --workspace --all-features --locked -E 'ki
 test = { depends-on = ["test-src", "test-integration"] }
 test-doc = "cargo test --workspace --all-features --doc --locked"
 coverage = "mkdir -p coverage && cargo llvm-cov nextest --workspace --all-features --locked --lcov --output-path coverage/lcov.info --ignore-filename-regex '(^|/)tests/' && python scripts/check_coverage.py coverage/lcov.info"
-test-scripts = "python -m unittest discover -s scripts/tests"
+test-scripts = "python -m pytest scripts/tests"
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
 hooks-install = "lefthook install"
