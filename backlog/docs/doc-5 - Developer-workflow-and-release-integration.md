@@ -17,7 +17,7 @@ Alint validates declarative structure and generated-workflow policy. Python scri
 
 The user reports crates.io trusted publishing configured for this GitHub repo's `release.yml` and environment `crates`. The release publishes the macro crate before the main crate, waiting for availability. The release job requests only required permissions and exchanges OIDC for a short-lived token. Validate the registry bindings and exact commit, preserve resumability and require authorization before live publication.
 
-pixi-release's inspected owner policy demonstrates GitHub Release and Prefix targets. Whether and how it can generate/orchestrate this crates.io sequence is a milestone-0 investigation; use a documented supported integration or propose upstream support, not a manually patched generated workflow.
+`release.yml` is authored in this repository rather than generated, so the two-crate sequence in decision-7 is reviewed as a normal workflow file. The file does not exist yet: CLI-4 authors it and CLI-18 rehearses it. No live publish happens without explicit authorization.
 
 # Compiler
 

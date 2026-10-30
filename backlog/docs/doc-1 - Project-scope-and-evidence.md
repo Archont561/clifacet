@@ -22,6 +22,6 @@ Plan/confirm/dry-run lifecycle, machine-readable command contract export, bounde
 
 # Evidence and honesty
 
-Static source audit of Archont561 repositories and upstream libraries found useful patterns in pixi-release, pixi-sandbox, Universe, qgis-sdk, bun-test-utils and staged-recipes-submit. Python/TypeScript repos are pattern donors, not migration targets. Universe is a potential pilot only when a real command warrants it. Source inspection is not a successful build. `clap-tui` already offers CLI-to-TUI generation, clap revalidation and an internal scripted TUI harness; do not claim those concepts as novel.
+Static source audit of Archont561 repositories and upstream libraries found useful patterns in pixi-sandbox, Universe, qgis-sdk, bun-test-utils and staged-recipes-submit. Python/TypeScript repos are pattern donors, not migration targets. Universe is a potential pilot only when a real command warrants it. Source inspection is not a successful build. `clap-tui` already offers CLI-to-TUI generation, clap revalidation and an internal scripted TUI harness; do not claim those concepts as novel.
 
-Sources: [pixi-release](https://github.com/Archont561/pixi-release), [pixi-sandbox](https://github.com/Archont561/pixi-sandbox), [Universe](https://github.com/Archont561/universe), [clap-tui](https://github.com/gitseti/clap-tui).
+Sources: [pixi-sandbox](https://github.com/Archont561/pixi-sandbox), [Universe](https://github.com/Archont561/universe), [clap-tui](https://github.com/gitseti/clap-tui).
