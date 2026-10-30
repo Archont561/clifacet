@@ -11,6 +11,10 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- Case tables, properties and their documented limits: the command core's three
+  layers (draft, input, validation) are covered by `rstest` fixtures, four
+  invariants by `proptest` with committed regression seeds, and `docs/testing.md`
+  records the installed versions, the proven MSRV scope and the coverage rule.
 - `clifacet::Facet`, the companion derive: it connects an existing `clap`
   command to validated typed input without a second grammar, reports `clap`'s own
   command (aliases, defaults and value parsers included), and builds the input
