@@ -37,3 +37,27 @@ Produce a reviewed `release.yml` that implements the two-crate trusted-publishin
 - 2026-10-30: the corrected dry run is green on `main` at `afcf91b` (release run 41085434034): checkout, setup-pixi `v0.83.0`, version resolution (`0.1.0`), the consistency guard, packaging and verification of `clifacet-macros`, then the dry-run report. The OIDC exchange and both publish steps were skipped, so nothing was published.
 - The live path — OIDC exchange, `cargo publish`, index polling, partial-publish recovery — is not exercised by any run yet and belongs to CLI-18 at release time. The publish step's skip and fail-closed branches were exercised against stubbed cargo/curl, not against the registry.
 - Finding for whoever releases: the `crates` environment reports no protection rules, so it does not gate the job. Until required reviewers are added, a manual dispatch with `dry_run` unchecked would publish immediately, which is weaker than decision-7's "explicit release authorization".
+
+## Proposed environment protection
+
+The `crates` environment is still unconfigured (`protection_rules: []`,
+`deployment_branch_policy: null`, `can_admins_bypass: true`, never updated since creation), so
+decision-7's "explicit release authorization" currently rests on the dispatch alone. The
+proposal, in the order that matters:
+
+1. **Required reviewers, 1, `prevent_self_review: true`.** The single maintainer cannot approve
+   their own deployment, so a dispatch that does not also get an independent approval stays
+   pending. This is the only rule that makes the environment a gate rather than a label.
+2. **Deployment branch policy: protected branches only.** The job already refuses a non-`main`
+   ref in its first step, but a policy enforces it before any runner starts, so a mis-targeted
+   dispatch cannot reach the publish engine at all.
+3. **`can_admins_bypass: false`.** Otherwise an admin dispatch skips every rule above.
+4. **Wait timer** decides itself at release time: useful if a release should not follow a
+   dispatch within seconds, noise otherwise. Not recommended for a single-maintainer project.
+
+At repository level, the complementary gaps: no ruleset exists on `main` (`rulesets: []`), so a
+direct push and a force-push are both possible, and `v*` release tags are unprotected. A
+ruleset requiring a pull request with the `quality`, `Tests and source coverage`, MSRV,
+`Conventional commit messages` and `lock guard` checks, plus a tag ruleset restricting `v*`
+creation to the release workflow, closes them. The `crates` environment remains the last line:
+the tag is created inside the gated job.
