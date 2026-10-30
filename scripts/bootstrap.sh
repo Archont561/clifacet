@@ -137,7 +137,9 @@ restore_environment() {
     refresh_sandbox_branch
   fi
   say "environment: restoring the sandbox (this verifies every packed file)"
-  if ! bash "$ROOT/scripts/restore.sh" "$@"; then
+  # No argument passthrough: this script's own flags mean nothing to the generated
+  # launcher, and `--force-restore` reaching it is a hard usage error.
+  if ! bash "$ROOT/scripts/restore.sh"; then
     problem "restore failed; see the message above before running any check"
     return 1
   fi
@@ -189,7 +191,7 @@ main() {
   fi
   say "bootstrap: $ROOT"
   sync_checkout
-  restore_environment "$@"
+  restore_environment
   export PATH="$HOME/.local/bin:$PATH"
   install_hooks
   smoke_checks

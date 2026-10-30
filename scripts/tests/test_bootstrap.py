@@ -237,3 +237,33 @@ def test_a_rewritten_sandbox_branch_is_refreshed_before_the_restore(tmp_path):
     refreshed = git(clone, "rev-parse", "refs/remotes/origin/sandbox/developer-linux-64").strip()
     assert "refreshed the sandbox branch" in result.stdout
     assert refreshed == current != stale
+
+
+def test_bootstrap_flags_are_not_forwarded_to_the_restore(tmp_path):
+    """`--force-restore` is a bootstrap flag; the launcher rejects unknown flags."""
+    _, _, clone = build_repo(tmp_path)
+    git(clone, "fetch", "-q", "origin")
+    git(clone, "merge", "-q", "--ff-only", "origin/main")
+    stub = clone / "scripts"
+    stub.mkdir(exist_ok=True)
+    # Reports the arguments it received, so the assertion is about what reached it.
+    (stub / "restore.sh").write_text(
+        '#!/bin/sh\nprintf "restore-args:%s\\n" "$*"\n', encoding="utf-8"
+    )
+    (stub / "bootstrap.sh").write_text(BOOTSTRAP.read_text(encoding="utf-8"), encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "pixi").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    (fake_bin / "pixi").chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(stub / "bootstrap.sh"), "--force-restore", "--skip-hooks", "--skip-checks"],
+        cwd=clone,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**os.environ, "HOME": str(tmp_path), "PATH": f"{fake_bin}:{os.environ['PATH']}"},
+    )
+
+    assert "restore-args:" in result.stdout
+    assert "--force-restore" not in result.stdout
