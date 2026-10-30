@@ -1,101 +1,116 @@
-"""Exercise devcontainer bootstrap without downloading or installing tools."""
+"""Devcontainer bootstrap, exercised without downloading or installing tools."""
 
 import json
 import os
-import platform
 import subprocess
-import tempfile
-import unittest
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SETUP = ROOT / ".devcontainer" / "setup.sh"
 CONFIG = ROOT / ".devcontainer" / "devcontainer.json"
 
+# Records every invocation and reproduces the three failures the suite scripts.
+PIXI_STUB = """#!/usr/bin/env bash
+echo "$*" >> "$FAKE_LOG"
+if [[ "$*" == "--version" ]]; then echo "pixi fake"; fi
+if [[ "$*" == *"bun pm bin -g"* ]]; then echo "$HOME/.bun/bin"; fi
+if [[ "${FAKE_FAIL:-}" == global && "$1" == global ]]; then exit 1; fi
+if [[ "${FAKE_FAIL:-}" == bun && "$*" == "run --frozen bun-install" ]]; then exit 1; fi
+"""
 
-class DevcontainerTests(unittest.TestCase):
-    def test_config_is_valid_json_and_points_to_bootstrap(self):
-        config = json.loads(CONFIG.read_text(encoding="utf-8"))
-        self.assertIn("ghcr.io/prefix-dev/pixi:0.83.0@sha256:", config["image"])
-        self.assertEqual(config["postCreateCommand"], "bash .devcontainer/setup.sh")
-        self.assertIn("/root/.bun/bin", config["remoteEnv"]["PATH"])
-        self.assertTrue(SETUP.is_file())
-
-    @unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "x86_64", "linux-64 bootstrap")
-    def test_default_setup_installs_pinned_project_and_agent(self):
-        result, calls = self.run_setup()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("global install --channel conda-forge git gh", calls)
-        self.assertIn("ar=x86_64-conda-linux-gnu-ar c-compiler", calls)
-        self.assertIn("install --locked --all", calls)
-        self.assertIn("run --frozen bun-install", calls)
-        self.assertIn("run --frozen -x bun add --global --exact opencode-ai@1.19.5", calls)
-        self.assertNotIn("models --refresh", calls)
-        steps = [
-            "global install --channel conda-forge git gh",
-            "ar=x86_64-conda-linux-gnu-ar c-compiler",
-            "install --locked --all",
-            "run --frozen bun-install",
-            "run --frozen -x bun add --global --exact opencode-ai@1.19.5",
-        ]
-        self.assertEqual(sorted(calls.index(step) for step in steps), [calls.index(step) for step in steps])
-
-    @unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "x86_64", "linux-64 bootstrap")
-    def test_optional_agent_can_be_disabled(self):
-        result, calls = self.run_setup(CLIFACET_INSTALL_OPENCODE="0")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("run --frozen bun-install", calls)
-        self.assertNotIn("opencode-ai", calls)
-
-    @unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "x86_64", "linux-64 bootstrap")
-    def test_invalid_option_fails_before_install(self):
-        result, calls = self.run_setup(CLIFACET_INSTALL_OPENCODE="no")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("must be 0 or 1", result.stderr)
-        self.assertEqual(calls, "")
-
-    @unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "x86_64", "linux-64 bootstrap")
-    def test_failed_install_stops_bootstrap(self):
-        result, calls = self.run_setup(FAKE_FAIL="global")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("install --locked --all", calls)
-        self.assertNotIn("bun-install", calls)
-
-    @unittest.skipUnless(platform.system() == "Linux" and platform.machine() == "x86_64", "linux-64 bootstrap")
-    def test_bun_install_failure_prevents_opencode_install(self):
-        result, calls = self.run_setup(FAKE_FAIL="bun")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("run --frozen bun-install", calls)
-        self.assertNotIn("opencode-ai", calls)
-
-    def run_setup(self, **extra):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            fakebin = root / "bin"
-            fakebin.mkdir()
-            (fakebin / "pixi").write_text(
-                '#!/usr/bin/env bash\n'
-                'echo "$*" >> "$FAKE_LOG"\n'
-                'if [[ "$*" == "--version" ]]; then echo "pixi fake"; fi\n'
-                'if [[ "$*" == *"bun pm bin -g"* ]]; then echo "$HOME/.bun/bin"; fi\n'
-                'if [[ "${FAKE_FAIL:-}" == global && "$1" == global ]]; then exit 1; fi\n'
-                'if [[ "${FAKE_FAIL:-}" == bun && "$*" == "run --frozen bun-install" ]]; then exit 1; fi\n',
-                encoding="utf-8",
-            )
-            (fakebin / "pixi").chmod(0o755)
-            bunbin = root / ".bun" / "bin"
-            bunbin.mkdir(parents=True)
-            (bunbin / "opencode").write_text("#!/bin/sh\necho 1.19.5\n", encoding="utf-8")
-            (bunbin / "opencode").chmod(0o755)
-            log = root / "calls"
-            env = os.environ.copy()
-            env.update({"HOME": str(root), "PATH": str(fakebin) + os.pathsep + env["PATH"], "FAKE_LOG": str(log)})
-            env.pop("CLIFACET_INSTALL_OPENCODE", None)
-            env.pop("FAKE_FAIL", None)
-            env.update(extra)
-            result = subprocess.run(["bash", str(SETUP)], env=env, text=True, capture_output=True, check=False)
-            return result, log.read_text(encoding="utf-8") if log.exists() else ""
+# The bootstrap's steps, in the order the suite requires them.
+STEPS = (
+    "global install --channel conda-forge git gh",
+    "ar=x86_64-conda-linux-gnu-ar c-compiler",
+    "install --locked --all",
+    "run --frozen bun-install",
+    "run --frozen -x bun add --global --exact opencode-ai@1.19.5",
+)
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.fixture(scope="module")
+def config():
+    return json.loads(CONFIG.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def run_setup(linux_64, tmp_path):
+    """Run the bootstrap against stubbed tools, returning the result and its call log."""
+    fakebin = tmp_path / "bin"
+    fakebin.mkdir()
+    pixi = fakebin / "pixi"
+    pixi.write_text(PIXI_STUB, encoding="utf-8")
+    pixi.chmod(0o755)
+
+    bunbin = tmp_path / ".bun" / "bin"
+    bunbin.mkdir(parents=True)
+    opencode = bunbin / "opencode"
+    opencode.write_text("#!/bin/sh\necho 1.19.5\n", encoding="utf-8")
+    opencode.chmod(0o755)
+
+    log = tmp_path / "calls"
+
+    def run(**extra):
+        env = {**os.environ, "HOME": str(tmp_path), "FAKE_LOG": str(log)}
+        env["PATH"] = os.pathsep.join([str(fakebin), env["PATH"]])
+        env.pop("CLIFACET_INSTALL_OPENCODE", None)
+        env.pop("FAKE_FAIL", None)
+        env.update(extra)
+        result = subprocess.run(
+            ["bash", str(SETUP)], env=env, text=True, capture_output=True, check=False
+        )
+        return result, log.read_text(encoding="utf-8") if log.exists() else ""
+
+    return run
+
+
+def test_config_is_valid_json_and_points_to_the_bootstrap(config):
+    assert "ghcr.io/prefix-dev/pixi:0.83.0@sha256:" in config["image"]
+    assert config["postCreateCommand"] == "bash .devcontainer/setup.sh"
+    assert "/root/.bun/bin" in config["remoteEnv"]["PATH"]
+    assert SETUP.is_file()
+
+
+def test_default_setup_installs_pinned_project_and_agent(run_setup):
+    result, calls = run_setup()
+
+    assert result.returncode == 0, result.stderr
+    for step in STEPS:
+        assert step in calls
+    assert "models --refresh" not in calls
+    positions = [calls.index(step) for step in STEPS]
+    assert positions == sorted(positions), calls
+
+
+def test_optional_agent_can_be_disabled(run_setup):
+    result, calls = run_setup(CLIFACET_INSTALL_OPENCODE="0")
+
+    assert result.returncode == 0, result.stderr
+    assert "run --frozen bun-install" in calls
+    assert "opencode-ai" not in calls
+
+
+def test_invalid_option_fails_before_install(run_setup):
+    result, calls = run_setup(CLIFACET_INSTALL_OPENCODE="no")
+
+    assert result.returncode != 0
+    assert "must be 0 or 1" in result.stderr
+    assert calls == ""
+
+
+def test_failed_install_stops_bootstrap(run_setup):
+    result, calls = run_setup(FAKE_FAIL="global")
+
+    assert result.returncode != 0
+    assert "install --locked --all" not in calls
+    assert "bun-install" not in calls
+
+
+def test_bun_install_failure_prevents_opencode_install(run_setup):
+    result, calls = run_setup(FAKE_FAIL="bun")
+
+    assert result.returncode != 0
+    assert "run --frozen bun-install" in calls
+    assert "opencode-ai" not in calls

@@ -1,54 +1,52 @@
-"""Tests for required local skill files and frontmatter validation."""
+"""Required local skill files and frontmatter validation."""
 
-import importlib.util
-import tempfile
-import unittest
-from pathlib import Path
+import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "check_skills.py"
-spec = importlib.util.spec_from_file_location("check_skills", SCRIPT)
-checker = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(checker)
+from conftest import skill_file
+from scripts.check_skills import check_skills
 
-
-class SkillChecks(unittest.TestCase):
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        for name in checker.REQUIRED:
-            directory = self.root / ".agents" / "skills" / name
-            directory.mkdir(parents=True)
-            (directory / "SKILL.md").write_text(
-                f"---\nname: {name}\ndescription: A useful skill.\n---\n\n# Skill\n",
-                encoding="utf-8",
-            )
-
-    def path(self, name):
-        return self.root / ".agents" / "skills" / name / "SKILL.md"
-
-    def test_valid_skills(self):
-        self.assertEqual(checker.check_skills(self.root), [])
-
-    def test_missing_session_is_detected(self):
-        self.path("session").unlink()
-        self.assertTrue(any("session" in error for error in checker.check_skills(self.root)))
-
-    def test_wrong_name_and_missing_description_are_detected(self):
-        self.path("session").write_text("---\nname: other\n---\n\nBody\n", encoding="utf-8")
-        errors = checker.check_skills(self.root)
-        self.assertTrue(any("name does not match" in error for error in errors))
-        self.assertTrue(any("missing description" in error for error in errors))
-
-    def test_symlinked_local_skill_is_rejected(self):
-        path = self.path("session")
-        path.unlink()
-        path.symlink_to(self.path("backlog"))
-        self.assertTrue(any("symlinked" in error for error in checker.check_skills(self.root)))
-
-    def test_real_repository(self):
-        self.assertEqual(checker.check_skills(SCRIPT.parents[1]), [])
+INVALID_FRONTMATTER = [
+    pytest.param(
+        "---\nname: other\ndescription: A useful skill.\n---\n\n# Skill\n",
+        "name does not match",
+        id="name-mismatch",
+    ),
+    pytest.param("---\nname: session\n---\n\n# Skill\n", "missing description", id="no-description"),
+    pytest.param("", "invalid frontmatter or empty body", id="empty-file"),
+    pytest.param("---\nname: session\n---\n", "invalid frontmatter or empty body", id="empty-body"),
+]
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_valid_tree_has_no_problems(skills_root):
+    assert check_skills(skills_root) == []
+
+
+def test_missing_skill_file_is_reported(skills_root):
+    skill_file(skills_root, "session").unlink()
+
+    problems = check_skills(skills_root)
+
+    assert any("session" in problem for problem in problems), problems
+
+
+@pytest.mark.parametrize(("content", "expected"), INVALID_FRONTMATTER)
+def test_invalid_frontmatter_is_reported(skills_root, content, expected):
+    skill_file(skills_root, "session").write_text(content, encoding="utf-8")
+
+    problems = check_skills(skills_root)
+
+    assert any(expected in problem for problem in problems), problems
+
+
+def test_symlinked_skill_is_rejected(skills_root):
+    link = skill_file(skills_root, "session")
+    link.unlink()
+    link.symlink_to(skill_file(skills_root, "backlog"))
+
+    problems = check_skills(skills_root)
+
+    assert any("symlinked" in problem for problem in problems), problems
+
+
+def test_committed_repository_is_valid(repo_root):
+    assert check_skills(repo_root) == []
