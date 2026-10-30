@@ -67,12 +67,16 @@ pre-push:
   piped: true
   jobs:
     - name: audit
-      # The RustSec database is fetched here; it is the one gate that wants the network, which
-      # is why it is not in pre-commit.
-      run: pixi run --frozen --no-install audit
+      # The offline wrapper, not `cargo audit`: that command fetches the RustSec database and
+      # fails outright without one, so a restored sandbox would block every push. This audits
+      # against a local clone when there is one, says so and steps aside when there is not, and
+      # CI still runs the fetching audit.
+      run: pixi run --frozen --no-install audit-offline
 
     - name: deny
-      run: pixi run --frozen --no-install deny
+      # Advisories are the only part of `cargo deny check` that needs the database, so the
+      # pre-push gate runs the network-free subset.
+      run: pixi run --frozen --no-install deny-offline
 
     - name: tests
       # All three suites: nextest covers lib and integration targets, `test-doc` covers the

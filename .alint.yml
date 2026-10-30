@@ -101,6 +101,18 @@ rules:
     level: error
     message: "The version bump script is missing."
 
+  - id: require-bootstrap
+    kind: file_exists
+    paths: "scripts/bootstrap.sh"
+    level: error
+    message: "The session bootstrap script is missing."
+
+  - id: require-audit-local
+    kind: file_exists
+    paths: "scripts/audit_local.py"
+    level: error
+    message: "The offline audit wrapper is missing."
+
   - id: require-prove-msrv
     kind: file_exists
     paths: "scripts/prove_msrv.py"
