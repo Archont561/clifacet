@@ -58,14 +58,20 @@ uses crates.io trusted publishing, exchanging a GitHub OIDC token for a
 short-lived registry token, so no crates.io secret is stored here.
 
 ```sh
-gh workflow run release.yml            # dry run: packages both crates, publishes nothing
-gh workflow run release.yml -f dry_run=false   # real release, still gated by the `crates` environment
+gh workflow run release.yml                     # dry run: packages the macro crate, publishes nothing
+gh workflow run release.yml -f dry_run=false    # real release; see the authorization note below
 ```
 
-The dispatch only runs from `main`, and the `crates` environment approval is the
-release authorization. The macro crate is published first, the workflow waits
-until its version appears in the registry index, and only then publishes the
-main crate. Both steps skip a version that is already indexed, so a run that
+The dispatch only runs from `main`. As of 2026-10-30 the `crates` environment
+has **no protection rules**, so it does not stop a run: the manual dispatch is
+the only authorization gate today. Add required reviewers to `crates` before
+relying on the environment as the gate that decision-7 describes.
+
+A dry run packages and verifies the macro crate only. The main crate cannot be
+packaged before its macro version is published, so it is packaged inside the
+publish loop. That loop publishes the macro crate first, waits
+until that version appears in the registry index, then packages and publishes
+the main crate. Both steps skip a version that is already indexed, so a run that
 fails after the first publish is finished by re-running it rather than by
 reverting anything.
 
