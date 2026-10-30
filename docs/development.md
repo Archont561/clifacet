@@ -173,6 +173,11 @@ has **no protection rules**, so it does not stop a run: the manual dispatch is
 the only authorization gate today. Add required reviewers to `crates` before
 relying on the environment as the gate that decision-7 describes.
 
+The notes are resolved before anything is packaged: if `CHANGELOG.md` has no dated
+section for the version being released, the run stops with nothing published, and a
+dry run reports it too. The tag step reuses that verified file rather than reading the
+changelog a second time, so a release that has already shipped cannot fail on notes.
+
 A dry run packages and verifies the macro crate only. The main crate cannot be
 packaged before its macro version is published, so it is packaged inside the
 publish loop. That loop publishes the macro crate first, waits
@@ -185,7 +190,18 @@ reverting anything.
 
 1. Describe the change in `CHANGELOG.md` under `## [Unreleased]`. The bump step
    refuses to promote an empty section, so notes cannot be skipped by accident.
-2. Bump every recorded version and relock in one command:
+2. Date that section. From the second release on, the bump in step 3 does it: it
+   renames `Unreleased` to `## [<version>] - <date>` and reopens an empty one. The
+   first release has nothing to bump to — the manifests already record `0.1.0` — so
+   it promotes in place and leaves the version sites alone:
+
+   ```sh
+   pixi run --frozen --no-install bump-version --promote-current
+   ```
+
+   `--dry-run` previews it. Without a dated section `release.yml` refuses to start,
+   because the tag step would have nothing to attach.
+3. Bump every recorded version and relock in one command:
 
    ```sh
    pixi run --frozen --no-install bump-version 0.2.0 --relock
@@ -196,9 +212,9 @@ reverting anything.
    `pixi.toml` `[workspace] version`; it promotes `Unreleased` to a dated
    section; and it refreshes `Cargo.lock` offline. `--dry-run` previews the
    change and `--check` verifies the three sites agree without writing.
-3. Open a PR with the bump; CI's `lock guard` proves the relock and the `msrv`
+4. Open a PR with the bump; CI's `lock guard` proves the relock and the `msrv`
    job proves the floor.
-4. Merge, then dispatch the release. The tag `v<version>` and its GitHub Release
+5. Merge, then dispatch the release. The tag `v<version>` and its GitHub Release
    notes are created automatically once both crates are published:
 
    ```sh

@@ -84,6 +84,26 @@ jobs:
             fi
           done
           echo "both crates inherit $VERSION"
+      # The notes are resolved here, before anything is packaged or published. A
+      # missing changelog section used to surface only at the tag step — after both
+      # crates were on the registry, which cannot be undone. Resolving them up front
+      # makes that a failure with nothing to revert, and the dry run catches it too.
+      - name: Resolve the release notes
+        id: notes
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.md"
+          if ! python3 scripts/bump_version.py --notes "$VERSION" > "$notes"; then
+            echo "::error::this release has no readable changelog section. Promote it with" \
+                 "\`pixi run --frozen --no-install bump-version --promote-current\` for a first" \
+                 "release, or with a version bump for a later one, and merge that before releasing."
+            exit 1
+          fi
+          echo "notes_path=$notes" >> "$GITHUB_OUTPUT"
+          echo "release notes for \`$VERSION\` resolved ($(wc -l < "$notes") lines)" >> "$GITHUB_STEP_SUMMARY"
       # Only the macro crate can be packaged before anything is published: the
       # main crate's `clifacet-macros = "<version>"` requirement cannot resolve
       # against the registry until that exact version exists there (cargo
@@ -188,6 +208,9 @@ jobs:
             echo "$tag already has a release; leaving it untouched" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          python3 scripts/bump_version.py --notes "$VERSION" > "$RUNNER_TEMP/notes.md"
-          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+          # The file resolved before the first publish, not a second reading of the
+          # changelog: a release that already shipped must not fail on its notes.
+          notes="${{ steps.notes.outputs.notes_path }}"
+          test -s "$notes"
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file "$notes"
           echo "created $tag with the changelog notes" >> "$GITHUB_STEP_SUMMARY"

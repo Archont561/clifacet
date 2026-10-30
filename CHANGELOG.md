@@ -82,10 +82,19 @@ prepared, so the headings below are managed by that script.
   a commit, advisories and tests before a push, and convco validating the commit
   message against the `.versionrc` configuration.
 
+### Fixed
+
+- The release workflow resolves the changelog notes before the first publish, so a
+  version with no readable section fails with nothing to revert instead of failing at
+  the tag step after both crates are on the registry. The tag step reuses the file
+  that was verified.
+- A first release can date its changelog: `bump-version --promote-current` promotes
+  the `Unreleased` section at the recorded version. Every other path refused it,
+  because a version already recorded in the manifests is not a bump.
+
 ### Known limitations
 
-- The command core has no interactive or TUI frontend, no `--json` output and no
-  runtime mode resolution yet; those are milestones M2 and M3.
+- The `json` feature selects `serde_json`, but no flag produces JSON yet.
 - The `crates` GitHub environment has no protection rules yet, so release
   authorization rests on the manual dispatch alone.
 
