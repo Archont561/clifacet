@@ -3,7 +3,7 @@ id: doc-5
 title: Developer workflow and release integration
 type: other
 created_date: '2026-10-29 15:28'
-updated_date: '2026-10-29 18:20'
+updated_date: '2026-10-30 15:30'
 ---
 # Reproducibility
 
@@ -25,11 +25,11 @@ Edition 2024 and a Pixi-pinned stable compiler are intended. MSRV 1.88 is provis
 
 # Verified state
 
-Checked 2026-10-29 against `main` at `3930c68`, not inferred from configuration:
+Checked 2026-10-30 against `main` at `6ae7116`, not inferred from configuration:
 
 - CI (repository/Rust quality and tests/coverage) passes end to end on `main`, including alint, the skills and Backlog checks, the feature matrix, `cargo fmt`, Clippy with `-D warnings`, `cargo deny`, `cargo audit` and the Codecov upload.
-- The sandbox publisher runs unattended on `main` and republishes `sandbox/developer-linux-64`. A fresh clone restored `34a373a` with no network: `doctor --verify` matched all 14,869 declared blobs, and `fmt-check`, nextest and Clippy completed against the vendored crates.
-- `alint` is pinned to `==0.20.1` in `[pypi-dependencies]` because `.alint-baseline.json` records that version and the sandbox packs that single wheel.
-- Known gap: `pixi install --frozen --offline` is not a no-op after a restore. It removes the PyPI-installed `alint` and then fails, since Pixi's own cache never receives the wheel; the supported offline path is `pixi run --no-install --offline`. Fixing this belongs upstream in pixi-sandbox.
+- The sandbox publisher runs unattended on `main` and republishes `sandbox/developer-linux-64`. A cold clone of `dc6d062` verified 14,874 blobs with 0 failures, and a restore into a fresh clone of `main` matched the manifest; with no network, `fmt-check`, nextest, Clippy, `test-scripts` and `alint` all ran against the restored tree and vendored crates.
+- `alint` is pinned to `==0.20.1` in `[pypi-dependencies]` because `.alint-baseline.json` records that version; `pytest` is pinned the same way, and the sandbox packs all six PyPI wheels (both tools plus pytest's four dependencies) from `pack/pypi/`.
+- Known gap: `pixi install --frozen --offline` is not a no-op after a restore. It removes the PyPI-installed files (both tools) and then fails, since Pixi's own cache never receives the wheels; the supported offline path is `pixi run --no-install --offline`. Fixing this belongs upstream in pixi-sandbox.
 - MSRV 1.88 remains unproven: no CI job compiles at 1.88 (CLI-16).
 

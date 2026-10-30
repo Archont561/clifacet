@@ -29,3 +29,4 @@ Separate declarative repository policy from project-specific semantic checks.
 
 - Verified: alint 0.20.1 passes all 28 rules with a reviewed committed baseline, and CI and `scripts/tests` call the same `pixi run` tasks.
 - #2 now runs under pytest (`pixi run --frozen test-scripts`). The suite was migrated from `unittest.TestCase` classes to pytest fixtures, `parametrize` and plain asserts, and `pytest` 9.2.0 was added to `[pypi-dependencies]` and `pixi.lock`. doc-5 records the runner.
+- 2026-10-30: green on `main` at `6ae7116` (CI run `41077737064`); the script suite runs 24 pytest cases in CI, and the sandbox now packs the pytest wheel alongside alint.
