@@ -206,3 +206,76 @@ def test_main_reports_a_missing_notes_section(capsys):
 def test_main_prints_notes_for_a_released_version(capsys):
     assert main(["--notes", "0.0.1"]) == 1  # the committed changelog has no such section
     assert "found:" in capsys.readouterr().err
+
+
+# --- the first release: the recorded version has no dated section yet -------
+
+
+def _copy_release_files(tmp_path, monkeypatch):
+    """Point `main()` at copies of the three files it writes."""
+    import scripts.bump_version as bump_version
+
+    cargo = tmp_path / "Cargo.toml"
+    pixi = tmp_path / "pixi.toml"
+    changelog = tmp_path / "CHANGELOG.md"
+    cargo.write_text(_read(CARGO_PATH), encoding="utf-8")
+    pixi.write_text(_read(PIXI_PATH), encoding="utf-8")
+    changelog.write_text(_read(CHANGELOG_PATH), encoding="utf-8")
+    monkeypatch.setattr(bump_version, "CARGO_MANIFEST", cargo)
+    monkeypatch.setattr(bump_version, "PIXI_MANIFEST", pixi)
+    monkeypatch.setattr(bump_version, "CHANGELOG", changelog)
+    return cargo, pixi, changelog
+
+
+def test_promote_current_dates_the_unreleased_section(tmp_path, monkeypatch):
+    cargo, pixi, changelog = _copy_release_files(tmp_path, monkeypatch)
+    manifests = (cargo.read_text(encoding="utf-8"), pixi.read_text(encoding="utf-8"))
+
+    assert main(["--promote-current"]) == 0
+
+    text = changelog.read_text(encoding="utf-8")
+    assert "## [0.1.0] - " in text, "the recorded version became the dated section"
+    assert text.index("## [Unreleased]") < text.index("## [0.1.0] - ")
+    assert (
+        cargo.read_text(encoding="utf-8"),
+        pixi.read_text(encoding="utf-8"),
+    ) == manifests, "promoting the changelog is not a version bump"
+
+
+def test_promote_current_makes_the_notes_readable(tmp_path, monkeypatch, capsys):
+    _, _, _ = _copy_release_files(tmp_path, monkeypatch)
+
+    assert main(["--promote-current"]) == 0
+    capsys.readouterr()
+
+    # What `release.yml` asks for, after the release pull request has been merged.
+    assert main(["--notes", "0.1.0"]) == 0
+    assert capsys.readouterr().out.strip(), "the tag step now has notes to attach"
+
+
+def test_promote_current_dry_run_reports_without_writing(tmp_path, monkeypatch, capsys):
+    _, _, changelog = _copy_release_files(tmp_path, monkeypatch)
+    before = changelog.read_text(encoding="utf-8")
+
+    assert main(["--promote-current", "--dry-run"]) == 0
+
+    assert "would promote" in capsys.readouterr().out
+    assert changelog.read_text(encoding="utf-8") == before
+
+
+def test_promote_current_refuses_a_version_that_is_already_released(tmp_path, monkeypatch, capsys):
+    _, _, changelog = _copy_release_files(tmp_path, monkeypatch)
+    # The state just after a release: Unreleased was reopened, and it is empty.
+    changelog.write_text("# Changelog\n\n## [Unreleased]\n", encoding="utf-8")
+
+    assert main(["--promote-current"]) == 1
+    assert "empty" in capsys.readouterr().err
+
+
+def test_promote_current_refuses_when_the_section_already_exists(tmp_path, monkeypatch, capsys):
+    _, _, changelog = _copy_release_files(tmp_path, monkeypatch)
+    main(["--promote-current"])
+    capsys.readouterr()
+
+    assert main(["--promote-current"]) == 1
+    assert "already has" in capsys.readouterr().err

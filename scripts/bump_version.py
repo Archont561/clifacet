@@ -11,6 +11,10 @@ Bumping them by hand is how a release drifts, so one command rewrites all three,
 promotes the changelog's `Unreleased` section to the new version, and leaves the
 relock to `cargo`. `--check` verifies the three agree without writing anything,
 which is what CI and `release.yml` use.
+
+An application starting at its first version has nothing to bump to: the version
+sites already record it, so `--promote-current` dates the `Unreleased` section
+without touching them.
 """
 
 from __future__ import annotations
@@ -232,6 +236,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--print-version", action="store_true", help="print the current version and exit")
     parser.add_argument("--check", action="store_true", help="fail if the recorded versions disagree")
     parser.add_argument("--notes", metavar="VERSION", help="print the changelog section for VERSION")
+    parser.add_argument(
+        "--promote-current",
+        action="store_true",
+        help="date the Unreleased section as the recorded version, without bumping",
+    )
     parser.add_argument("--dry-run", action="store_true", help="show the change without writing it")
     parser.add_argument("--skip-changelog", action="store_true", help="do not promote the changelog")
     parser.add_argument("--relock", action="store_true", help="refresh Cargo.lock after writing")
@@ -258,8 +267,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ValueError("CHANGELOG.md is missing")
             sys.stdout.write(changelog_notes(CHANGELOG.read_text(encoding="utf-8"), arguments.notes))
             return 0
+        if arguments.promote_current:
+            # The first release of an application: the version is already recorded, so
+            # the only thing missing is the dated section that `--notes` reads. The
+            # manifests are left alone on purpose — this is not a bump.
+            if not CHANGELOG.is_file():
+                raise ValueError("CHANGELOG.md is missing")
+            today = datetime.datetime.now(datetime.UTC).date().isoformat()
+            promoted = promote_changelog(CHANGELOG.read_text(encoding="utf-8"), current, today)
+            if arguments.dry_run:
+                print(f"bump-version: would promote {RELEASE_HEADING} to '## [{current}] - {today}'")
+                return 0
+            CHANGELOG.write_text(promoted, encoding="utf-8")
+            print(f"bump-version: promoted {RELEASE_HEADING} to '## [{current}] - {today}'")
+            return 0
         if arguments.version is None:
-            parser.error("a version is required unless --check, --print-version or --notes is used")
+            parser.error(
+                "a version is required unless --check, --print-version, --notes or --promote-current is used"
+            )
 
         version = parse_version(arguments.version)
         if version == current:
