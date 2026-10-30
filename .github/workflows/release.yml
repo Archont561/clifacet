@@ -88,14 +88,17 @@ jobs:
             exit 1
           fi
           echo "both crates inherit $VERSION and the $MACROS dependency requires it"
-      - name: Package both crates
+      # Only the macro crate can be packaged before anything is published: the
+      # main crate's `clifacet-macros = "<version>"` requirement cannot resolve
+      # against the registry until that exact version exists there (cargo
+      # package fails with "no matching package named clifacet-macros"). The
+      # main crate is therefore packaged inside the publish loop, after the
+      # macro version is indexed.
+      - name: Package the macro crate
         shell: bash
-        # multiline-run-allowed: the macro crate is fully verified here; the main
-        # crate cannot be until that exact macro version exists on the registry.
         run: |
           set -euo pipefail
           pixi run --frozen -x cargo package --locked -p "$MACROS"
-          pixi run --frozen -x cargo package --locked -p "$MAIN" --no-verify
       - name: Report the dry run
         if: inputs.dry_run
         shell: bash
@@ -106,16 +109,19 @@ jobs:
           {
             echo "### Dry run: nothing was published"
             echo ""
-            echo "Packaged \`$MACROS\` and \`$MAIN\` at \`$VERSION\`; the main crate was packaged with"
-            echo "\`--no-verify\` because its macro dependency is not on the registry yet."
+            echo "Packaged and verified \`$MACROS\` at \`$VERSION\`."
             echo ""
-            echo "| crate | $VERSION on the index |"
-            echo "| --- | --- |"
+            echo "\`$MAIN\` is not packaged here: it requires \`$MACROS\` \`$VERSION\` from the"
+            echo "registry, which cannot exist before the first publish. The publish run"
+            echo "packages it immediately after that version is indexed."
+            echo ""
+            echo "| crate | $VERSION on the index | next action in a publish run |"
+            echo "| --- | --- | --- |"
             for crate in "$MACROS" "$MAIN"; do
               if curl -sf "https://index.crates.io/$INDEX_PREFIX/$crate" | grep -q "\"vers\":\"$VERSION\""; then
-                echo "| \`$crate\` | already published |"
+                echo "| \`$crate\` | already published | skipped |"
               else
-                echo "| \`$crate\` | absent, will publish |"
+                echo "| \`$crate\` | absent | packaged, then published |"
               fi
             done
           } >> "$GITHUB_STEP_SUMMARY"
@@ -151,6 +157,9 @@ jobs:
                 exit 1
                 ;;
             esac
+            # Packaging is verified here rather than up front: this is the first
+            # moment the crate's registry dependencies are resolvable.
+            pixi run --frozen -x cargo package --locked -p "$crate"
             cargo publish --locked -p "$crate"
             indexed=false
             for attempt in $(seq 1 30); do
