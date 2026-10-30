@@ -2,13 +2,23 @@
 
 ## Bootstrap first
 
-Before running any check or test, check whether `pixi` is on `PATH`. If it is
-not, run the repository's generated restore launcher first:
+Before running any check or test, run the bootstrap script once:
+
+```sh
+bash scripts/bootstrap.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+It fast-forwards a clean checkout to its upstream (refusing when there is local
+work to lose), restores the sandbox when the Pixi environment is missing or
+`pixi` is not on `PATH`, installs the Git hooks, and ends with `test-scripts` and
+`alint` as a smoke check. `--skip-restore`, `--skip-hooks`, `--skip-checks` and
+`--no-fetch` narrow it.
+
+To restore without the checkout step, run the generated launcher directly:
 
 ```sh
 bash scripts/restore.sh
-export PATH="$HOME/.local/bin:$PATH"
-command -v pixi
 ```
 
 The launcher uses Git and the trusted `sandbox/developer-linux-64` branch and

@@ -4,8 +4,7 @@ The workspace is an early scaffold, not the released `0.1.0` library. The
 checked-in Pixi environment currently targets Linux x86-64.
 
 ```sh
-pixi install
-pixi run hooks-install  # in a Git checkout
+bash scripts/bootstrap.sh  # checkout at the remote head, environment, hooks, smoke check
 pixi run quality        # repo, skills, Backlog, features, sandbox, Rust and advisory checks
 pixi run check-features # base and each optional dependency boundary
 pixi run test-src       # crate-internal src/ tests
@@ -35,18 +34,31 @@ calls a Pixi task, so a hook and the matching CI job cannot drift:
 | Hook         | Runs                                                                                                 | Why there                                                                                                            |
 | ------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `pre-commit` | `fmt` (re-staged), `lint`, `check-features`, `alint`, `actionlint`, `sandbox-check`, `skills-check`   | Seconds on a warm checkout, and a commit is the last moment a fix is still free.                                      |
-| `pre-push`   | `audit`, `deny`, `test`, `test-doc`, `test-scripts`                                                   | Minutes of work, and exactly what the push is about to hand to CI, so they run once per push instead of per commit.  |
+| `pre-push`   | `audit-offline`, `deny-offline`, `test`, `test-doc`, `test-scripts`                                   | Minutes of work, and exactly what the push is about to hand to CI, so they run once per push instead of per commit.  |
 | `commit-msg` | `convco check --from-stdin --strip`                                                                   | The message is the input to the changelog, the version bump and the release notes.                                    |
 
 The hooks call `pixi run --frozen --no-install`, which reuses the installed environment instead
 of re-solving it: a plain `pixi run` would reach for the network and fail on an offline restore.
+The advisory gates are the same story. `cargo audit` fetches the RustSec database and fails
+without one, so `audit-offline` audits against a local clone when it exists and otherwise says
+so and steps aside; `deny-offline` runs the three checks that need no database. CI still runs the
+fetching `audit` and the full `deny`, so an offline push is never a silently unaudited one —
+the gates simply live where the network does.
 Run `pixi install --locked` once after cloning, and the hooks work from then on. `git commit
 --no-verify` and `git push --no-verify` skip them when a work-in-progress commit genuinely needs
 to land; CI remains the authoritative verdict.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), configured
 in `.versionrc` for convco. That file also maps each commit type to a Keep a Changelog section,
-so `convco changelog` and `scripts/bump_version.py` agree on headings.
+so `convco changelog` and `scripts/bump_version.py` agree on headings. CI enforces it too: the
+`commit-messages` job runs `convco check` over the pull request's commits, so a contributor
+without hooks cannot merge a message the changelog cannot read.
+
+`actionlint` only runs its embedded shell checks when a `shellcheck` binary is on `PATH`, and
+it used to find one on the CI runner but not in the Pixi environment — so a `run:` block could
+pass locally and fail CI. `shellcheck` is now a pinned Pixi dependency, which removes that gap
+and pins the version both places run: `pixi run actionlint` checks the workflow shell exactly
+as CI does.
 
 ## Dev container
 

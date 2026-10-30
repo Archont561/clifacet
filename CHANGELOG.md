@@ -27,6 +27,14 @@ prepared, so the headings below are managed by that script.
 - Release lifecycle tooling: `scripts/bump_version.py` bumps every recorded
   version site and promotes the changelog, and `release.yml` tags the release
   with those notes once both crates publish.
+- `scripts/bootstrap.sh`, which brings any checkout to a working session in one
+  command: fast-forward to the remote head without touching local work, restore
+  the sandbox environment, install the hooks, and smoke-check the result.
+- `shellcheck` is pinned in the Pixi environment, so the local `actionlint`
+  task also checks workflow shell scripts, exactly as CI does.
+- Conventional commit messages are enforced in CI, and the advisory gates work
+  offline: `audit-offline` audits against a local RustSec clone or steps aside
+  with a message, while CI keeps running the fetching audit.
 - Git hooks through lefthook: linters, formatters and repository checks before
   a commit, advisories and tests before a push, and convco validating the commit
   message against the `.versionrc` configuration.

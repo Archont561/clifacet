@@ -145,3 +145,57 @@ jobs:
             ${{ runner.os }}-cargo-registry-v1-
       - name: Check every feature boundary at the MSRV
         run: python3 scripts/prove_msrv.py
+
+  # The changelog, the version bump and the release notes are all derived from
+  # commit messages (`.versionrc` maps each type to a section), and the pre-commit
+  # hook that checks them is only local. This job makes the contract enforceable
+  # for anyone who pushes without hooks or skips them.
+  commit-messages:
+    name: Conventional commit messages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # convco walks the range, so it needs the commits, not just the merge tip.
+          fetch-depth: 0
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.83.0
+          cache: true
+          frozen: true
+      # `before` is all zeros for a branch's first push, where there is no base to
+      # compare against; a pull request always compares against its base commit.
+      - name: Resolve the range to check
+        id: range
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "pull_request" ]; then
+            echo "range=$PR_BASE..HEAD" >> "$GITHUB_OUTPUT"
+          elif [ -n "$PUSH_BASE" ] && [ "$PUSH_BASE" != "0000000000000000000000000000000000000000" ]; then
+            echo "range=$PUSH_BASE..HEAD" >> "$GITHUB_OUTPUT"
+          else
+            # No base at all: an empty range means "check the tip plus a small window",
+            # which still catches the message written by the push that created the branch.
+            echo "range=" >> "$GITHUB_OUTPUT"
+          fi
+      # Two invocations rather than one expanded variable: the runner's actionlint
+      # also runs shellcheck, which rejects the unquoted form (SC2086) -- and that
+      # copy of actionlint is stricter than the one in the Pixi environment.
+      - name: Check the messages are conventional
+        shell: bash
+        env:
+          RANGE: ${{ steps.range.outputs.range }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RANGE" ]; then
+            pixi run --frozen -x convco check "$RANGE"
+          else
+            pixi run --frozen -x convco check -n 20
+          fi

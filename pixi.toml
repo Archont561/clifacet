@@ -15,6 +15,13 @@ cargo-deny = ">=0.20.2,<0.21"
 cargo-audit = ">=0.22.1,<0.23"
 # Conventional commits, versioning and changelog tooling for release prep.
 convco = ">=0.7.2,<0.8"
+# actionlint shells out for its shell checks instead of embedding them: without a
+# `shellcheck` binary on PATH it silently skips every `run:` block. CI's runner has one
+# and this environment did not, so the same actionlint run passed locally and failed in
+# CI. Pinning it here makes both check the same shell with the same version.
+# GPL-3.0 tooling: executed during development, never linked into or redistributed with
+# the crate, so the dependency policy is untouched.
+shellcheck = ">=0.11,<0.12"
 actionlint = ">=1.7.12,<1.8"
 lefthook = ">=2.2.2,<2.3"
 llvm-tools = ">=23.1.4,<24"
@@ -59,6 +66,12 @@ actionlint = "actionlint .github/workflows/*.yml"
 lint-commit = "convco check --from-stdin --strip"
 deny = "cargo deny check"
 audit = "cargo audit --deny warnings"
+# The pre-push counterpart: audits against a local database when one exists and steps
+# aside with a clear message when it does not, instead of blocking every offline push.
+audit-offline = "python scripts/audit_local.py"
+# Advisories need the RustSec database, so the other three checks are the offline-safe
+# subset; `deny` (the full one) stays a CI task.
+deny-offline = "cargo deny check bans licenses sources"
 test-src = "cargo nextest run --workspace --all-features --locked -E 'kind(lib)'"
 test-integration = "cargo nextest run --workspace --all-features --locked -E 'kind(test)'"
 test = { depends-on = ["test-src", "test-integration"] }
@@ -71,6 +84,9 @@ prove-msrv = "python scripts/prove_msrv.py"
 bump-version = "python scripts/bump_version.py"
 # The offline, no-install subset worth running before every commit; `quality`
 # also fetches Bun packages and the RustSec database, so it stays a CI command.
+# One command from any checkout: reach the remote head, restore the environment, install
+# the hooks, then prove the result with the fast checks.
+bootstrap = "bash scripts/bootstrap.sh"
 test-local = { depends-on = ["fmt-check", "lint", "alint", "test", "test-scripts", "deny", "sandbox-check"] }
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
