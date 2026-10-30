@@ -12,7 +12,7 @@ pixi run test-src       # crate-internal src/ tests
 pixi run test-integration # external tests/ targets, including compile-fail cases
 pixi run test           # both nextest groups
 pixi run test-doc       # doctests (not run by nextest)
-pixi run test-scripts   # repository script tests
+pixi run test-scripts   # repository script tests (pytest over scripts/tests)
 pixi run coverage       # LCOV report plus a 90% source-line gate
 ```
 
@@ -151,7 +151,7 @@ pixi run --no-install --offline test
 ```
 
 The restore already materialises the complete environment, including the PyPI
-wheel for `alint`. It is packed under
+wheels for `alint` and `pytest`. They are packed under
 `.pixi-sandbox/envs/default/pack/pypi/` on the sandbox branch, installed into
 `.pixi/envs/default/`, and verified file by file against the manifest, so no
 post-restore install is needed or possible offline. Bun-backed tasks

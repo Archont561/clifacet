@@ -28,4 +28,4 @@ Separate declarative repository policy from project-specific semantic checks.
 ## Notes
 
 - Verified: alint 0.20.1 passes all 28 rules with a reviewed committed baseline, and CI and `scripts/tests` call the same `pixi run` tasks.
-- #2 uses the standard-library `unittest` runner (`python -m unittest discover -s scripts/tests`), not pytest; no pytest dependency is in `pixi.lock`. doc-5 was corrected to match.
+- #2 now runs under pytest (`pixi run --frozen test-scripts`). The suite was migrated from `unittest.TestCase` classes to pytest fixtures, `parametrize` and plain asserts, and `pytest` 9.2.0 was added to `[pypi-dependencies]` and `pixi.lock`. doc-5 records the runner.

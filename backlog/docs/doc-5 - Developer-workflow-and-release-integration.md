@@ -11,7 +11,7 @@ Pixi is the intended task entrypoint and lock authority for developer tools; Car
 
 # Quality ownership
 
-Alint validates declarative structure and generated-workflow policy. Python scripts and their standard-library `unittest` suite (`pixi run --frozen test-scripts`) cover Clifacet-specific semantic checks; no pytest dependency is in `pixi.lock`. Cargo, rustfmt, Clippy, nextest, doctests, trybuild, Taplo, actionlint, cargo-deny and cargo-audit remain separate tools. CI and hooks call canonical Pixi tasks.
+Alint validates declarative structure and generated-workflow policy. Python scripts and their pytest suite (`pixi run --frozen test-scripts`) cover Clifacet-specific semantic checks; pytest and alint are pinned PyPI dependencies, so the sandbox packs both wheels. Cargo, rustfmt, Clippy, nextest, doctests, trybuild, Taplo, actionlint, cargo-deny and cargo-audit remain separate tools. CI and hooks call canonical Pixi tasks.
 
 # Release
 
