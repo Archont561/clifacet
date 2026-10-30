@@ -14,6 +14,13 @@ job, and this page records what is actually installed and how to run it.
 `pixi run test-local` runs all of them plus fmt, clippy, alint, the Python checks
 and `cargo deny`; it is the gate before a feature is claimed.
 
+A fifth question sits across all three modes — does the mode that collected the input
+change anything else? — and `clifacet::harness` is the published answer: it measures a
+run, records what the command received, and compares runs from different frontends.
+`tests/harness_parity.rs` drives the example through flags, a scripted prompt and the
+headless form, and `tests/harness.rs` covers the harness itself. See
+[`command-core.md`](command-core.md#cross-mode-parity-as-a-published-api).
+
 ## What each layer asserts
 
 `validation_matrix.rs` keeps the layers apart, because they are separate promises:
