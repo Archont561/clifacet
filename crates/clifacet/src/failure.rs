@@ -1,10 +1,12 @@
 //! Library-owned failure categories for the UI-free command core.
 //!
-//! A command can fail in two places, and the difference matters to a caller: the
+//! A command can fail in three places, and the difference matters to a caller: the
 //! input can be rejected before the command ever runs ([`Failure::validation`]),
-//! or the command can run and fail ([`Failure::execution`]). Both travel as one
-//! type so every presentation layer — flags today, prompts and a TUI later —
-//! reports them the same way.
+//! the command can run and fail ([`Failure::execution`]), or the user can stop an
+//! interactive flow before it produces input at all ([`Failure::cancelled`]). All
+//! three travel as one type so every presentation layer — flags today, prompts and
+//! a TUI later — reports them the same way, and so an application cannot mistake a
+//! cancellation for bad input.
 //!
 //! Exit codes are deliberately *not* here. decision-3 keeps output and exit
 //! mapping application-owned, so this type answers "what kind of failure is
@@ -21,6 +23,12 @@ pub enum FailureKind {
     Validation,
     /// The command ran and could not complete.
     Execution,
+    /// The user stopped an interactive flow before it produced input.
+    ///
+    /// Nothing ran. Kept apart from [`FailureKind::Validation`] because the input
+    /// was never wrong — the user changed their mind, which is a decision rather
+    /// than a mistake, and deserves its own message and exit code.
+    Cancelled,
 }
 
 /// A command failure, with the kind and a caller-facing message.
@@ -55,10 +63,23 @@ impl Failure {
         }
     }
 
+    /// Records that the user cancelled before anything ran.
+    ///
+    /// A frontend that is dismissed, or a confirmation the user answers with
+    /// "no", reports this instead of pretending the input was invalid.
+    #[must_use]
+    pub fn cancelled(message: impl Into<String>) -> Self {
+        Self {
+            kind: FailureKind::Cancelled,
+            message: message.into(),
+        }
+    }
+
     /// The category of this failure.
     ///
-    /// Applications map this to their own exit codes and messages; see
-    /// [`crate::example`] for a worked mapping.
+    /// Applications map this to their own exit codes and messages, which is what
+    /// keeps the numbers out of the library; see [`crate::example`] for a worked
+    /// mapping that gives each kind its own code.
     #[must_use]
     pub const fn kind(&self) -> FailureKind {
         self.kind

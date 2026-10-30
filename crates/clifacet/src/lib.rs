@@ -54,6 +54,7 @@ pub mod command;
 pub mod example;
 pub mod facet;
 pub mod failure;
+pub mod policy;
 
 /// The version of the `clifacet` package.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
