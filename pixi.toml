@@ -72,7 +72,9 @@ audit-offline = "python scripts/audit_local.py"
 # Advisories need the RustSec database, so the other three checks are the offline-safe
 # subset; `deny` (the full one) stays a CI task.
 deny-offline = "cargo deny check bans licenses sources"
-test-src = "cargo nextest run --workspace --all-features --locked -E 'kind(lib)'"
+# `kind(proc-macro)` is separate: nextest classifies a proc-macro crate's own unit
+# tests that way, so `kind(lib)` alone would skip the derive's diagnostics tests.
+test-src = "cargo nextest run --workspace --all-features --locked -E 'kind(lib) + kind(proc-macro)'"
 test-integration = "cargo nextest run --workspace --all-features --locked -E 'kind(test)'"
 test = { depends-on = ["test-src", "test-integration"] }
 test-doc = "cargo test --workspace --all-features --doc --locked"

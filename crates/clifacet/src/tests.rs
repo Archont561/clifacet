@@ -43,7 +43,7 @@ mod failure {
 
 mod example {
     use crate::Command;
-    use crate::example::{Example, ExampleInput, MAX_REPEAT};
+    use crate::example::{Example, ExampleInput, Level, MAX_REPEAT};
     use crate::failure::FailureKind;
 
     fn input(name: &str, repeat: u8) -> ExampleInput {
@@ -51,6 +51,7 @@ mod example {
             name: name.to_owned(),
             repeat,
             explode: false,
+            level: Level::Basic,
         }
     }
 
@@ -80,6 +81,7 @@ mod example {
                 name: String::from("ada"),
                 repeat: 1,
                 explode: true,
+                level: Level::Basic,
             })
             .expect_err("--explode fails");
 

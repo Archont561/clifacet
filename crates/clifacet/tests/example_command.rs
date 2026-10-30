@@ -6,7 +6,7 @@
 //! non-interactively and demonstrating its stream and exit behavior.
 
 use clifacet::clap::Parser as _;
-use clifacet::example::{self, Cli, Example, ExampleInput, MAX_REPEAT};
+use clifacet::example::{self, Cli, Example, ExampleInput, Level, MAX_REPEAT};
 use clifacet::{Command, Failure, FailureKind};
 
 /// Runs one invocation and returns its exit code, data stream and diagnostic stream.
@@ -95,11 +95,30 @@ fn the_command_seam_runs_without_the_application_layer() {
         name: String::from("seam"),
         repeat: 2,
         explode: false,
+        level: Level::Basic,
     };
 
     let output = Example.execute(input).expect("a valid input runs");
 
     assert_eq!(output.lines, vec!["hello, seam", "hello, seam"]);
+}
+
+#[test]
+fn a_verbose_run_reports_how_far_it_has_got() {
+    let input = ExampleInput {
+        name: String::from("seam"),
+        repeat: 2,
+        explode: false,
+        level: Level::Verbose,
+    };
+
+    let output = Example.execute(input).expect("a valid input runs");
+
+    assert_eq!(
+        output.lines,
+        vec!["hello, seam (1 of 2)", "hello, seam (2 of 2)"],
+        "the level reaches the command, not just the parser"
+    );
 }
 
 #[test]
@@ -109,6 +128,7 @@ fn the_command_seam_reports_execution_failures_as_that_kind() {
             name: String::from("seam"),
             repeat: 1,
             explode: true,
+            level: Level::Basic,
         })
         .expect_err("--explode fails");
 
@@ -171,6 +191,7 @@ fn a_closed_data_stream_becomes_an_execution_failure() {
         Cli {
             name: None,
             repeat: 1,
+            level: Level::Basic,
             explode: false,
         },
         &mut Broken,
