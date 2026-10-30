@@ -11,6 +11,18 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- Framework-owned secret handling: `clifacet::secret::Secret<T>` redacts itself in
+  `Debug` and `Display`, so every place the framework formats a value — a diagnostic,
+  a parity harness record, a form field, a failing test's message — shows `[redacted]`
+  instead. `Secret::expose` is the only read. The example gained a `--token` flag and
+  refuses a credential beginning with `revoked`, which is what a redacted diagnostic
+  looks like end to end.
+- `clifacet::provenance`, the record of where each input value came from: `Source`
+  (`argv`, `environment`, `default`, `prompt`, `form`), `Origin` and `Provenance`.
+  Entries hold a name, a source and whether the value is secret — there is no field
+  for a value, so the record cannot leak one.
+- A secret form field: `FieldState::mark_secret` (and `FormState::mark_secret`) makes
+  a preview draw `[redacted]` without changing what the form submits.
 - `clifacet::harness`, the cross-mode parity harness: `Outcome` reduces a run to the
   four subjects two runs can disagree about, `Recording` wraps a `Command` and records
   the input each execution received (failures included), and `Parity` compares runs
@@ -103,6 +115,10 @@ prepared, so the headings below are managed by that script.
 ### Known limitations
 
 - The `json` feature selects `serde_json`, but no flag produces JSON yet.
+- Redaction covers the framework's own output. Application-owned logs, a credential
+  passed on the command line (visible in `ps` and shell history), an environment
+  variable, and a prompted answer the terminal echoes are documented boundaries, not
+  guarantees; a credential held as a plain `String` is not protected at all.
 - The `crates` GitHub environment has no protection rules yet, so release
   authorization rests on the manual dispatch alone.
 

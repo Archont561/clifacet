@@ -52,6 +52,7 @@ mod example {
             repeat,
             explode: false,
             level: Level::Basic,
+            token: None,
         }
     }
 
@@ -82,6 +83,7 @@ mod example {
                 repeat: 1,
                 explode: true,
                 level: Level::Basic,
+                token: None,
             })
             .expect_err("--explode fails");
 

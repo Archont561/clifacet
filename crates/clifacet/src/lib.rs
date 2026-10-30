@@ -40,6 +40,9 @@
 //! - [`tui`] — a full-screen form built from public components (`tui` feature);
 //! - [`harness`] — the public way to prove the mode changed nothing else.
 //!
+//! [`secret`] wraps a credential so nothing the framework prints can show it, and
+//! [`provenance`] records where each value came from without recording the value.
+//!
 //! # Not implemented yet
 //!
 //! - JSON output: the `json` feature reserves `serde_json`; no flag selects it yet.
@@ -62,6 +65,8 @@ pub mod failure;
 pub mod harness;
 pub mod policy;
 pub mod prompt;
+pub mod provenance;
+pub mod secret;
 
 /// The full-screen frontend, available with the `tui` feature.
 #[cfg(feature = "tui")]

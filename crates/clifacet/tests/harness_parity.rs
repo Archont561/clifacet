@@ -106,7 +106,7 @@ fn the_recorded_input_is_the_validated_input() {
     assert_eq!(
         outcome.effects(),
         [String::from(
-            "ExampleInput { name: \"ada\", repeat: 2, explode: false, level: Basic }"
+            "ExampleInput { name: \"ada\", repeat: 2, explode: false, level: Basic, token: None }"
         )],
         "what reached the command is the same value every mode builds"
     );

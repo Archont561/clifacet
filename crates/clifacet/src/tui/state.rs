@@ -47,6 +47,10 @@ pub struct FieldState {
     label: String,
     value: String,
     required: bool,
+    /// Whether the value must not be drawn. Presentation only: the submission still
+    /// carries it, because masking is about what a screen shows, not what a command
+    /// receives.
+    secret: bool,
     /// Whether `value` is still the one the application chose rather than something
     /// the user typed. Typing replaces a default; backspace edits it like any other
     /// text, because deleting a character from a default is an edit, not an answer.
@@ -68,6 +72,7 @@ impl FieldState {
             untouched: !value.is_empty(),
             value,
             required: false,
+            secret: false,
         }
     }
 
@@ -76,6 +81,20 @@ impl FieldState {
     pub fn mark_required(mut self, required: bool) -> Self {
         self.required = required;
         self
+    }
+
+    /// Marks this field as secret, so a preview draws [`crate::secret::REDACTED`]
+    /// instead of the value.
+    #[must_use]
+    pub const fn mark_secret(mut self, secret: bool) -> Self {
+        self.secret = secret;
+        self
+    }
+
+    /// Whether the value must not be drawn.
+    #[must_use]
+    pub const fn is_secret(&self) -> bool {
+        self.secret
     }
 
     /// The `clap` argument id this field answers for.
@@ -203,6 +222,17 @@ impl FormState {
     #[must_use]
     pub fn fields(&self) -> &[FieldState] {
         &self.fields
+    }
+
+    /// Marks the named field as secret, if the form has it.
+    ///
+    /// A name the form does not ask for is ignored: the field list stays the single
+    /// source of truth for what exists.
+    pub fn mark_secret(&mut self, name: &str) -> &mut Self {
+        if let Some(field) = self.fields.iter_mut().find(|field| field.name == name) {
+            field.secret = true;
+        }
+        self
     }
 
     /// The field answering for this argument, if the form has one.

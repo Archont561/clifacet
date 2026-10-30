@@ -38,6 +38,7 @@ fn canonical_input() -> impl Strategy<Value = ExampleInput> {
             repeat,
             level,
             explode,
+            token: None,
         })
 }
 

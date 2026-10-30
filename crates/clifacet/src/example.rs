@@ -29,6 +29,7 @@ use crate::facet::Facet;
 use crate::failure::{Failure, FailureKind};
 use crate::policy::{Capabilities, Mode, Policy, Request};
 use crate::prompt::{Prompter, Session, Terminal};
+use crate::secret::Secret;
 
 /// The process exited after doing what was asked.
 pub const EXIT_SUCCESS: i32 = 0;
@@ -132,6 +133,16 @@ pub struct Cli {
     #[arg(long)]
     pub explode: bool,
 
+    /// An API credential, never echoed back.
+    ///
+    /// `Secret` is why: the framework prints values through `Debug` and `Display`, and
+    /// both of this type's implementations are `[redacted]`. A credential beginning
+    /// with `revoked` is refused, to demonstrate that even a diagnostic which names
+    /// the credential does not print it. Passing a credential as a flag is visible to
+    /// other processes on many systems; see `docs/command-core.md`.
+    #[arg(long, value_name = "TOKEN")]
+    pub token: Option<Secret<String>>,
+
     /// How the user wants to be asked, if at all.
     ///
     /// Presentation, not command input: [`ExampleInput`] does not carry any of it,
@@ -200,6 +211,8 @@ pub struct ExampleInput {
     pub explode: bool,
     /// How much detail to report.
     pub level: Level,
+    /// An API credential, if one was supplied. Never printed.
+    pub token: Option<Secret<String>>,
 }
 
 impl TryFrom<Cli> for ExampleInput {
@@ -223,11 +236,20 @@ impl TryFrom<Cli> for ExampleInput {
         if name.is_empty() {
             return Err(Failure::validation("--name must not be blank"));
         }
+        // A blank credential is not a credential: whitespace would otherwise reach the
+        // command as a value that looks supplied.
+        let token = cli
+            .token
+            .map(Secret::into_inner)
+            .map(|token| token.trim().to_owned())
+            .filter(|token| !token.is_empty())
+            .map(Secret::new);
         Ok(Self {
             name: name.to_owned(),
             repeat: cli.repeat,
             explode: cli.explode,
             level: cli.level,
+            token,
         })
     }
 }
@@ -293,6 +315,15 @@ impl Command for Example {
             return Err(Failure::execution(
                 "the example operation failed on purpose (--explode)",
             ));
+        }
+        // Interpolating the `Secret` itself, not its value: the diagnostic names the
+        // credential and still cannot print it.
+        if let Some(token) = &input.token
+            && token.expose().starts_with("revoked")
+        {
+            return Err(Failure::execution(format!(
+                "the credential {token} was rejected"
+            )));
         }
         let lines = (1..=input.repeat)
             .map(|index| match input.level {
