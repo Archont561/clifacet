@@ -106,6 +106,24 @@ needs_restore() {
   return 1
 }
 
+refresh_sandbox_branch() {
+  # `restore.sh` fetches a sandbox branch only when the ref is missing, and it
+  # fetches it without a force marker -- but every publish rewrites that branch,
+  # so an existing ref is both stale and un-fast-forwardable. A restore would
+  # then verify an old pack and silently produce an old environment. Refreshing
+  # here, with the force marker, is what makes a restore mean "current".
+  if ! git -C "$ROOT" ls-remote --exit-code --quiet --heads origin 'sandbox/*' >/dev/null 2>&1; then
+    say "environment: no sandbox branch on origin to refresh"
+    return 0
+  fi
+  if git -C "$ROOT" fetch --quiet --depth 1 origin \
+      '+refs/heads/sandbox/*:refs/remotes/origin/sandbox/*'; then
+    say "environment: refreshed the sandbox branch from origin"
+  else
+    problem "environment: could not refresh the sandbox branch; a restore would use a stale pack"
+  fi
+}
+
 restore_environment() {
   if [ "$SKIP_RESTORE" -eq 1 ]; then
     say "environment: restore skipped on request"
@@ -114,6 +132,9 @@ restore_environment() {
   if ! needs_restore; then
     say "environment: Pixi $(pixi --version) already restored"
     return 0
+  fi
+  if [ "$NO_FETCH" -eq 0 ]; then
+    refresh_sandbox_branch
   fi
   say "environment: restoring the sandbox (this verifies every packed file)"
   if ! bash "$ROOT/scripts/restore.sh" "$@"; then

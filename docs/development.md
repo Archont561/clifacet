@@ -60,6 +60,21 @@ pass locally and fail CI. `shellcheck` is now a pinned Pixi dependency, which re
 and pins the version both places run: `pixi run actionlint` checks the workflow shell exactly
 as CI does.
 
+## Sandbox branch refreshes
+
+Every publish rewrites `sandbox/developer-linux-64`, and the generated `restore.sh` fetches a
+sandbox branch only when the ref is missing, without a force marker — so a second restore reuses
+the pack it fetched the first time. `scripts/bootstrap.sh` forces the refresh before restoring;
+to do it by hand:
+
+```sh
+git fetch --depth 1 origin '+refs/heads/sandbox/*:refs/remotes/origin/sandbox/*'
+bash scripts/restore.sh
+```
+
+The restore reports how many entries it verified, which is the quickest way to notice that a
+pack is older than the branch: it should match the manifest's file count.
+
 ## Dev container
 
 In VS Code, choose **Dev Containers: Reopen in Container**; GitHub Codespaces
