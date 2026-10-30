@@ -27,6 +27,27 @@ pixi run --frozen --no-install test-local
 That covers formatting, Clippy, alint, both nextest groups, the script tests,
 `cargo deny` and the sandbox check in about a minute on a warm checkout.
 
+## Git hooks
+
+`pixi run hooks-install` writes the hooks `lefthook.yml` declares into `.git/hooks`. Every hook
+calls a Pixi task, so a hook and the matching CI job cannot drift:
+
+| Hook         | Runs                                                                                                 | Why there                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `pre-commit` | `fmt` (re-staged), `lint`, `check-features`, `alint`, `actionlint`, `sandbox-check`, `skills-check`   | Seconds on a warm checkout, and a commit is the last moment a fix is still free.                                      |
+| `pre-push`   | `audit`, `deny`, `test`, `test-doc`, `test-scripts`                                                   | Minutes of work, and exactly what the push is about to hand to CI, so they run once per push instead of per commit.  |
+| `commit-msg` | `convco check --from-stdin --strip`                                                                   | The message is the input to the changelog, the version bump and the release notes.                                    |
+
+The hooks call `pixi run --frozen --no-install`, which reuses the installed environment instead
+of re-solving it: a plain `pixi run` would reach for the network and fail on an offline restore.
+Run `pixi install --locked` once after cloning, and the hooks work from then on. `git commit
+--no-verify` and `git push --no-verify` skip them when a work-in-progress commit genuinely needs
+to land; CI remains the authoritative verdict.
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), configured
+in `.versionrc` for convco. That file also maps each commit type to a Keep a Changelog section,
+so `convco changelog` and `scripts/bump_version.py` agree on headings.
+
 ## Dev container
 
 In VS Code, choose **Dev Containers: Reopen in Container**; GitHub Codespaces
@@ -54,8 +75,8 @@ container; recreate the container to change that choice. The global package is
 version-pinned, but its separate global dependency graph is not in the project
 lock. No provider login or model catalogue refresh is automatic; if desired,
 run `opencode auth login` and `opencode models --refresh` yourself. No
-credentials are stored in this repository. The setup does not install Git hooks,
-commit, push or release.
+credentials are stored in this repository. The setup installs the lefthook Git
+hooks, but never commits, pushes or releases.
 
 This online bootstrap is distinct from the Git-branch sandbox restore described
 below. It is not an offline image, and it neither publishes nor fetches the

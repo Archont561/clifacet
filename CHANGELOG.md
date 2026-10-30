@@ -24,6 +24,12 @@ prepared, so the headings below are managed by that script.
   default, macro-first ordering and a publish step that skips versions already
   indexed.
 - Agent operating model, project backlog and local skills.
+- Release lifecycle tooling: `scripts/bump_version.py` bumps every recorded
+  version site and promotes the changelog, and `release.yml` tags the release
+  with those notes once both crates publish.
+- Git hooks through lefthook: linters, formatters and repository checks before
+  a commit, advisories and tests before a push, and convco validating the commit
+  message against the `.versionrc` configuration.
 
 ### Known limitations
 
