@@ -16,6 +16,7 @@
 use clifacet::Facet;
 use clifacet::clap::Parser as _;
 use clifacet::example::{self, Cli, ExampleInput, Level, MAX_REPEAT};
+use clifacet::prompt::Scripted;
 use proptest::prelude::*;
 
 /// A name validation accepts unchanged: non-empty, already trimmed.
@@ -60,12 +61,19 @@ fn argv_for(input: &ExampleInput) -> Vec<String> {
 /// Runs the application entry point with the given arguments, capturing everything.
 ///
 /// The program name is prepended, because that is what a process receives and what
-/// the entry point expects to find at index 0.
+/// the entry point expects to find at index 0. Capabilities are stated rather than
+/// detected and the frontend is scripted, so no property can reach a real terminal.
 fn run(args: &[String]) -> (i32, String, String) {
     let mut out = Vec::new();
     let mut err = Vec::new();
     let full = std::iter::once(String::from("example")).chain(args.iter().cloned());
-    let code = example::main(full.map(std::ffi::OsString::from), &mut out, &mut err);
+    let code = example::main_with(
+        full,
+        clifacet::policy::Capabilities::headless(),
+        || Box::new(Scripted::default()),
+        &mut out,
+        &mut err,
+    );
     (
         code,
         String::from_utf8_lossy(&out).into_owned(),

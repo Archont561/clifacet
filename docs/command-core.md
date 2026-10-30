@@ -56,7 +56,9 @@ Measured on `crates/clifacet` at this commit:
 | `example --explode` | 1 | empty | `example: the example operation failed on purpose (--explode)` |
 | `example --nope` | 2 | empty | `clap` usage error |
 | `example --help` | 0 | help text | empty |
-| `example --tui` | 2 | empty | `example: a TUI is not available: this command allows at most non-interactive` |
+| `example --tui` | 2 | empty | `example: a TUI is not available: this command allows at most interactive use` |
+| `example --interactive` (a terminal) | 0 | `hello, ada` after answering `ada` | empty |
+| `example --interactive --explode`, answer `n` | 130 | empty | `example: the user declined to fail on purpose (--explode)` |
 | `example --yes` | 0 | `hello, world` | empty |
 | `example --interactive --tui` | 2 | empty | `clap` usage error (the two conflict) |
 | closed data stream | 1 | — | `example: cannot write the output: …` |
@@ -97,11 +99,11 @@ mode, does not imply a mode, and does not affect the exit code.
 
 ### The example's ceiling
 
-`example::POLICY` is `Policy::non_interactive()`, so `--tui` and `--interactive`
-are refused with exit `2` and a message naming what was asked for. That is honest
-for this slice: no prompt or TUI frontend exists yet, and resolving to a mode
-nothing can host would be a lie. CLI-10 raises the ceiling by one line when the
-prompt adapter lands, and CLI-11 when the TUI does.
+`example::POLICY` is `Policy::up_to(Mode::Interactive)`: prompts are permitted, a
+TUI is not. `--tui` is refused with exit `2` and a message naming what was asked
+for, because 0.1 ships no full-screen frontend — resolving to a mode nothing can
+host would be a lie. CLI-11 raises the ceiling by one line when that frontend
+exists.
 
 ### Cancellation is its own category
 
@@ -110,6 +112,40 @@ mind" without pretending the input was invalid. The example maps it to exit `130
 — conventional for interruption, and deliberately not `2`. A cancelled run and a
 refused mode both execute nothing, but only one of them is a mistake in the
 invocation.
+
+## Prompting, and why it is not a second flow
+
+An interactive run and a flag run are the same command. The frontend only fills the
+gaps a flag left empty, and that rule lives in one place:
+
+```rust
+let mut session = Session::start(plan, || Box::new(Terminal::stdio()));
+let name = session.value(cli.name.take(), "Who should I greet?")?;   // never re-asks
+let output = session.run(&Example, |session| collect(session, cli))?; // collect, then run
+```
+
+- **A supplied value is never re-asked.** Parity is a property of `Session::value`,
+  not a promise: the same `--name ada` and the prompted `ada` reach the same input
+  through the same validation, which a BDD scenario asserts by comparing the data.
+- **A missing value is asked for only when the plan permits.** `Session::start`
+  builds the frontend through `Plan::with_frontend`, so a non-interactive run has
+  no frontend at all and a question is never asked, let alone answered.
+- **`--yes` answers confirmations and nothing else.** `Session::confirm` returns
+  `true` without asking; a confirmation with nothing able to ask returns `false`,
+  so a caller that forgets to check the plan fails safe instead of proceeding.
+- **Collection precedes execution.** `Session::run` collects and then executes, so
+  a cancelled question, a bad answer or an exhausted script returns before the
+  command is reachable.
+
+Two adapters ship. `Terminal` asks a person: questions go to the *diagnostic*
+stream so the data stream stays machine-readable, end of input is a cancellation
+rather than an empty answer, and a typo re-asks instead of guessing. `Scripted`
+answers from a list and is the seam every test uses — a flow can be driven end to
+end without a terminal and cannot reach one by accident.
+
+`FailureKind::Cancelled` is how "the user changed their mind" travels. Answering a
+confirmation with `no` is a *decision* (`Ok(false)`); dismissing the question, or
+end of input, is a *cancellation*. Only the second costs exit `130`.
 
 ## The companion derive
 
@@ -163,11 +199,9 @@ exposes internals (`unstable-*`), and both the derive and the trait mention only
 
 Documented so nobody reads absence as oversight:
 
-- **Interactive and TUI frontends.** The `interactive` and `tui` features reserve
-  dependency boundaries only; no code constructs a prompter or a terminal. The
-  policy that will gate them is implemented and tested; the ceiling is
-  [`Mode::NonInteractive`] until a frontend exists, so a request for prompts is
-  refused rather than silently downgraded.
+- **A TUI frontend.** The `tui` feature reserves a dependency boundary only; no
+  code draws a screen, and `--tui` is refused rather than downgraded. The prompt
+  adapter exists and is tested, so the ceiling allows [`Mode::Interactive`].
 - **`--json`.** The `json` feature reserves `serde_json`; no flag selects it, so
   only the human data line exists.
 - **Mode detection heuristics.** `Capabilities::detected` reports a terminal and

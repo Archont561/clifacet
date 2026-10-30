@@ -8,8 +8,8 @@
 
 use std::cell::Cell;
 
-use clifacet::policy::{self, Capabilities, Capability, Mode, Policy, Refusal, Request};
-use clifacet::{Command, Failure, FailureKind};
+use clifacet::policy::{Capabilities, Capability, Mode, Policy, Refusal, Request};
+use clifacet::{Failure, FailureKind};
 use rstest::rstest;
 
 /// An explicit request for one mode, with no confirmation preference.
@@ -189,73 +189,6 @@ fn a_cancelled_run_is_not_a_validation_failure() {
     );
     assert_ne!(cancelled.kind(), FailureKind::Execution);
     assert_eq!(cancelled.message(), "the user cancelled the prompt");
-}
-
-/// Counts how often it was asked to run, without touching a stream.
-#[derive(Default)]
-struct Counting {
-    runs: Cell<usize>,
-}
-
-impl Command for Counting {
-    type Input = ();
-    type Output = usize;
-
-    fn execute(&self, (): ()) -> Result<Self::Output, Failure> {
-        self.runs.set(self.runs.get() + 1);
-        Ok(self.runs.get())
-    }
-}
-
-#[rstest]
-#[case::refused_mode(
-    Request::mode(Mode::Tui),
-    Policy::up_to(Mode::Interactive),
-    Capabilities::terminal(),
-    0
-)]
-#[case::unavailable_mode(
-    Request::mode(Mode::Interactive),
-    Policy::up_to(Mode::Interactive),
-    Capabilities::headless(),
-    0
-)]
-#[case::allowed_mode(
-    Request::mode(Mode::Interactive),
-    Policy::up_to(Mode::Interactive),
-    Capabilities::terminal(),
-    1
-)]
-#[case::default_mode(
-    Request::none(),
-    Policy::non_interactive(),
-    Capabilities::terminal(),
-    1
-)]
-fn a_refused_request_never_executes_the_handler(
-    #[case] request: Request,
-    #[case] policy: Policy,
-    #[case] capabilities: Capabilities,
-    #[case] expected_runs: usize,
-) {
-    let command = Counting::default();
-
-    let outcome = policy::invoke(&command, (), request, policy, capabilities);
-
-    assert_eq!(command.runs.get(), expected_runs, "handler invocations");
-    if expected_runs == 0 {
-        let failure = outcome.expect_err("a refused request reports a failure");
-        assert_eq!(failure.kind(), FailureKind::Validation);
-        assert!(
-            failure.message().contains("non-interactive")
-                || failure.message().contains("terminal")
-                || failure.message().contains("TUI"),
-            "the message explains the refusal: {}",
-            failure.message()
-        );
-    } else {
-        assert_eq!(outcome.expect("an allowed request runs"), expected_runs);
-    }
 }
 
 #[rstest]

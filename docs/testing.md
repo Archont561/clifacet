@@ -7,7 +7,7 @@ job, and this page records what is actually installed and how to run it.
 | Question | Tool | Command | Lives in |
 | --- | --- | --- | --- |
 | Which value does each layer produce, for this argv? | `rstest` cases | `pixi run test` | `crates/clifacet/tests/validation_matrix.rs` |
-| Does the user-facing promise hold, end to end? | `rstest-bdd` | `pixi run test` | `crates/clifacet/tests/features/`, `facet_bdd.rs` |
+| Does the user-facing promise hold, end to end? | `rstest-bdd` | `pixi run test` | `crates/clifacet/tests/features/`, `*_bdd.rs` |
 | Does it hold for inputs no table would enumerate? | `proptest` | `pixi run test` | `crates/clifacet/tests/properties.rs` |
 | Does a mistake in the derive read clearly? | `trybuild` | `pixi run test` | `crates/clifacet/tests/ui/`, `crates/clifacet-macros/tests/ui/` |
 
@@ -47,6 +47,11 @@ Point 3 caught a real mistake while it was being written: the first draft assert
 that every run writes to the data stream, which a usage error does not. The
 invariant was corrected, not the assertion weakened: failure must explain itself on
 the diagnostic stream, and the two streams never carry output at the same time.
+
+Interactive flows are driven through `example::main_with`: capabilities are stated
+and the frontend is scripted (`clifacet::prompt::Scripted`), so no test can reach a
+real terminal. A test that prompts without a script fails with an exhausted-script
+error instead of waiting for input.
 
 Failing seeds are written to `crates/clifacet/tests/proptest-regressions/` and are
 committed, so a failure found on one machine re-runs on every other.

@@ -32,9 +32,6 @@
 
 use std::io::IsTerminal;
 
-use crate::command::Command;
-use crate::failure::Failure;
-
 /// How a run talks to the user.
 ///
 /// The ordering is meaningful: interaction only ever *decreases* when a
@@ -354,34 +351,4 @@ const fn describe(mode: Mode) -> &'static str {
         Mode::Interactive => "interactive use",
         Mode::Tui => "a TUI",
     }
-}
-
-/// Resolves the mode and runs the command, or explains and runs nothing.
-///
-/// This is the shared validation-and-execution path decision-3 asks for: one
-/// place where a request becomes a run, so that a refused or unavailable mode
-/// cannot reach a handler through a second route.
-///
-/// Cancellation is not handled here on purpose. It comes from a frontend, which
-/// runs before this function has input to give; a cancelled frontend must answer
-/// [`Failure::cancelled`](crate::Failure::cancelled) so the application can report
-/// it as its own category.
-///
-/// # Errors
-///
-/// Returns [`Failure::validation`] carrying the refusal's message when the mode
-/// cannot be honored — the command is not executed — or whatever the command
-/// itself returns.
-pub fn invoke<C: Command>(
-    command: &C,
-    input: C::Input,
-    request: Request,
-    policy: Policy,
-    capabilities: Capabilities,
-) -> Result<C::Output, Failure> {
-    policy
-        .resolve(request, capabilities)
-        .map_err(|refusal| Failure::validation(refusal.message()))?;
-
-    command.execute(input)
 }
