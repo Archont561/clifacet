@@ -47,6 +47,12 @@ rules:
     level: error
     message: "Required file lefthook.yml is missing."
 
+  - id: require-convco-config
+    kind: file_exists
+    paths: ".versionrc"
+    level: error
+    message: "The convco configuration is missing; commit messages and the changelog would drift."
+
   - id: require-main-manifest
     kind: file_exists
     paths: "crates/clifacet/Cargo.toml"
@@ -82,6 +88,24 @@ rules:
     paths: "pixi-sandbox.toml"
     level: error
     message: "The sandbox policy is missing."
+
+  - id: require-changelog
+    kind: file_exists
+    paths: "CHANGELOG.md"
+    level: error
+    message: "The changelog is missing; releases need notes."
+
+  - id: require-bump-version
+    kind: file_exists
+    paths: "scripts/bump_version.py"
+    level: error
+    message: "The version bump script is missing."
+
+  - id: require-prove-msrv
+    kind: file_exists
+    paths: "scripts/prove_msrv.py"
+    level: error
+    message: "The MSRV proof script is missing."
 
   - id: require-release-workflow
     kind: file_exists

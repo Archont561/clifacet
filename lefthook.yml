@@ -1,10 +1,80 @@
+# lefthook — local Git hooks. Every hook calls a Pixi task, so hooks and CI cannot drift.
+# https://lefthook.dev
+#
+# The split is about what a gate protects, not about trust:
+#
+#   pre-commit — every linter, formatter and repository check. They cost a few seconds on a warm
+#                checkout, and a commit is the last moment a fix is still free. `pixi run
+#                --frozen --no-install` reuses the installed environment on purpose: a plain
+#                `pixi run` re-solves, reaches for the network, and fails on an offline restore.
+#   pre-push   — the advisory and test gates. They are minutes of work and the very thing the
+#                push is about to hand to CI, so they run once per push rather than once per
+#                commit. Sequential and fail-fast (`piped`) because they share one cargo target
+#                directory and there is no point running tests after Clippy has already said no.
+#   commit-msg — convco checks the message against Conventional Commits, which is what the
+#                changelog, the version bump and the release notes are all derived from.
+#
+# `stage_fixed` re-stages whatever a formatter rewrote, so a commit is never made half-formatted.
+min_version: "2.2.2"
+
 pre-commit:
-  commands:
-    fmt:
-      run: pixi run fmt-check
+  parallel: true
+  jobs:
+    - name: rust-fmt
+      # rustfmt only: it rewrites files and never builds the crate graph.
+      glob: "*.rs"
+      run: pixi run --frozen --no-install fmt
+      stage_fixed: true
+
+    - name: rust-clippy
+      # `-D warnings` over the workspace and its tests rejects what CI's quality job rejects.
+      # A manifest change can introduce a warning without touching a single `.rs` file.
+      glob: ["*.rs", "**/Cargo.toml", "Cargo.lock"]
+      run: pixi run --frozen --no-install lint
+
+    - name: feature-boundaries
+      # Each optional feature is compiled on its own, so a `#[cfg]` mistake fails here rather
+      # than in the CI matrix half an hour later.
+      glob: ["*.rs", "**/Cargo.toml", "Cargo.lock"]
+      run: pixi run --frozen --no-install check-features
+
+    - name: alint
+      # Repository policy covers files no other linter reads, so it runs on every commit.
+      run: pixi run --frozen --no-install alint
+
+    - name: actionlint
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: pixi run --frozen --no-install actionlint
+
+    - name: sandbox-check
+      # Generated workflows and the restore launcher are owned by `pixi-sandbox init`; this
+      # fails the moment one of them is hand-edited or drifts from the authored policy.
+      glob: ["pixi-sandbox.toml", "scripts/restore.sh", ".github/workflows/*.yml"]
+      run: pixi run --frozen --no-install sandbox-check
+
+    - name: skills-check
+      glob: [".agents/**", "scripts/check_skills.py", "skills-lock.json"]
+      run: pixi run --frozen --no-install skills-check
+
+commit-msg:
+  jobs:
+    - name: convco
+      # `{1}` is the file holding the proposed message. `--strip` drops the `#` comment block
+      # that `git commit` leaves in that file, exactly like Git's own cleanup step.
+      run: pixi run --frozen --no-install lint-commit < {1}
+
 pre-push:
-  commands:
-    quality:
-      run: pixi run quality
-    tests:
-      run: pixi run test && pixi run test-doc
+  piped: true
+  jobs:
+    - name: audit
+      # The RustSec database is fetched here; it is the one gate that wants the network, which
+      # is why it is not in pre-commit.
+      run: pixi run --frozen --no-install audit
+
+    - name: deny
+      run: pixi run --frozen --no-install deny
+
+    - name: tests
+      # All three suites: nextest covers lib and integration targets, `test-doc` covers the
+      # doctests nextest does not run, `test-scripts` covers the repository Python.
+      run: pixi run --frozen --no-install test && pixi run --frozen --no-install test-doc && pixi run --frozen --no-install test-scripts

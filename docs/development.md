@@ -16,6 +16,38 @@ pixi run test-scripts   # repository script tests (pytest over scripts/tests)
 pixi run coverage       # LCOV report plus a 90% source-line gate
 ```
 
+`quality` fetches Bun packages and the RustSec advisory database, so it is a CI
+command rather than a fast inner loop. Before each commit, run the offline subset
+through Pixi with `--no-install` (a restore already materialised the environment):
+
+```sh
+pixi run --frozen --no-install test-local
+```
+
+That covers formatting, Clippy, alint, both nextest groups, the script tests,
+`cargo deny` and the sandbox check in about a minute on a warm checkout.
+
+## Git hooks
+
+`pixi run hooks-install` writes the hooks `lefthook.yml` declares into `.git/hooks`. Every hook
+calls a Pixi task, so a hook and the matching CI job cannot drift:
+
+| Hook         | Runs                                                                                                 | Why there                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `pre-commit` | `fmt` (re-staged), `lint`, `check-features`, `alint`, `actionlint`, `sandbox-check`, `skills-check`   | Seconds on a warm checkout, and a commit is the last moment a fix is still free.                                      |
+| `pre-push`   | `audit`, `deny`, `test`, `test-doc`, `test-scripts`                                                   | Minutes of work, and exactly what the push is about to hand to CI, so they run once per push instead of per commit.  |
+| `commit-msg` | `convco check --from-stdin --strip`                                                                   | The message is the input to the changelog, the version bump and the release notes.                                    |
+
+The hooks call `pixi run --frozen --no-install`, which reuses the installed environment instead
+of re-solving it: a plain `pixi run` would reach for the network and fail on an offline restore.
+Run `pixi install --locked` once after cloning, and the hooks work from then on. `git commit
+--no-verify` and `git push --no-verify` skip them when a work-in-progress commit genuinely needs
+to land; CI remains the authoritative verdict.
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), configured
+in `.versionrc` for convco. That file also maps each commit type to a Keep a Changelog section,
+so `convco changelog` and `scripts/bump_version.py` agree on headings.
+
 ## Dev container
 
 In VS Code, choose **Dev Containers: Reopen in Container**; GitHub Codespaces
@@ -43,13 +75,36 @@ container; recreate the container to change that choice. The global package is
 version-pinned, but its separate global dependency graph is not in the project
 lock. No provider login or model catalogue refresh is automatic; if desired,
 run `opencode auth login` and `opencode models --refresh` yourself. No
-credentials are stored in this repository. The setup does not install Git hooks,
-commit, push or release.
+credentials are stored in this repository. The setup installs the lefthook Git
+hooks, but never commits, pushes or releases.
 
 This online bootstrap is distinct from the Git-branch sandbox restore described
 below. It is not an offline image, and it neither publishes nor fetches the
 sandbox branch automatically. Re-running `.devcontainer/setup.sh` installs or
 rechecks the tools and can use the network again.
+
+## Minimum supported Rust version
+
+`[workspace.package] rust-version` is the oldest compiler this repository claims
+to support; both crates inherit it. The claim is verified, not assumed:
+
+```sh
+python scripts/prove_msrv.py --print-toolchain   # the declared version
+python scripts/prove_msrv.py --print-plan        # the exact checks
+pixi run --frozen prove-msrv                     # check with a rustup-selected toolchain
+python scripts/prove_msrv.py --toolchain ""      # reuse the pinned compiler (plumbing only)
+```
+
+The `msrv` CI job installs the declared toolchain and runs that script, which
+checks the empty feature set, each optional feature alone and the all-features
+combination, with `--locked --all-targets`. Because the version comes from the
+manifest, CI can never test a different version than the one advertised, and a
+dependency that starts requiring a newer compiler fails the job with
+`package X requires rustc Y`. Raising the floor is then a deliberate manifest
+edit, justified by re-scanning `rust-version` across the dependency graph.
+
+This is the one place CI does not use Pixi, since a Pixi environment pins a
+single compiler (decision-5).
 
 ## Release
 
@@ -58,16 +113,46 @@ uses crates.io trusted publishing, exchanging a GitHub OIDC token for a
 short-lived registry token, so no crates.io secret is stored here.
 
 ```sh
-gh workflow run release.yml            # dry run: packages both crates, publishes nothing
-gh workflow run release.yml -f dry_run=false   # real release, still gated by the `crates` environment
+gh workflow run release.yml                     # dry run: packages the macro crate, publishes nothing
+gh workflow run release.yml -f dry_run=false    # real release; see the authorization note below
 ```
 
-The dispatch only runs from `main`, and the `crates` environment approval is the
-release authorization. The macro crate is published first, the workflow waits
-until its version appears in the registry index, and only then publishes the
-main crate. Both steps skip a version that is already indexed, so a run that
+The dispatch only runs from `main`. As of 2026-10-30 the `crates` environment
+has **no protection rules**, so it does not stop a run: the manual dispatch is
+the only authorization gate today. Add required reviewers to `crates` before
+relying on the environment as the gate that decision-7 describes.
+
+A dry run packages and verifies the macro crate only. The main crate cannot be
+packaged before its macro version is published, so it is packaged inside the
+publish loop. That loop publishes the macro crate first, waits
+until that version appears in the registry index, then packages and publishes
+the main crate. Both steps skip a version that is already indexed, so a run that
 fails after the first publish is finished by re-running it rather than by
 reverting anything.
+
+### Cut a release
+
+1. Describe the change in `CHANGELOG.md` under `## [Unreleased]`. The bump step
+   refuses to promote an empty section, so notes cannot be skipped by accident.
+2. Bump every recorded version and relock in one command:
+
+   ```sh
+   pixi run --frozen --no-install bump-version 0.2.0 --relock
+   ```
+
+   That rewrites `Cargo.toml` `[workspace.package] version`, the
+   `clifacet-macros` requirement in `[workspace.dependencies]`, and
+   `pixi.toml` `[workspace] version`; it promotes `Unreleased` to a dated
+   section; and it refreshes `Cargo.lock` offline. `--dry-run` previews the
+   change and `--check` verifies the three sites agree without writing.
+3. Open a PR with the bump; CI's `lock guard` proves the relock and the `msrv`
+   job proves the floor.
+4. Merge, then dispatch the release. The tag `v<version>` and its GitHub Release
+   notes are created automatically once both crates are published:
+
+   ```sh
+   gh workflow run release.yml -f dry_run=false
+   ```
 
 ## Rust dependencies and features
 

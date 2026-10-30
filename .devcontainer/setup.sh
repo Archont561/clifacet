@@ -47,6 +47,12 @@ install_project_clis() {
   pixi run --frozen bun-install
 }
 
+install_git_hooks() {
+  # Writes the hooks lefthook.yml declares into .git/hooks; they reuse the installed
+  # environment, so this must run after install_project_environment.
+  pixi run --frozen --no-install hooks-install
+}
+
 install_opencode() {
   # Keep this optional developer tool separate from project dependencies.
   local opencode_bin
@@ -67,6 +73,7 @@ main() {
   install_c_compiler
   install_project_environment
   install_project_clis
+  install_git_hooks
 
   # Opt out at container creation with CLIFACET_INSTALL_OPENCODE=0.
   if [[ "${CLIFACET_INSTALL_OPENCODE:-1}" == 1 ]]; then
