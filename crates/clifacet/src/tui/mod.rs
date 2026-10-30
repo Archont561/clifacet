@@ -9,6 +9,10 @@
 //!   nothing but fields;
 //! - [`app`] runs the loop, and is the only place a terminal is touched.
 //!
+//! Two escape hatches compose it all without a second command: [`CustomField`] draws
+//! one field with the application's own widget, and [`app::run_with`] draws the whole
+//! screen. Both keep the same keys, refusals, submission and handler.
+//!
 //! The TUI is a frontend, not a second command. Submission hands the answers back to
 //! the application, which validates them through the same bridge the flags use —
 //! see [`crate::example::run_tui`] for the whole path in one place.
@@ -31,9 +35,9 @@ pub mod app;
 pub mod state;
 pub mod widgets;
 
-pub use app::{live_keys, run, run_on, translate};
+pub use app::{draw_form, live_keys, run, run_on, run_on_with, run_with, translate};
 pub use state::{FieldState, FormState, Key, Outcome};
-pub use widgets::{Field, Form};
+pub use widgets::{CustomField, Field, Form};
 
 // The frontend library, re-exported the way `clap` is: an application drawing its
 // own screen needs the same version this crate was built against.

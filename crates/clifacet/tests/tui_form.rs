@@ -278,3 +278,16 @@ fn an_argument_without_help_is_labelled_by_its_name() {
         "a value with no help still has to be askable"
     );
 }
+
+#[test]
+fn a_screen_too_short_draws_only_what_fits() {
+    // A terminal can be resized mid-run; a form that panics on a short screen would
+    // take the run with it.
+    let state = form();
+
+    let text = rendered(&state, 20, 1);
+    let rows: Vec<&str> = text.lines().collect();
+
+    assert_eq!(rows.len(), 1, "one row was asked for: {text}");
+    assert!(rows[0].contains("Who to greet"), "{text}");
+}

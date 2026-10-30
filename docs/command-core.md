@@ -186,6 +186,28 @@ Four rules keep it a frontend rather than a second command:
   reads the process's event stream, and `app::run_on` enters and leaves the
   alternate screen — and leaves it on every path, cancellation included.
 
+### The two escape hatches
+
+decision-4 asks for composition without a second command, and ships exactly two ways
+to replace something, both explicit:
+
+```rust
+// 1. One field, drawn by the application.
+Form::new(&state).with_field("name", &Masked);
+
+// 2. The whole screen, drawn by the application.
+app::run_with(&mut terminal, &mut state, keys, my_screen, example::tui_submit);
+```
+
+Neither is a registry and neither can change behaviour. `CustomField::draw` is given
+the field, its value and whether it has the focus, because a widget value built once
+would show a stale answer; `run_with` replaces the drawing and nothing else — the
+keys, the refusals, the submission and the handler are the same loop, so a custom
+screen reaches the same validation as the generated form. `run_on_with` is the same
+hatch with the alternate screen, so a custom screen is not left to reimplement
+entering and leaving it. `examples/tui_custom_screen.rs` is both hatches in one
+runnable screen.
+
 The one thing a headless test cannot reach is the process's own terminal: the size
 probe, the raw-mode restore and the live event stream. Everything they wrap is
 covered, which is why `cargo llvm-cov` reports 815 of 820 lines rather than all of

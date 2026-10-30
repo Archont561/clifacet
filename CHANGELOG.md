@@ -11,6 +11,11 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- Two explicit escape hatches for the full-screen form: `tui::CustomField` lets an
+  application draw one answer with its own widget, and `app::run_with` (with
+  `run_on_with` for the alternate screen) replaces the whole drawing while keeping
+  the same keys, refusals, submission and handler. Neither is a registry or a
+  backend abstraction, and `examples/tui_custom_screen.rs` shows both at once.
 - A full-screen form built from public `ratatui` components: `clifacet::tui` exposes
   the state machine (`FormState`, `Key`, `Outcome`), the widgets (`Form`, `Field`)
   and the loop (`app::run`), and the generated form is assembled from those same

@@ -17,6 +17,11 @@ interactive = ["dep:inquire"]
 tui = ["dep:ratatui", "dep:crossterm"]
 json = ["dep:serde_json"]
 
+# Both escape hatches are demonstrated in an example that can be run, not only in tests.
+[[example]]
+name = "tui_custom_screen"
+required-features = ["tui"]
+
 [dependencies]
 clifacet-macros.workspace = true
 clap.workspace = true
