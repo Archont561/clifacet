@@ -57,6 +57,10 @@ pub mod failure;
 pub mod policy;
 pub mod prompt;
 
+/// The full-screen frontend, available with the `tui` feature.
+#[cfg(feature = "tui")]
+pub mod tui;
+
 /// The version of the `clifacet` package.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

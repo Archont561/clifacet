@@ -109,13 +109,16 @@ impl Capabilities {
 
     /// What this process actually has.
     ///
-    /// Nothing here claims TUI support: a full-screen frontend arrives later, and
-    /// reporting a capability before it exists would let a policy resolve to it.
+    /// A full-screen interface needs two things: the `tui` feature, so there is code
+    /// to draw with, and a terminal to draw on. Claiming either without the other
+    /// would let a policy resolve to a mode that cannot render, so the capability is
+    /// the conjunction and nothing else is probed.
     #[must_use]
     pub fn detected() -> Self {
+        let terminal = std::io::stdout().is_terminal();
         Self {
-            terminal: std::io::stdout().is_terminal(),
-            tui: false,
+            terminal,
+            tui: terminal && cfg!(feature = "tui"),
         }
     }
 

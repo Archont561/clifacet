@@ -10,7 +10,8 @@ description = "Composable command-line presentation modes"
 readme = "../../README.md"
 
 [features]
-# These feature names reserve the dependency boundaries; frontends are not yet implemented.
+# Each frontend is a dependency boundary: an application enables the ones it uses and
+# pays for no others. The TUI's components are public either way — see `tui` in the docs.
 default = []
 interactive = ["dep:inquire"]
 tui = ["dep:ratatui", "dep:crossterm"]
