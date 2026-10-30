@@ -15,10 +15,12 @@ cargo-deny = ">=0.20.2,<0.21"
 cargo-audit = ">=0.22.1,<0.23"
 # Conventional commits, versioning and changelog tooling for release prep.
 convco = ">=0.7.2,<0.8"
-# actionlint only runs its embedded shell checks when a `shellcheck` binary is on PATH.
-# Pinning it here makes the local `actionlint` task agree with CI instead of passing
-# a `run:` block the runner rejects. GPL-3.0 tooling: executed in development, never
-# linked into or redistributed with the crate.
+# actionlint shells out for its shell checks instead of embedding them: without a
+# `shellcheck` binary on PATH it silently skips every `run:` block. CI's runner has one
+# and this environment did not, so the same actionlint run passed locally and failed in
+# CI. Pinning it here makes both check the same shell with the same version.
+# GPL-3.0 tooling: executed during development, never linked into or redistributed with
+# the crate, so the dependency policy is untouched.
 shellcheck = ">=0.11,<0.12"
 actionlint = ">=1.7.12,<1.8"
 lefthook = ">=2.2.2,<2.3"
