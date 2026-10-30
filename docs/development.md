@@ -16,6 +16,17 @@ pixi run test-scripts   # repository script tests (pytest over scripts/tests)
 pixi run coverage       # LCOV report plus a 90% source-line gate
 ```
 
+`quality` fetches Bun packages and the RustSec advisory database, so it is a CI
+command rather than a fast inner loop. Before each commit, run the offline subset
+through Pixi with `--no-install` (a restore already materialised the environment):
+
+```sh
+pixi run --frozen --no-install test-local
+```
+
+That covers formatting, Clippy, alint, both nextest groups, the script tests,
+`cargo deny` and the sandbox check in about a minute on a warm checkout.
+
 ## Dev container
 
 In VS Code, choose **Dev Containers: Reopen in Container**; GitHub Codespaces
@@ -97,6 +108,30 @@ until that version appears in the registry index, then packages and publishes
 the main crate. Both steps skip a version that is already indexed, so a run that
 fails after the first publish is finished by re-running it rather than by
 reverting anything.
+
+### Cut a release
+
+1. Describe the change in `CHANGELOG.md` under `## [Unreleased]`. The bump step
+   refuses to promote an empty section, so notes cannot be skipped by accident.
+2. Bump every recorded version and relock in one command:
+
+   ```sh
+   pixi run --frozen --no-install bump-version 0.2.0 --relock
+   ```
+
+   That rewrites `Cargo.toml` `[workspace.package] version`, the
+   `clifacet-macros` requirement in `[workspace.dependencies]`, and
+   `pixi.toml` `[workspace] version`; it promotes `Unreleased` to a dated
+   section; and it refreshes `Cargo.lock` offline. `--dry-run` previews the
+   change and `--check` verifies the three sites agree without writing.
+3. Open a PR with the bump; CI's `lock guard` proves the relock and the `msrv`
+   job proves the floor.
+4. Merge, then dispatch the release. The tag `v<version>` and its GitHub Release
+   notes are created automatically once both crates are published:
+
+   ```sh
+   gh workflow run release.yml -f dry_run=false
+   ```
 
 ## Rust dependencies and features
 
