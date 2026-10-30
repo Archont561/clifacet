@@ -56,7 +56,8 @@ Measured on `crates/clifacet` at this commit:
 | `example --explode` | 1 | empty | `example: the example operation failed on purpose (--explode)` |
 | `example --nope` | 2 | empty | `clap` usage error |
 | `example --help` | 0 | help text | empty |
-| `example --tui` | 2 | empty | `example: a TUI is not available: this command allows at most interactive use` |
+| `example --tui` (built with `tui`) | 0 | the form, then `hello, world` | empty |
+| `example --tui` (built without `tui`) | 2 | empty | `example: a TUI is not available: this command allows at most interactive use` |
 | `example --interactive` (a terminal) | 0 | `hello, ada` after answering `ada` | empty |
 | `example --interactive --explode`, answer `n` | 130 | empty | `example: the user declined to fail on purpose (--explode)` |
 | `example --yes` | 0 | `hello, world` | empty |
@@ -99,11 +100,12 @@ mode, does not imply a mode, and does not affect the exit code.
 
 ### The example's ceiling
 
-`example::POLICY` is `Policy::up_to(Mode::Interactive)`: prompts are permitted, a
-TUI is not. `--tui` is refused with exit `2` and a message naming what was asked
-for, because 0.1 ships no full-screen frontend — resolving to a mode nothing can
-host would be a lie. CLI-11 raises the ceiling by one line when that frontend
-exists.
+`example::POLICY` allows prompts, and allows a TUI only when the crate is built
+with the `tui` feature. Without it `--tui` is refused with exit `2` and a message
+naming what was asked for: a mode nothing can draw is not a mode, so promising it
+would be a lie. `Capabilities::detected` applies the same rule from the other side
+— the TUI capability is the feature *and* a terminal — which is why the policy can
+never resolve to a mode the binary cannot render.
 
 ### Cancellation is its own category
 
@@ -146,6 +148,48 @@ end without a terminal and cannot reach one by accident.
 `FailureKind::Cancelled` is how "the user changed their mind" travels. Answering a
 confirmation with `no` is a *decision* (`Ok(false)`); dismissing the question, or
 end of input, is a *cancellation*. Only the second costs exit `130`.
+
+## The full-screen form
+
+The `tui` feature adds a full-screen frontend, and the components it draws with are
+public: an application that wants a different screen builds its own out of the same
+pieces (decision-4).
+
+| Item | What it is |
+| --- | --- |
+| `tui::FormState`, `tui::FieldState` | the form: values, focus, the last refusal. No `ratatui` in sight |
+| `tui::Key`, `tui::Outcome` | the keystrokes a form answers, and what it decided about one |
+| `tui::Form`, `tui::Field` | `ratatui` widgets — and the generated form is nothing but fields |
+| `tui::app::run` | the loop: draw, read, submit |
+| `tui::ratatui` | the frontend library at the version this crate was built against |
+
+Four rules keep it a frontend rather than a second command:
+
+- **A form is generated from the command, and asked for explicitly.**
+  `FormState::generated(&Cli::command(), &["name", "repeat", "level"])` takes the
+  labels from the arguments' help and the initial values from their defaults. Which
+  arguments a screen asks for is a design decision, so it is named, never guessed:
+  the flags that chose the mode are not questions for someone who already chose one.
+  A name the command does not have is an error, not an empty form.
+- **Submission goes through `clap`.** The answers become arguments,
+  `Cli::try_parse_from` parses them, and `Facet::validate` plus the handler run as
+  they would for flags. A rejected answer — `--repeat 9`, `--repeat x` — keeps the
+  form open and shows the same words the flags would print, so a typo costs an edit
+  instead of the whole run. The BDD scenario asserts the data a typed `ada` produces
+  is byte-for-byte what `--name ada` produces.
+- **A prefilled value is an offer.** Typing replaces a default the user has not
+  edited; backspace edits it like any other text. Appending to a default would make
+  "change 1 to 3" mean "delete the 1 first".
+- **The state machine is screen-free.** `Key` is a key, not a crossterm event, so
+  focus, editing, submission and cancellation are asserted against a `TestBackend`
+  and a scripted key list. The terminal appears in exactly two places: `live_keys`
+  reads the process's event stream, and `app::run_on` enters and leaves the
+  alternate screen — and leaves it on every path, cancellation included.
+
+The one thing a headless test cannot reach is the process's own terminal: the size
+probe, the raw-mode restore and the live event stream. Everything they wrap is
+covered, which is why `cargo llvm-cov` reports 815 of 820 lines rather than all of
+them.
 
 ## The companion derive
 
@@ -199,17 +243,18 @@ exposes internals (`unstable-*`), and both the derive and the trait mention only
 
 Documented so nobody reads absence as oversight:
 
-- **A TUI frontend.** The `tui` feature reserves a dependency boundary only; no
-  code draws a screen, and `--tui` is refused rather than downgraded. The prompt
-  adapter exists and is tested, so the ceiling allows [`Mode::Interactive`].
+- **Widgets beyond the form.** The TUI ships a labelled field and a form. Tables,
+  scroll views, the whole-screen escape hatches (CLI-12) and theming are not there,
+  and neither is a universal widget-backend abstraction — tests use `ratatui`'s own
+  `TestBackend`, which is why `tui::ratatui` is re-exported.
 - **`--json`.** The `json` feature reserves `serde_json`; no flag selects it, so
   only the human data line exists.
 - **Mode detection heuristics.** `Capabilities::detected` reports a terminal and
   nothing else; no `TERM`, locale or window-size probing. A false positive there
   would resolve to a mode that cannot render.
 - **Cancellation from a real frontend.** The category, the message and the exit
-  code exist and are tested, but nothing can cancel yet because nothing asks. A
-  frontend dismissed by the user reports [`Failure::cancelled`].
+  code exist and are tested against `Scripted` and against the TUI's scripted keys;
+  an actual person pressing <kbd>Esc</kbd> is the one path no test can take.
 - **Canonical argv replay.** The derive proves the command that was parsed; it
   does not rebuild argv or re-parse it, so constructs `clap` cannot re-validate
   stay out of scope.

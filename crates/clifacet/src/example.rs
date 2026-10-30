@@ -149,7 +149,8 @@ pub struct InteractionFlags {
 
     /// Ask for a full-screen interface.
     ///
-    /// Refused for now: 0.1 ships no TUI, and the policy below says so.
+    /// Honoured when the crate is built with the `tui` feature; refused with a
+    /// message otherwise, because a mode nothing can draw is not a mode.
     #[arg(long)]
     pub tui: bool,
 
@@ -163,10 +164,14 @@ pub struct InteractionFlags {
 /// How interactive this application is willing to be.
 ///
 /// Prompts are permitted — [`run`] supplies a terminal frontend for them. A TUI is
-/// not: 0.1 ships no full-screen interface, so `--tui` is refused with a message
-/// rather than resolving to a mode nothing can host. CLI-11 raises the ceiling
-/// again when that frontend exists.
-pub const POLICY: Policy = Policy::up_to(Mode::Interactive);
+/// permitted only when the `tui` feature is compiled in, because [`run_with`] then
+/// has a screen to draw on; without it `--tui` is refused with a message rather than
+/// resolving to a mode nothing can host.
+pub const POLICY: Policy = Policy::up_to(if cfg!(feature = "tui") {
+    Mode::Tui
+} else {
+    Mode::Interactive
+});
 
 /// The mode the user asked for, if any.
 ///
@@ -341,6 +346,13 @@ pub fn run_with(
         }
     };
 
+    // Without the feature the policy never resolves to this mode, so this branch is
+    // dead code rather than a fallback — it exists only to keep the two in step.
+    #[cfg(feature = "tui")]
+    if plan.mode() == Mode::Tui {
+        return run_tui(std::io::stdout(), crate::tui::live_keys(), out, err);
+    }
+
     let mut session = Session::start(plan, build_frontend);
     match session.run(&Example, move |session| collect(session, cli)) {
         Ok(output) => match output.write_to(out) {
@@ -440,6 +452,94 @@ fn report_usage(error: &clap::Error, out: &mut dyn Write, err: &mut dyn Write) -
         let _ = write!(out, "{error}");
         EXIT_SUCCESS
     }
+}
+
+/// Runs the full-screen form, then reports its outcome like any other run.
+///
+/// The screen and the keystrokes are parameters so a test drives this exact code
+/// with a buffer and a script; a real run passes stdout and the terminal's events.
+///
+/// # Errors and exit codes
+///
+/// This is the application layer, so it answers with an exit code: the data on
+/// `out`, the diagnostic on `err`, and the same mapping [`exit_code`] applies to
+/// every other failure. A cancelled form is a cancellation, not a mistake.
+#[cfg(feature = "tui")]
+pub fn run_tui<W: Write>(
+    screen: W,
+    keys: impl IntoIterator<Item = crate::tui::Key>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    let mut state = tui_form();
+    let outcome = crate::tui::run_on(screen, &mut state, keys, tui_submit);
+    match outcome {
+        Ok(lines) => match write_lines(&lines, out) {
+            Ok(()) => EXIT_SUCCESS,
+            Err(error) => {
+                let failure = Failure::execution(format!("cannot write the output: {error}"));
+                report(&failure, err);
+                exit_code(&failure)
+            }
+        },
+        Err(failure) => {
+            report(&failure, err);
+            exit_code(&failure)
+        }
+    }
+}
+
+/// The form this command asks, generated from the command itself.
+///
+/// Only the value arguments appear: the flags that chose the mode are not questions
+/// for a user who already chose one.
+///
+/// # Panics
+///
+/// Panics if the command no longer has one of these arguments. The names are a
+/// constant beside the command they name, so a mismatch is a bug in this crate, not
+/// something a user can cause; [`crate::tui::FormState::generated`] still reports it
+/// as a failure for anyone generating a form from someone else's command.
+#[cfg(feature = "tui")]
+#[must_use]
+pub fn tui_form() -> crate::tui::FormState {
+    crate::tui::FormState::generated(&<Cli as Facet>::command(), &["name", "repeat", "level"])
+        .expect("the example form names arguments its own command has")
+}
+
+/// Turns the answers into a run, through the same validation and handler as the flags.
+///
+/// # Errors
+///
+/// Returns the message to show on the form when the answers are not a valid
+/// invocation: the parser's own words for a malformed value, or the failure the
+/// handler reported. Both are the same words the flags would produce.
+///
+/// The form produces arguments, `clap` parses them — the grammar stays the authority,
+/// aliases and value parsers included — and the draft goes through the same bridge
+/// every other frontend uses. A refusal is returned as a message for the form to
+/// show, because a form that closes on a typo makes the user start again.
+#[cfg(feature = "tui")]
+pub fn tui_submit(state: &crate::tui::FormState) -> Result<Vec<String>, String> {
+    let argv = std::iter::once(String::from("example")).chain(state.arguments());
+    let cli = match Cli::try_parse_from(argv) {
+        Ok(cli) => cli,
+        Err(error) => return Err(error.to_string()),
+    };
+
+    match Facet::validate(cli).and_then(|input| Example.execute(input)) {
+        Ok(output) => Ok(output.lines),
+        Err(failure) => Err(failure.message().to_owned()),
+    }
+}
+
+/// Writes each line of data, keeping the data stream machine-readable.
+#[cfg(feature = "tui")]
+fn write_lines(lines: &[String], out: &mut dyn Write) -> std::io::Result<()> {
+    for line in lines {
+        writeln!(out, "{line}")?;
+    }
+    Ok(())
 }
 
 /// One diagnostic line per failure, with the program name the application owns.

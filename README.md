@@ -7,7 +7,8 @@
 
 **A Rust library for command-line presentation modes.**
 
-Experimental scaffold: the command, interactive, and TUI APIs are not implemented yet.
+Experimental scaffold: the command core, prompts, the companion derive and the
+full-screen TUI are implemented; the JSON frontend is not.
 The workspace currently contains `clifacet` and the `clifacet-macros` procedural macro crate.
 
 ## Develop

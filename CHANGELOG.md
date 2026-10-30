@@ -11,6 +11,14 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- A full-screen form built from public `ratatui` components: `clifacet::tui` exposes
+  the state machine (`FormState`, `Key`, `Outcome`), the widgets (`Form`, `Field`)
+  and the loop (`app::run`), and the generated form is assembled from those same
+  widgets, so an application can reuse them for its own screen. Submission becomes
+  arguments and goes through `clap` and the derived validation, so a typed answer
+  produces exactly what the equivalent flags produce; a refused answer stays on the
+  form with the same wording. `--tui` is honoured when the `tui` feature is built
+  and refused with a message when it is not.
 - A prompt adapter on the same command core: `clifacet::prompt` collects what flags
   left out through a `Prompter`, asking only when the resolved plan permits and never
   re-asking a supplied value. `Terminal` asks a person, `Scripted` answers from a

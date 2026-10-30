@@ -39,6 +39,17 @@ pixi run --frozen -x cargo run --example example -- --name ada --repeat 2
 Its tests pass their own buffers instead of a terminal, so `test-integration` covers the success,
 validation, execution, usage and help paths without a TTY.
 
+The full-screen form is behind the `tui` feature, and it needs a real terminal to be typed into:
+
+```sh
+pixi run --frozen -x cargo run --features tui --example example -- --tui
+```
+
+Its tests need neither: `tui::app::run` takes a `ratatui` backend and a list of keys, so
+`TestBackend` plus a script covers drawing, editing, submission and cancellation. `main_with` with
+a `tui`-capable `Capabilities` covers the dispatch, and the process's own terminal is the only part
+no test can reach.
+
 ## Git hooks
 
 `pixi run hooks-install` writes the hooks `lefthook.yml` declares into `.git/hooks`. Every hook
@@ -204,8 +215,10 @@ also reserves three **optional dependency boundaries**, disabled by default:
 - `tui`: ratatui and crossterm (the same crossterm 0.29 line as inquire).
 - `json`: serde_json.
 
-These features currently only select dependencies; the planned command, prompt,
-TUI, JSON and derive APIs are **not implemented**. The macros crate includes
+`interactive`, `tui` and the derive are implemented and covered; `json` still only
+selects its dependency, and no flag produces JSON yet. Everything is checked both
+ways — `--no-default-features` builds and a feature matrix task (`check-features`)
+compiles each boundary on its own. The macros crate includes
 proc-macro2, quote and syn for the planned companion derive. rstest, rstest-bdd,
 proptest, assert_cmd and trybuild remain development dependencies. The selected
 inquire adapter is a starting dependency, not a promise to expose its internal
