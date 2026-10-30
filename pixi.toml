@@ -60,6 +60,9 @@ test = { depends-on = ["test-src", "test-integration"] }
 test-doc = "cargo test --workspace --all-features --doc --locked"
 coverage = "mkdir -p coverage && cargo llvm-cov nextest --workspace --all-features --locked --lcov --output-path coverage/lcov.info --ignore-filename-regex '(^|/)tests/' && python scripts/check_coverage.py coverage/lcov.info"
 test-scripts = "python -m pytest scripts/tests"
+# Proves the declared MSRV. CI installs that toolchain; locally this needs rustup,
+# or `--toolchain ""` to reuse the pinned compiler as a plumbing check.
+prove-msrv = "python scripts/prove_msrv.py"
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
 hooks-install = "lefthook install"

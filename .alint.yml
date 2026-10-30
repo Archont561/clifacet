@@ -83,6 +83,12 @@ rules:
     level: error
     message: "The sandbox policy is missing."
 
+  - id: require-prove-msrv
+    kind: file_exists
+    paths: "scripts/prove_msrv.py"
+    level: error
+    message: "The MSRV proof script is missing."
+
   - id: require-release-workflow
     kind: file_exists
     paths: ".github/workflows/release.yml"

@@ -20,5 +20,5 @@ Recorded 2026-10-30 against `main` at `6ae7116`. Each line cites evidence; none 
 ## Remaining
 
 - **CLI-4** is done as of 2026-10-30; the only outstanding risk it leaves is the environment gate above.
-- **CLI-1 AC#3** keeps M0's toolchain clause honest: `Cargo.toml` declares `rust-version = "1.88"` while no CI job compiles at 1.88, contradicting decision-10. Either add the matrix job or drop the key; CLI-16 is the planned home for the proof.
+- **CLI-1 AC#3** is close to closed: `scripts/prove_msrv.py` and the `msrv` CI job replaced the unproven claim with a check that reads `rust-version` from the manifest. It closes when that job is green on `main`; CLI-16 still owns the fuller OS and feature qualification.
 - **CLI-19** tracks the RUSTSEC-2026-0374 exception and now belongs to m-4 instead of floating unassigned.

@@ -51,6 +51,29 @@ below. It is not an offline image, and it neither publishes nor fetches the
 sandbox branch automatically. Re-running `.devcontainer/setup.sh` installs or
 rechecks the tools and can use the network again.
 
+## Minimum supported Rust version
+
+`[workspace.package] rust-version` is the oldest compiler this repository claims
+to support; both crates inherit it. The claim is verified, not assumed:
+
+```sh
+python scripts/prove_msrv.py --print-toolchain   # the declared version
+python scripts/prove_msrv.py --print-plan        # the exact checks
+pixi run --frozen prove-msrv                     # check with a rustup-selected toolchain
+python scripts/prove_msrv.py --toolchain ""      # reuse the pinned compiler (plumbing only)
+```
+
+The `msrv` CI job installs the declared toolchain and runs that script, which
+checks the empty feature set, each optional feature alone and the all-features
+combination, with `--locked --all-targets`. Because the version comes from the
+manifest, CI can never test a different version than the one advertised, and a
+dependency that starts requiring a newer compiler fails the job with
+`package X requires rustc Y`. Raising the floor is then a deliberate manifest
+edit, justified by re-scanning `rust-version` across the dependency graph.
+
+This is the one place CI does not use Pixi, since a Pixi environment pins a
+single compiler (decision-5).
+
 ## Release
 
 Publishing is manual and never triggered by a push. `.github/workflows/release.yml`
