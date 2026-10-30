@@ -6,6 +6,7 @@
 //! owning validation or the handler.
 
 use ratatui::backend::{Backend, CrosstermBackend};
+use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::widgets::Widget;
 use ratatui::{Terminal, TerminalOptions, Viewport};
@@ -32,6 +33,32 @@ pub fn run<B: Backend>(
     terminal: &mut Terminal<B>,
     state: &mut FormState,
     keys: impl IntoIterator<Item = Key>,
+    submit: impl FnMut(&FormState) -> Result<Vec<String>, String>,
+) -> Result<Vec<String>, Failure> {
+    run_with(terminal, state, keys, draw_form, submit)
+}
+
+/// Draws the whole screen with [`Form`].
+pub fn draw_form(state: &FormState, area: Rect, buffer: &mut Buffer) {
+    Form::new(state).render(area, buffer);
+}
+
+/// Draws the form the application wants, and submits it like any other.
+///
+/// This is the second of decision-4's two escape hatches, and it changes exactly one
+/// thing: `draw` replaces the drawing. The keys, the focus, the refusals and the
+/// submission are the same loop, so a screen of the application's own reaches the
+/// same validation and the same handler as the generated form — there is no second
+/// command to keep in step.
+///
+/// # Errors
+///
+/// As [`run`].
+pub fn run_with<B: Backend>(
+    terminal: &mut Terminal<B>,
+    state: &mut FormState,
+    keys: impl IntoIterator<Item = Key>,
+    draw: impl Fn(&FormState, Rect, &mut Buffer),
     mut submit: impl FnMut(&FormState) -> Result<Vec<String>, String>,
 ) -> Result<Vec<String>, Failure> {
     let mut keys = keys.into_iter();
@@ -40,7 +67,7 @@ pub fn run<B: Backend>(
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                Form::new(state).render(area, frame.buffer_mut());
+                draw(state, area, frame.buffer_mut());
             })
             .map_err(|error| Failure::execution(format!("cannot draw the form: {error}")))?;
 
@@ -88,6 +115,24 @@ pub fn run_on<W: std::io::Write>(
     keys: impl IntoIterator<Item = Key>,
     submit: impl FnMut(&FormState) -> Result<Vec<String>, String>,
 ) -> Result<Vec<String>, Failure> {
+    run_on_with(screen, state, keys, draw_form, submit)
+}
+
+/// The alternate-screen run, drawing whatever the application asks for.
+///
+/// Split from [`run_on`] only by the drawing, so a custom screen inherits the same
+/// promise: the screen is entered and left on every path, cancellation included.
+///
+/// # Errors
+///
+/// As [`run_on`].
+pub fn run_on_with<W: std::io::Write>(
+    screen: W,
+    state: &mut FormState,
+    keys: impl IntoIterator<Item = Key>,
+    draw: impl Fn(&FormState, Rect, &mut Buffer),
+    submit: impl FnMut(&FormState) -> Result<Vec<String>, String>,
+) -> Result<Vec<String>, Failure> {
     use crossterm::execute;
     use crossterm::terminal::{
         EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -118,7 +163,7 @@ pub fn run_on<W: std::io::Write>(
         };
 
         match opened {
-            Ok(mut terminal) => run(&mut terminal, state, keys, submit),
+            Ok(mut terminal) => run_with(&mut terminal, state, keys, draw, submit),
             Err(error) => Err(Failure::execution(format!(
                 "cannot open the screen: {error}"
             ))),
