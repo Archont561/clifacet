@@ -58,3 +58,8 @@ Resolve runtime mode based on explicit request, app policy and capabilities.
   CLI-10 raises the ceiling by one line; the capability plumbing it needs is already tested.
 - Deliberately out of scope: TTY/TERM detection beyond "is stdout a terminal" (a false positive would
   resolve to a mode that cannot render), and the prompt and TUI frontends themselves (CLI-10, CLI-11).
+- 2026-10-30 (CLI-10 follow-up): `policy::invoke` was folded into `prompt::Session::run`, which now
+  owns "collect, then execute" for both flag and prompted runs. The refusal half of AC#3 is unchanged
+  — a refused request still produces no `Plan`, so no session and no execution — and the
+  "handler not executed" assertion moved to `tests/prompting.rs` against the new seam. One path from
+  request to run, rather than two.

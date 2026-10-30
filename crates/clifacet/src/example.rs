@@ -27,7 +27,8 @@ use clap::Parser;
 use crate::command::Command;
 use crate::facet::Facet;
 use crate::failure::{Failure, FailureKind};
-use crate::policy::{self, Capabilities, Mode, Policy, Request};
+use crate::policy::{Capabilities, Mode, Policy, Request};
+use crate::prompt::{Prompter, Session, Terminal};
 
 /// The process exited after doing what was asked.
 pub const EXIT_SUCCESS: i32 = 0;
@@ -161,11 +162,11 @@ pub struct InteractionFlags {
 
 /// How interactive this application is willing to be.
 ///
-/// The ceiling is [`Mode::NonInteractive`] because 0.1 has no prompt or TUI
-/// frontend to build: claiming otherwise would let a request resolve to a mode
-/// that cannot run. CLI-10 raises the ceiling when the prompt adapter exists, and
-/// that is the only line that has to change.
-pub const POLICY: Policy = Policy::non_interactive();
+/// Prompts are permitted — [`run`] supplies a terminal frontend for them. A TUI is
+/// not: 0.1 ships no full-screen interface, so `--tui` is refused with a message
+/// rather than resolving to a mode nothing can host. CLI-11 raises the ceiling
+/// again when that frontend exists.
+pub const POLICY: Policy = Policy::up_to(Mode::Interactive);
 
 /// The mode the user asked for, if any.
 ///
@@ -302,23 +303,46 @@ impl Command for Example {
 
 /// Runs one invocation, writing to the given streams and returning its exit code.
 ///
-/// Data goes to `out` only, diagnostics to `err` only, and nothing is read from a
-/// terminal, which is what makes a run reproducible in CI and in tests. A failure
-/// is already a diagnostic and an exit code by the time this returns; a writer
-/// that fails becomes [`EXIT_EXECUTION_FAILED`].
+/// Data goes to `out` only, diagnostics to `err` only. Prompts, when the mode
+/// permits them, come from the process's terminal: this is the entry point that
+/// owns real streams, and it is deliberately thin so that everything below it can
+/// be driven by buffers.
 pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
-    let request = request(cli.interaction);
-    let input = match Facet::validate(cli) {
-        Ok(input) => input,
-        Err(failure) => {
+    run_with(cli, Capabilities::detected(), terminal_frontend, out, err)
+}
+
+/// The frontend a real process uses.
+///
+/// Constructing it locks stdin and holds stderr, but touches neither until a
+/// question is actually asked, so this is safe to build and discard.
+pub(crate) fn terminal_frontend() -> Box<dyn Prompter> {
+    Box::new(Terminal::stdio())
+}
+
+/// Runs one invocation against explicit capabilities and an explicit frontend.
+///
+/// This is the seam the tests use: capabilities decide whether prompting is
+/// possible at all, and the frontend builder is called only when the resolved plan
+/// asks the user something. A scripted frontend therefore exercises exactly the
+/// code a terminal frontend would.
+pub fn run_with(
+    cli: Cli,
+    capabilities: Capabilities,
+    build_frontend: impl FnOnce() -> Box<dyn Prompter>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    let plan = match POLICY.resolve(request(cli.interaction), capabilities) {
+        Ok(plan) => plan,
+        Err(refusal) => {
+            let failure = Failure::validation(refusal.message());
             report(&failure, err);
             return exit_code(&failure);
         }
     };
 
-    // One path from a request to a run: a mode this application forbids, or an
-    // environment that cannot host it, returns before `execute` is reachable.
-    match policy::invoke(&Example, input, request, POLICY, Capabilities::detected()) {
+    let mut session = Session::start(plan, build_frontend);
+    match session.run(&Example, move |session| collect(session, cli)) {
         Ok(output) => match output.write_to(out) {
             Ok(()) => EXIT_SUCCESS,
             Err(error) => {
@@ -332,6 +356,26 @@ pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
             exit_code(&failure)
         }
     }
+}
+
+/// Fills the draft, then validates it through the same bridge the flags use.
+///
+/// A value the user supplied is never re-asked, and a missing one is asked for
+/// only when the plan permits — which is what makes a prompted run and a flag run
+/// the same command rather than two behaviours.
+fn collect(session: &mut Session, mut cli: Cli) -> Result<ExampleInput, Failure> {
+    let name = session.value(cli.name.take(), "Who should I greet?")?;
+    cli.name = name;
+
+    // Only ask when something can answer: a non-interactive `--explode` is a
+    // deliberate request, not something to confirm.
+    if cli.explode && session.plan().asks_the_user() && !session.confirm("Fail on purpose?")? {
+        return Err(Failure::cancelled(
+            "the user declined to fail on purpose (--explode)",
+        ));
+    }
+
+    Facet::validate(cli)
 }
 
 /// The exit code a failure costs this application.
@@ -351,10 +395,11 @@ pub const fn exit_code(failure: &Failure) -> i32 {
     }
 }
 
-/// Parses arguments, runs them, and returns the exit code a `main` should use.
+/// Parses process arguments and runs them.
 ///
-/// This is the whole application entry point, split from `main` so tests can pass
-/// their own arguments and buffers instead of a terminal and a process status.
+/// This is the entry point a real binary uses: it detects capabilities and prompts
+/// on the process's terminal, and it is split from `main` so tests can pass their
+/// own arguments and buffers instead of a terminal and a process status.
 pub fn main(
     argv: impl IntoIterator<Item = std::ffi::OsString>,
     out: &mut dyn Write,
@@ -362,18 +407,38 @@ pub fn main(
 ) -> i32 {
     match Cli::try_parse_from(argv) {
         Ok(cli) => run(cli, out, err),
-        Err(error) => {
-            // `clap` decides the stream as well as the status: help and the
-            // version are the result the caller asked for, on the data stream,
-            // while a usage error is a diagnostic.
-            if error.use_stderr() {
-                let _ = write!(err, "{error}");
-                EXIT_USAGE
-            } else {
-                let _ = write!(out, "{error}");
-                EXIT_SUCCESS
-            }
-        }
+        Err(error) => report_usage(&error, out, err),
+    }
+}
+
+/// The scriptable entry point: explicit capabilities and frontend, no detection.
+///
+/// Tests and scripted flows use this, so nothing in a test can reach a real
+/// terminal by accident — a question without an answer fails instead of hanging.
+pub fn main_with(
+    argv: impl IntoIterator<Item = String>,
+    capabilities: Capabilities,
+    build_frontend: impl FnOnce() -> Box<dyn Prompter>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    match Cli::try_parse_from(argv) {
+        Ok(cli) => run_with(cli, capabilities, build_frontend, out, err),
+        Err(error) => report_usage(&error, out, err),
+    }
+}
+
+/// Reports a `clap` outcome on the stream and with the status `clap` implies.
+fn report_usage(error: &clap::Error, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
+    // `clap` decides the stream as well as the status: help and the version are
+    // the result the caller asked for, on the data stream, while a usage error is
+    // a diagnostic.
+    if error.use_stderr() {
+        let _ = write!(err, "{error}");
+        EXIT_USAGE
+    } else {
+        let _ = write!(out, "{error}");
+        EXIT_SUCCESS
     }
 }
 

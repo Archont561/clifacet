@@ -11,6 +11,12 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- A prompt adapter on the same command core: `clifacet::prompt` collects what flags
+  left out through a `Prompter`, asking only when the resolved plan permits and never
+  re-asking a supplied value. `Terminal` asks a person, `Scripted` answers from a
+  list for tests, and `Session::run` makes collection-before-execution structural.
+  The example's policy now allows prompts, so `--interactive` works and `--yes`
+  answers its confirmation without a question.
 - A deterministic interaction policy: `clifacet::policy` resolves the runtime mode
   from an explicit request, then the application's policy, then the environment,
   with a plan that is the only route to a frontend. Refusals explain themselves and

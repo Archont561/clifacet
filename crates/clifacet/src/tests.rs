@@ -133,3 +133,73 @@ mod interaction {
         assert_eq!(Policy::default().ceiling(), Mode::NonInteractive);
     }
 }
+
+mod prompt {
+    use std::io::{BufRead, Read, Write};
+
+    use crate::failure::FailureKind;
+    use crate::prompt::{Prompter, Terminal};
+
+    /// A stream that refuses everything, standing in for a closed terminal.
+    struct Broken;
+
+    impl Write for Broken {
+        fn write(&mut self, _buffer: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Read for Broken {
+        fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::from(std::io::ErrorKind::Other))
+        }
+    }
+
+    impl BufRead for Broken {
+        fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+            Err(std::io::Error::from(std::io::ErrorKind::Other))
+        }
+
+        fn consume(&mut self, _amount: usize) {}
+    }
+
+    #[test]
+    fn the_process_frontend_is_constructible_without_touching_it() {
+        let _frontend = crate::example::terminal_frontend();
+    }
+
+    #[test]
+    fn the_process_terminal_is_constructible_without_touching_it() {
+        let terminal = Terminal::stdio();
+
+        assert!(format!("{terminal:?}").contains("Terminal"));
+    }
+
+    #[test]
+    fn a_prompt_stream_that_fails_is_an_execution_failure() {
+        let mut terminal = Terminal::new(std::io::Cursor::new("ada\n"), Broken);
+
+        let failure = terminal
+            .ask("Who should I greet?")
+            .expect_err("a closed prompt stream cannot show the question");
+
+        assert_eq!(failure.kind(), FailureKind::Execution);
+        assert!(failure.message().contains("cannot write the prompt"));
+    }
+
+    #[test]
+    fn an_input_stream_that_fails_is_an_execution_failure() {
+        let mut terminal = Terminal::new(Broken, Vec::new());
+
+        let failure = terminal
+            .ask("Who should I greet?")
+            .expect_err("a broken input cannot answer");
+
+        assert_eq!(failure.kind(), FailureKind::Execution);
+        assert!(failure.message().contains("cannot read the answer"));
+    }
+}
