@@ -26,6 +26,19 @@ pixi run --frozen --no-install test-local
 That covers formatting, Clippy, alint, both nextest groups, the script tests,
 `cargo deny` and the sandbox check in about a minute on a warm checkout.
 
+## Command core
+
+The UI-free command seam lives in `crates/clifacet/src/{command,failure,example}.rs`, and
+`docs/command-core.md` records the four layers, the ownership rules and what is deliberately
+not implemented yet. Run the reference command against the real streams with:
+
+```sh
+pixi run --frozen -x cargo run --example example -- --name ada --repeat 2
+```
+
+Its tests pass their own buffers instead of a terminal, so `test-integration` covers the success,
+validation, execution, usage and help paths without a TTY.
+
 ## Git hooks
 
 `pixi run hooks-install` writes the hooks `lefthook.yml` declares into `.git/hooks`. Every hook

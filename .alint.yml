@@ -59,6 +59,18 @@ rules:
     level: error
     message: "Required file crates/clifacet/Cargo.toml is missing."
 
+  - id: require-command-core-doc
+    kind: file_exists
+    paths: "docs/command-core.md"
+    level: error
+    message: "The command-core seam documentation is missing."
+
+  - id: require-example-command
+    kind: file_exists
+    paths: "crates/clifacet/examples/example.rs"
+    level: error
+    message: "The runnable example command is missing."
+
   - id: require-main-source
     kind: file_exists
     paths: "crates/clifacet/src/lib.rs"

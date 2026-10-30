@@ -11,6 +11,11 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- A UI-free command core: the `Command` seam, a library-owned `Failure` with
+  validation and execution categories, and a reference application
+  (`clifacet::example`) that keeps parsing, validation, execution and
+  presentation in separate layers. Applications own the streams and the exit
+  codes; the library owns the failure kinds.
 - Rust workspace with the `clifacet` library and the `clifacet-macros`
   procedural-macro crate, edition 2024, workspace lint policy and a declared
   minimum supported Rust version of 1.88 that CI proves.
@@ -44,8 +49,8 @@ prepared, so the headings below are managed by that script.
 
 ### Known limitations
 
-- The library exposes only `VERSION` and `version!()`; the command, interactive
-  and TUI APIs are planned in milestones M1 to M3.
+- The command core has no interactive or TUI frontend, no `--json` output and no
+  runtime mode resolution yet; those are milestones M2 and M3.
 - The `crates` GitHub environment has no protection rules yet, so release
   authorization rests on the manual dispatch alone.
 
