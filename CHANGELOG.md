@@ -27,6 +27,9 @@ prepared, so the headings below are managed by that script.
 - Release lifecycle tooling: `scripts/bump_version.py` bumps every recorded
   version site and promotes the changelog, and `release.yml` tags the release
   with those notes once both crates publish.
+- `scripts/bootstrap.sh` also forces the sandbox branch refresh a restore needs,
+  since a published branch is rewritten and the generated launcher never
+  re-fetches it.
 - `scripts/bootstrap.sh`, which brings any checkout to a working session in one
   command: fast-forward to the remote head without touching local work, restore
   the sandbox environment, install the hooks, and smoke-check the result.

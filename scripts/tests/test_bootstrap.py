@@ -184,3 +184,56 @@ def test_a_branch_nobody_pushed_yet_is_not_an_error(tmp_path):
     assert head(clone) == current
     assert "not on origin yet" in result.stdout
     assert "fatal" not in result.stderr
+
+
+def test_a_rewritten_sandbox_branch_is_refreshed_before_the_restore(tmp_path):
+    """Publishes rewrite the branch, so the local ref must be force-updated.
+
+    Driven with a fake `pixi` that reports no environment (so a restore is due) and a
+    stub `restore.sh`, because the real one would need a packed branch. What is asserted
+    is the ref: stale before, current after, which is the whole point of the step.
+    """
+    remote, seed, clone = build_repo(tmp_path)
+    git(seed, "checkout", "-q", "-b", "sandbox/developer-linux-64")
+    (seed / "pack.txt").write_text("pack one\n", encoding="utf-8")
+    git(seed, "add", "pack.txt")
+    git(seed, "commit", "-q", "-m", "chore: pack one")
+    git(seed, "push", "-q", "origin", "sandbox/developer-linux-64")
+    git(clone, "fetch", "-q", "origin", "sandbox/developer-linux-64")
+    stale = git(clone, "rev-parse", "refs/remotes/origin/sandbox/developer-linux-64").strip()
+
+    # Rewrite history the way a publisher does: a new root commit on the same branch.
+    git(seed, "checkout", "-q", "--orphan", "rewritten")
+    git(seed, "rm", "-q", "--cached", "pack.txt")
+    (seed / "pack.txt").write_text("pack two\n", encoding="utf-8")
+    git(seed, "add", "pack.txt")
+    git(seed, "commit", "-q", "-m", "chore: pack two")
+    git(seed, "push", "-q", "--force", "origin", "rewritten:sandbox/developer-linux-64")
+    current = git(seed, "rev-parse", "HEAD").strip()
+
+    # Bring the clone to its upstream first: an untracked stub would otherwise make the
+    # checkout step refuse the fast-forward, which is a different test's subject.
+    git(clone, "fetch", "-q", "origin")
+    git(clone, "merge", "-q", "--ff-only", "origin/main")
+
+    stub = clone / "scripts"
+    stub.mkdir(exist_ok=True)
+    (stub / "restore.sh").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (stub / "bootstrap.sh").write_text(BOOTSTRAP.read_text(encoding="utf-8"), encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "pixi").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    (fake_bin / "pixi").chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(stub / "bootstrap.sh"), "--skip-hooks", "--skip-checks"],
+        cwd=clone,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**os.environ, "HOME": str(tmp_path), "PATH": f"{fake_bin}:{os.environ['PATH']}"},
+    )
+
+    refreshed = git(clone, "rev-parse", "refs/remotes/origin/sandbox/developer-linux-64").strip()
+    assert "refreshed the sandbox branch" in result.stdout
+    assert refreshed == current != stale
