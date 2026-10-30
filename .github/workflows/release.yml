@@ -38,10 +38,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: crates
     timeout-minutes: 60
-    # A job-level `permissions:` block is a replacement, not an addition, so
-    # `contents: read` has to be repeated beside `id-token: write`.
+    # A job-level `permissions:` block is a replacement, not an addition: every
+    # scope left out becomes none, so both are named here. `contents: write` is
+    # for the tag and GitHub Release that follow a successful publish.
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - name: Refuse a release from outside main
@@ -55,15 +56,14 @@ jobs:
           pixi-version: v0.83.0
           cache: true
           frozen: true
-      # Both manifests inherit `version.workspace = true`, so this one line is
-      # the single source of truth for what the run is about to publish.
+      # Both manifests inherit `version.workspace = true`; this reads that value
+      # and fails the run if the three recorded sites disagree.
       - name: Resolve the release version
         id: version
         shell: bash
         run: |
           set -euo pipefail
-          version=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml | head -1)
-          [[ -n "$version" ]] || { echo "::error::cannot read the workspace version"; exit 1; }
+          version=$(python3 scripts/bump_version.py --print-version)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release version: $version"
       # The crates inherit the workspace version, so the ways this release can be
@@ -75,6 +75,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+          python3 scripts/bump_version.py --check
           for crate in "$MACROS" "$MAIN"; do
             declared=$(sed -n 's/^version = "\(.*\)"/\1/p' "crates/$crate/Cargo.toml" | head -1)
             if [[ -n "$declared" ]]; then
@@ -82,12 +83,7 @@ jobs:
               exit 1
             fi
           done
-          pinned=$(sed -n 's/^'"$MACROS"' = { version = "\([^"]*\)".*/\1/p' Cargo.toml | head -1)
-          if [[ "$pinned" != "$VERSION" ]]; then
-            echo "::error::the workspace dependency on $MACROS pins '$pinned' but the workspace version is '$VERSION'"
-            exit 1
-          fi
-          echo "both crates inherit $VERSION and the $MACROS dependency requires it"
+          echo "both crates inherit $VERSION"
       # Only the macro crate can be packaged before anything is published: the
       # main crate's `clifacet-macros = "<version>"` requirement cannot resolve
       # against the registry until that exact version exists there (cargo
@@ -176,3 +172,22 @@ jobs:
             fi
           done
           echo "published from $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      # The tag and the release notes land only after both crates are published,
+      # so a tag never claims a version that is not on the registry. An existing
+      # release is left alone, which keeps a re-run idempotent.
+      - name: Tag the release and attach the changelog notes
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag already has a release; leaving it untouched" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 scripts/bump_version.py --notes "$VERSION" > "$RUNNER_TEMP/notes.md"
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+          echo "created $tag with the changelog notes" >> "$GITHUB_STEP_SUMMARY"
