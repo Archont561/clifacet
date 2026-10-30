@@ -83,6 +83,12 @@ rules:
     level: error
     message: "The sandbox policy is missing."
 
+  - id: require-release-workflow
+    kind: file_exists
+    paths: ".github/workflows/release.yml"
+    level: error
+    message: "The crates.io release workflow is missing."
+
   - id: require-sandbox-publisher
     kind: file_exists
     paths: ".github/workflows/publish-sandbox.yml"

@@ -17,12 +17,12 @@ ordinal: 18000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Finish supported pixi-release integration and rehearse the publication contract.
+Rehearse the authored two-crate publication contract end to end.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The generated or supported release integration respects release.yml, environment crates and minimal OIDC permissions.
+- [ ] #1 `release.yml` publishes macro-first using environment `crates`, job-scoped OIDC and pinned official actions.
 - [ ] #2 Macro-first publication, registry availability, partial-failure recovery and package contents are verified without an unauthorized live release.
 - [ ] #3 Release is performed only after explicit maintainer authorization and recorded successful gates.
 <!-- AC:END -->

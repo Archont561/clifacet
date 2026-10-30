@@ -28,3 +28,4 @@ Create two Cargo crates, workspace metadata and a reproducible Pixi environment 
 
 - 2026-10-29: #1 and #2 verified. A fresh clone builds both crates, and CI's `pixi install --frozen` plus the full quality matrix pass on `3930c68`.
 - #3 is open: `Cargo.toml` declares `rust-version = "1.88"`, but no CI job compiles at 1.88, so the floor is claimed without proof. The edition 2024 and lint policy halves are done (`[workspace.package]`, `[workspace.lints]`). Either drop `rust-version` until a matrix exists, or let CLI-16 prove it.
+- 2026-10-30: AC#1 re-verified on `main` at `6ae7116` — CI run `41077737064` is green, including the feature matrix and both crate builds. AC#3 remains the only open criterion; decision-10 now carries an implementation note recording the contradiction.

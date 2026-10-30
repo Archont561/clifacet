@@ -1,0 +1,169 @@
+name: release
+
+# Publishing is deliberately manual. crates.io trusted publishing is bound to
+# this path, the `crates` environment and both crate names; the environment is
+# the authorization gate, so nothing here publishes on a push (decision-7).
+#
+# Resumability: each crate is published only when its version is absent from the
+# registry index, and the main crate is published only after the macro version
+# is visible there. A run that published the macro crate and then failed can be
+# re-run as-is; it skips what already exists instead of needing a revert.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: >-
+          Package and verify without publishing. Uncheck only to release, which
+          additionally requires approval on the `crates` environment.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  MACROS: clifacet-macros
+  MAIN: clifacet
+  # Sparse-index path for both crate names: two characters, then two more.
+  INDEX_PREFIX: cl/if
+
+jobs:
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    environment: crates
+    timeout-minutes: 60
+    # A job-level `permissions:` block is a replacement, not an addition, so
+    # `contents: read` has to be repeated beside `id-token: write`.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Refuse a release from outside main
+        if: github.ref != 'refs/heads/main'
+        run: echo "::error::release runs from main only; this is ${{ github.ref }}" && exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.83.0
+          cache: true
+          frozen: true
+      # Both manifests inherit `version.workspace = true`, so this one line is
+      # the single source of truth for what the run is about to publish.
+      - name: Resolve the release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml | head -1)
+          [[ -n "$version" ]] || { echo "::error::cannot read the workspace version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release version: $version"
+      # The crates inherit the workspace version, so the ways this release can be
+      # inconsistent are: a crate manifest overriding it, or the workspace
+      # dependency on the macro crate pinning a different version.
+      - name: Check the release version is used consistently
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for crate in "$MACROS" "$MAIN"; do
+            declared=$(sed -n 's/^version = "\(.*\)"/\1/p' "crates/$crate/Cargo.toml" | head -1)
+            if [[ -n "$declared" ]]; then
+              echo "::error::$crate pins version $declared instead of inheriting the workspace version"
+              exit 1
+            fi
+          done
+          pinned=$(sed -n 's/^'"$MACROS"' = { version = "\([^"]*\)".*/\1/p' Cargo.toml | head -1)
+          if [[ "$pinned" != "$VERSION" ]]; then
+            echo "::error::the workspace dependency on $MACROS pins '$pinned' but the workspace version is '$VERSION'"
+            exit 1
+          fi
+          echo "both crates inherit $VERSION and the $MACROS dependency requires it"
+      - name: Package both crates
+        shell: bash
+        # multiline-run-allowed: the macro crate is fully verified here; the main
+        # crate cannot be until that exact macro version exists on the registry.
+        run: |
+          set -euo pipefail
+          pixi run --frozen -x cargo package --locked -p "$MACROS"
+          pixi run --frozen -x cargo package --locked -p "$MAIN" --no-verify
+      - name: Report the dry run
+        if: inputs.dry_run
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Dry run: nothing was published"
+            echo ""
+            echo "Packaged \`$MACROS\` and \`$MAIN\` at \`$VERSION\`; the main crate was packaged with"
+            echo "\`--no-verify\` because its macro dependency is not on the registry yet."
+            echo ""
+            echo "| crate | $VERSION on the index |"
+            echo "| --- | --- |"
+            for crate in "$MACROS" "$MAIN"; do
+              if curl -sf "https://index.crates.io/$INDEX_PREFIX/$crate" | grep -q "\"vers\":\"$VERSION\""; then
+                echo "| \`$crate\` | already published |"
+              else
+                echo "| \`$crate\` | absent, will publish |"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Exchange the OIDC token for a short-lived crates.io token
+        if: ${{ !inputs.dry_run }}
+        id: auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+      # Both crates go out in one ordered loop: publish, then wait for the index
+      # before the next crate, skipping any version that is already indexed. A
+      # failed index lookup aborts instead of publishing blind.
+      - name: Publish both crates in dependency order
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          body=$(mktemp)
+          for crate in "$MACROS" "$MAIN"; do
+            index="https://index.crates.io/$INDEX_PREFIX/$crate"
+            code=$(curl -s -o "$body" -w '%{http_code}' "$index")
+            case "$code" in
+              200)
+                if grep -q "\"vers\":\"$VERSION\"" "$body"; then
+                  echo "$crate $VERSION is already indexed; skipping it" >> "$GITHUB_STEP_SUMMARY"
+                  continue
+                fi
+                ;;
+              404) : ;;
+              *)
+                echo "::error::cannot read $index (HTTP $code); refusing to publish blind"
+                exit 1
+                ;;
+            esac
+            cargo publish --locked -p "$crate"
+            indexed=false
+            for attempt in $(seq 1 30); do
+              if curl -sf "$index" | grep -q "\"vers\":\"$VERSION\""; then
+                echo "$crate $VERSION indexed after $attempt attempt(s)" >> "$GITHUB_STEP_SUMMARY"
+                indexed=true
+                break
+              fi
+              sleep 10
+            done
+            if [ "$indexed" != true ]; then
+              echo "::error::$crate $VERSION did not appear in the index within 5 minutes"
+              exit 1
+            fi
+          done
+          echo "published from $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"

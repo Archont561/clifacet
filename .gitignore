@@ -1,6 +1,5 @@
 .pixi/
 .pixi-sandbox/
-.pixi-release/
 target/
 coverage/
 *.profraw
