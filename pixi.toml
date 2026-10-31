@@ -51,11 +51,9 @@ backlog-offline = { cmd = "bun x --bun --no-install backlog", depends-on = ["bun
 skills-offline = { cmd = "bun x --bun --no-install skills", depends-on = ["bun-install-offline"] }
 skills-check = "python scripts/check_skills.py"
 backlog-check = { cmd = "bun x --bun --no-install backlog doctor", depends-on = ["bun-install"] }
-check-base = "cargo check -p clifacet --lib --no-default-features --locked"
-check-interactive = "cargo check -p clifacet --lib --no-default-features --features interactive --locked"
-check-tui = "cargo check -p clifacet --lib --no-default-features --features tui --locked"
-check-json = "cargo check -p clifacet --lib --no-default-features --features json --locked"
-check-features = { depends-on = ["check-base", "check-interactive", "check-tui", "check-json"] }
+# Every supported combination, derived from the crate's own manifest: the empty set, the
+# default set, each frontend alone and all of them together. `--print-matrix` lists them.
+check-features = "python scripts/check_features.py"
 fmt = "cargo fmt --all"
 fmt-check = "cargo fmt --all -- --check"
 lint = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"

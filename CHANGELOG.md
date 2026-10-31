@@ -11,6 +11,12 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- A qualified compatibility matrix instead of a claimed one. `scripts/check_features.py`
+  derives the supported feature combinations from the crate manifest — the empty set, the
+  `default` set, each frontend alone and all of them together — and CI checks each on
+  stable; `scripts/prove_msrv.py` now reuses that same matrix, so the stable rows and the
+  Rust 1.88 floor cannot drift. A new `platforms` CI job runs the headless suite on Linux,
+  macOS and Windows, and `docs/development.md` states what is and is not covered.
 - The reference application is now a workspace crate of its own, `clifacet-example`,
   with its tests, BDD features, proptest seeds and runnable demos beside it. It depends
   on `clifacet` and on nothing private, so it is a proof of the published API rather

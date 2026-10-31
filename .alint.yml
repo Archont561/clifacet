@@ -137,6 +137,12 @@ rules:
     level: error
     message: "The MSRV proof script is missing."
 
+  - id: require-check-features
+    kind: file_exists
+    paths: "scripts/check_features.py"
+    level: error
+    message: "The supported feature matrix script is missing; compatibility would be a claim again."
+
   - id: require-release-workflow
     kind: file_exists
     paths: ".github/workflows/release.yml"

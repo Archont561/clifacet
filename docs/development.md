@@ -6,7 +6,7 @@ checked-in Pixi environment currently targets Linux x86-64.
 ```sh
 bash scripts/bootstrap.sh  # checkout at the remote head, environment, hooks, smoke check
 pixi run quality        # repo, skills, Backlog, features, sandbox, Rust and advisory checks
-pixi run check-features # base and each optional dependency boundary
+pixi run check-features # every supported feature combination, one cargo check each
 pixi run test-src       # crate-internal src/ tests
 pixi run test-integration # external tests/ targets, including compile-fail cases
 pixi run test           # both nextest groups
@@ -54,6 +54,57 @@ Its tests need neither: `tui::app::run` takes a `ratatui` backend and a list of 
 `TestBackend` plus a script covers drawing, editing, submission and cancellation. `main_with` with
 a `tui`-capable `Capabilities` covers the dispatch, and the process's own terminal is the only part
 no test can reach.
+
+## Supported platforms and feature combinations
+
+Compatibility is a claim with a list, so the list is written down and checked rather
+than assumed.
+
+**Feature combinations.** A feature is a dependency boundary: an application enables the
+frontends it uses and pays for no others. `scripts/check_features.py` derives the rows
+from `crates/clifacet/Cargo.toml` and checks each one against the committed lockfile:
+
+| Row | Flags | What it proves |
+| --- | --- | --- |
+| `no-default-features` | `--no-default-features -p clifacet` | nothing enabled: the base crate stands alone |
+| `default` | the manifest's `default` set | what a consumer gets with a bare `clifacet` dependency |
+| `interactive` | `--no-default-features --features interactive` | the prompt frontend compiles by itself |
+| `tui` | `--no-default-features --features tui` | the full-screen frontend compiles by itself |
+| `json` | `--no-default-features --features json` | the reserved serialization feature compiles by itself |
+| `all-features` | `--all-features` (workspace-wide) | every frontend together, which is what the tests build |
+
+`default` is empty today, so it resolves to the same configuration as
+`no-default-features`; the script runs that configuration once and reports both rows, so
+the table and the plan cannot disagree. Adding a feature to the manifest adds a row —
+CI never carries its own list.
+
+The same matrix is what `scripts/prove_msrv.py` checks with the declared MSRV toolchain,
+so the stable matrix and the floor cannot drift: `pixi run prove-msrv` and the `msrv` job
+are the same five commands with a different `cargo +<toolchain>`.
+
+```sh
+pixi run check-features                 # run the matrix
+python scripts/check_features.py --print-matrix   # the rows, as data
+python scripts/check_features.py --print-plan     # the commands they resolve to
+```
+
+**Operating systems.** CI runs the headless suite on Linux, macOS and Windows
+(`platforms` job): `cargo test --workspace --all-features`, the documentation examples,
+and a `--no-default-features` build of the library. Nothing in the workspace is
+platform-specific — no `cfg(unix)`, no path handling beyond `std::path` — and no suite
+needs a terminal: every frontend test drives its own buffers and keystroke scripts, so
+"it needs a TTY" is never why a platform would be exempt.
+
+Those platform jobs use the runner's own stable toolchain instead of Pixi. The checked-in
+Pixi environment targets **linux-64 only**, so the jobs that ask "does this code build
+here" use rustup, exactly as the `msrv` job does and for the same reason recorded in
+decision-5. Pixi remains the single entry point locally and on the Linux job that owns
+the repository policy checks.
+
+**What is not claimed.** The Pixi environment is Linux x86-64; the dev container is
+amd64. ARM Linux, 32-bit targets and non-tier-1 platforms are untested. Windows CI proves
+the code compiles and the tests pass there, not that the full-screen interface renders
+well in a Windows terminal.
 
 ## Git hooks
 
@@ -237,13 +288,16 @@ also reserves three **optional dependency boundaries**, disabled by default:
 - `json`: serde_json.
 
 `interactive`, `tui` and the derive are implemented and covered; `json` still only
-selects its dependency, and no flag produces JSON yet. Everything is checked both
-ways — `--no-default-features` builds and a feature matrix task (`check-features`)
-compiles each boundary on its own. The macros crate includes
-proc-macro2, quote and syn for the planned companion derive. rstest, rstest-bdd,
-proptest, assert_cmd and trybuild remain development dependencies. The selected
-inquire adapter is a starting dependency, not a promise to expose its internal
-backend for testing; the planned prompt harness remains framework-owned.
+selects its dependency, and no flag produces JSON yet. Everything is checked every
+way — `--no-default-features`, the empty `default` set, each boundary on its own and
+all of them together — by the `check-features` task described in
+[Supported platforms and feature combinations](#supported-platforms-and-feature-combinations).
+
+The macros crate includes proc-macro2, quote and syn for the planned companion
+derive. rstest, rstest-bdd, proptest, assert_cmd and trybuild remain development
+dependencies. The selected inquire adapter is a starting dependency, not a promise to
+expose its internal backend for testing; the planned prompt harness remains
+framework-owned.
 
 `Cargo.lock` resolves all declared feature dependencies, including optional
 ones. `cargo fetch --locked` (through `pixi run --frozen -x`) downloads this
@@ -252,10 +306,10 @@ after a new sandbox is published. A checked-in manifest or lock alone does not
 make a fresh machine offline-ready, and future dependency changes require a
 refreshed lock and republished sandbox. A local linux-64 transport was packed,
 verified and restored, then checked offline with all targets and features; live
-GitHub publication has not been tested. `check-features` checks the base and
-individual features; Clippy and test tasks also use `--all-features`. It does not
-prove every feature combination or platform. The locked Linux graph was checked
-with Rust 1.88, but a full MSRV and operating-system test matrix is future work.
+GitHub publication has not been tested. The locked graph is checked with Rust 1.88
+across every supported feature combination and with the stable compiler on Linux,
+macOS and Windows; what that does and does not cover is listed under
+[Supported platforms and feature combinations](#supported-platforms-and-feature-combinations).
 
 `cargo-deny` permits Unicode-3.0 only for locked `unicode-ident` 1.0.27: its
 SPDX expression combines that Unicode data license with MIT or Apache-2.0. This

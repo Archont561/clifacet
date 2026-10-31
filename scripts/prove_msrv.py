@@ -6,6 +6,10 @@ it from the manifest instead of accepting a second, drift-prone copy. It then
 checks every feature boundary with that toolchain, at every target, against the
 committed lockfile.
 
+The boundaries themselves are `check_features`'s matrix, not a second list: the
+configurations CI checks on stable and the ones this proves at the floor are the
+same rows, so the two jobs cannot disagree about what is supported.
+
 A dependency that starts requiring a newer compiler makes `cargo` refuse to build
 with "package X requires rustc Y", which fails this script: the advertised floor
 cannot silently rot. Raising the floor is then a deliberate manifest change.
@@ -14,51 +18,27 @@ cannot silently rot. Raising the floor is then a deliberate manifest change.
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
-import tomllib
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
+# This file is run both as `python scripts/prove_msrv.py` (Pixi, CI) and imported as
+# `scripts.prove_msrv` (the pytest suite). Only the second has the repository root on
+# `sys.path`, so put it there before reaching for the sibling module.
 ROOT = Path(__file__).resolve().parent.parent
-WORKSPACE_MANIFEST = ROOT / "Cargo.toml"
-CRATE_MANIFEST = ROOT / "crates" / "clifacet" / "Cargo.toml"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# `default` is excluded: every check runs with `--no-default-features`, so the
-# default set is the empty combination rather than a combination of its own.
-NON_FEATURE_KEYS = frozenset({"default"})
-
-
-@dataclass(frozen=True)
-class Plan:
-    """One `cargo check` invocation, kept as data so it can be asserted in tests."""
-
-    toolchain: str
-    arguments: tuple[str, ...]
-
-    def command(self) -> list[str]:
-        """The argv to execute, with the toolchain selector when one is given."""
-        return ["cargo", f"+{self.toolchain}", *self.arguments] if self.toolchain else ["cargo", *self.arguments]
-
-
-@dataclass(frozen=True)
-class Failure:
-    """A step that failed, with the output needed to explain why."""
-
-    plan: Plan
-    returncode: int
-    output: str
-
-
-def load_manifest(path: Path) -> dict:
-    """Parse a Cargo manifest, or explain which file could not be read."""
-    try:
-        return tomllib.loads(path.read_text(encoding="utf-8"))
-    except OSError as error:
-        raise ValueError(f"cannot read {path}: {error}") from error
-    except tomllib.TOMLDecodeError as error:
-        raise ValueError(f"{path} is not valid TOML: {error}") from error
+from scripts.check_features import (
+    CRATE_MANIFEST,
+    WORKSPACE_MANIFEST,
+    Failure,
+    build_plan,
+    combinations,
+    load_manifest,
+    package_name,
+    run_plan,
+)
 
 
 def declared_msrv(manifest: dict, source: Path = WORKSPACE_MANIFEST) -> str:
@@ -67,64 +47,6 @@ def declared_msrv(manifest: dict, source: Path = WORKSPACE_MANIFEST) -> str:
     if not isinstance(version, str) or not version.strip():
         raise ValueError(f"{source} declares no [workspace.package] rust-version")
     return version.strip()
-
-
-def package_name(manifest: dict, source: Path = CRATE_MANIFEST) -> str:
-    """Return the feature-bearing package name."""
-    name = manifest.get("package", {}).get("name")
-    if not isinstance(name, str) or not name:
-        raise ValueError(f"{source} declares no package name")
-    return name
-
-
-def feature_sets(manifest: dict) -> list[list[str]]:
-    """Every feature boundary to check: the empty set, each feature, and unset combinations.
-
-    Checking features one at a time proves each optional dependency boundary on
-    its own; the caller adds an all-features run for the combined boundary.
-    """
-    names = sorted(name for name in manifest.get("features", {}) if name not in NON_FEATURE_KEYS)
-    return [[], *[[name] for name in names]]
-
-
-def build_plan(toolchain: str, package: str, features: list[list[str]]) -> list[Plan]:
-    """Plan one per-feature check plus a workspace-wide all-features check."""
-    plan = [
-        Plan(
-            toolchain,
-            (
-                "check",
-                "--locked",
-                "--all-targets",
-                "-p",
-                package,
-                "--no-default-features",
-                *(() if not set_ else ("--features", ",".join(set_))),
-            ),
-        )
-        for set_ in features
-    ]
-    plan.append(Plan(toolchain, ("check", "--locked", "--all-targets", "--all-features")))
-    return plan
-
-
-def execute(command: list[str]) -> subprocess.CompletedProcess:
-    """Run one step, capturing output so a failure can be explained."""
-    return subprocess.run(command, capture_output=True, text=True, check=False)
-
-
-def run_plan(plan: Sequence[Plan], runner=execute) -> list[Failure]:
-    """Execute each step in order, stopping at the first failure, and return it."""
-    for index, step in enumerate(plan, start=1):
-        command = step.command()
-        print(f"[{index}/{len(plan)}] {' '.join(command)}", flush=True)
-        result = runner(command)
-        output = f"{result.stdout or ''}{result.stderr or ''}"
-        if output:
-            print(output, end="" if output.endswith("\n") else "\n", flush=True)
-        if result.returncode != 0:
-            return [Failure(step, result.returncode, output)]
-    return []
 
 
 def failure_hint(failure: Failure) -> str:
@@ -167,7 +89,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.print_toolchain:
             print(toolchain)
             return 0
-        plan = build_plan(toolchain, package_name(crate), feature_sets(crate))
+        plan = build_plan(toolchain, package_name(crate), combinations(crate))
     except ValueError as error:
         print(f"prove-msrv: {error}", file=sys.stderr)
         return 1
