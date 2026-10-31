@@ -347,15 +347,24 @@ dependencies = [
  "clifacet-macros",
  "crossterm",
  "inquire",
- "proptest",
  "ratatui",
  "rstest",
- "rstest-bdd",
- "rstest-bdd-macros",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "trybuild",
+]
+
+[[package]]
+name = "clifacet-example"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "clifacet",
+ "proptest",
+ "rstest",
+ "rstest-bdd",
+ "rstest-bdd-macros",
 ]
 
 [[package]]

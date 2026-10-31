@@ -5,9 +5,9 @@
 //! touch a real terminal, so a scenario that accidentally prompts fails loudly
 //! instead of hanging.
 
-use clifacet::example;
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
+use clifacet_example as example;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 

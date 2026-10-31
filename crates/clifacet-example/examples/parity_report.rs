@@ -5,18 +5,18 @@
 //! internal hook, this would not compile.
 //!
 //! ```sh
-//! pixi run --frozen -x cargo run --features tui --example parity_report
+//! pixi run --frozen -x cargo run -p clifacet-example --example parity_report
 //! ```
 //!
 //! It runs the example command three ways — flags, a scripted prompt and the
 //! headless form — compares the exit code, the data, the diagnostic and the input
 //! each execution received, and exits non-zero if any mode disagrees.
 
-use clifacet::example::{self, Example, ExampleInput};
 use clifacet::harness::{Outcome, Parity, Recording, Subject};
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
 use clifacet::tui::Key;
+use clifacet_example::{self as example, Example, ExampleInput};
 
 /// The answer every mode is asked to supply.
 const NAME: &str = "ada";

@@ -13,8 +13,8 @@
 //! is about, so a failure names the layer rather than the plumbing.
 
 use clifacet::clap::Parser as _;
-use clifacet::example::{Cli, Example, ExampleInput, Level, MAX_REPEAT};
 use clifacet::{Command, Facet, Failure, FailureKind};
+use clifacet_example::{Cli, Example, ExampleInput, Level, MAX_REPEAT};
 use rstest::{fixture, rstest};
 
 /// Parses the given argv into the draft `clap` produced.
@@ -156,5 +156,5 @@ fn a_usage_error_never_becomes_a_validation_failure(#[case] argv: &[&str]) {
     let error = Cli::try_parse_from(std::iter::once("example").chain(argv.iter().copied()))
         .expect_err("clap refuses this");
 
-    assert_eq!(error.exit_code(), clifacet::example::EXIT_USAGE, "{argv:?}");
+    assert_eq!(error.exit_code(), clifacet_example::EXIT_USAGE, "{argv:?}");
 }

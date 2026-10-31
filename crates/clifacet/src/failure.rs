@@ -78,7 +78,7 @@ impl Failure {
     /// The category of this failure.
     ///
     /// Applications map this to their own exit codes and messages, which is what
-    /// keeps the numbers out of the library; see [`crate::example`] for a worked
+    /// keeps the numbers out of the library; see the `clifacet-example` crate for a worked
     /// mapping that gives each kind its own code.
     #[must_use]
     pub const fn kind(&self) -> FailureKind {

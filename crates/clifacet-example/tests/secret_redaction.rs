@@ -12,12 +12,12 @@ use std::panic;
 use std::str::FromStr;
 
 use clifacet::Command;
-use clifacet::example::{self, Example, ExampleInput};
 use clifacet::harness::{Outcome, Parity, Recording};
 use clifacet::policy::Capabilities;
 use clifacet::prompt::Scripted;
 use clifacet::provenance::{Provenance, Source};
 use clifacet::secret::{REDACTED, Secret};
+use clifacet_example::{self as example, Example, ExampleInput};
 
 /// A value that must not survive into any framework-owned output.
 const CANARY: &str = "sk-canary-7f3a9d";
@@ -219,7 +219,6 @@ fn a_failed_parity_comparison_does_not_print_a_secret() {
     );
 }
 
-#[cfg(feature = "tui")]
 #[test]
 fn a_secret_field_is_masked_in_a_form_preview() {
     use clifacet::tui::ratatui::Terminal;
@@ -316,7 +315,6 @@ fn an_empty_record_renders_as_nothing() {
     assert_eq!(provenance.entries(), []);
 }
 
-#[cfg(feature = "tui")]
 #[test]
 fn a_generated_form_can_mark_one_of_its_fields_secret() {
     use clifacet::clap::CommandFactory;

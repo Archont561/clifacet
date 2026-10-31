@@ -7,9 +7,9 @@ use std::cell::RefCell;
 use std::io::{Cursor, Write};
 use std::rc::Rc;
 
-use clifacet::example;
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Prompter, Scripted, Terminal};
+use clifacet_example as example;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 

@@ -1,7 +1,9 @@
 //! The reference application: one domain-neutral command, end to end.
 //!
-//! This module is the worked example M1 asks for, and the shape an application is
-//! meant to copy. It holds the three layers apart on purpose:
+//! This crate is the worked example M1 asks for, and the shape an application is
+//! meant to copy. It depends on `clifacet` the way any application does — through
+//! the published API and nothing else — which is what makes it a proof of that API
+//! rather than a part of it. It holds the three layers apart on purpose:
 //!
 //! 1. [`Cli`] is the `clap` surface: flags, help and usage errors.
 //! 2. [`ExampleInput`] is validated input, built by [`TryFrom<Cli>`] — the
@@ -15,7 +17,6 @@
 //! writes machine data to one stream and diagnostics to the other.
 //! None of that lives in [`Command`], which is what keeps the seam UI-free.
 //!
-//! [`Facet`]: crate::Facet
 //! [`Input`]: Command::Input
 
 use std::fmt;
@@ -24,13 +25,13 @@ use std::str::FromStr;
 
 use clap::Parser;
 
-use crate::command::Command;
-use crate::contract::ExitPolicy;
-use crate::facet::Facet;
-use crate::failure::Failure;
-use crate::policy::{Capabilities, Mode, Policy, Request};
-use crate::prompt::{Prompter, Session, Terminal};
-use crate::secret::Secret;
+use clifacet::Command;
+use clifacet::Facet;
+use clifacet::Failure;
+use clifacet::contract::ExitPolicy;
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Prompter, Session, Terminal};
+use clifacet::secret::Secret;
 
 /// The exit codes this application gives its outcomes.
 ///
@@ -110,11 +111,11 @@ fn parse_level(value: &str) -> Result<Level, String> {
 /// The derived [`Facet`] points at [`ExampleInput`] and at [`build_input`], so the
 /// only route to typed input is the bridge below; aliases, the `--repeat` default
 /// and the [`Level`] parser all stay `clap`'s.
-#[derive(Debug, Clone, PartialEq, Eq, Parser, crate::Facet)]
+#[derive(Debug, Clone, PartialEq, Eq, Parser, clifacet::Facet)]
 #[facet(input = ExampleInput, bridge = build_input)]
 #[command(
     name = "example",
-    version = crate::VERSION,
+    version = clifacet::VERSION,
     about = "Clifacet's domain-neutral example command",
     long_about = "Clifacet's domain-neutral example command.\n\n\
                   It exists to show the seams: clap parses, the input is validated, \
@@ -168,8 +169,9 @@ pub struct InteractionFlags {
 
     /// Ask for a full-screen interface.
     ///
-    /// Honoured when the crate is built with the `tui` feature; refused with a
-    /// message otherwise, because a mode nothing can draw is not a mode.
+    /// Always honoured by this crate, which enables the `tui` frontend; an
+    /// application that does not would have it refused with a message, because a
+    /// mode nothing can draw is not a mode.
     #[arg(long)]
     pub tui: bool,
 
@@ -182,15 +184,12 @@ pub struct InteractionFlags {
 
 /// How interactive this application is willing to be.
 ///
-/// Prompts are permitted — [`run`] supplies a terminal frontend for them. A TUI is
-/// permitted only when the `tui` feature is compiled in, because [`run_with`] then
-/// has a screen to draw on; without it `--tui` is refused with a message rather than
-/// resolving to a mode nothing can host.
-pub const POLICY: Policy = Policy::up_to(if cfg!(feature = "tui") {
-    Mode::Tui
-} else {
-    Mode::Interactive
-});
+/// Prompts and the full-screen form are both permitted — [`run`] supplies a terminal
+/// frontend for the first and [`run_tui`] hosts the second. The crate enables both
+/// frontends, so the ceiling is the most interactive mode the library has: an
+/// application that enables only prompts would pass `Mode::Interactive` here and
+/// have `--tui` refused instead.
+pub const POLICY: Policy = Policy::up_to(Mode::Tui);
 
 /// The mode the user asked for, if any.
 ///
@@ -359,7 +358,8 @@ pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
 ///
 /// Constructing it locks stdin and holds stderr, but touches neither until a
 /// question is actually asked, so this is safe to build and discard.
-pub(crate) fn terminal_frontend() -> Box<dyn Prompter> {
+#[must_use]
+pub fn terminal_frontend() -> Box<dyn Prompter> {
     Box::new(Terminal::stdio())
 }
 
@@ -383,7 +383,7 @@ pub fn run_with(
 ///
 /// The example's own [`Example`] is the ordinary case; a different command with the
 /// same input and output types is how a caller observes what the run did — see
-/// [`crate::harness::Recording`]. Because the input type is fixed, "a different
+/// [`clifacet::harness::Recording`]. Because the input type is fixed, "a different
 /// command" cannot quietly be a different pipeline: it is the same parse, the same
 /// validation and the same stream policy.
 pub fn run_with_command<C>(
@@ -406,16 +406,15 @@ where
         }
     };
 
-    // Without the feature the policy never resolves to this mode, so this branch is
-    // dead code rather than a fallback — it exists only to keep the two in step.
-    #[cfg(feature = "tui")]
+    // The full-screen mode is hosted here rather than only in `run_tui`, so a
+    // `--tui` run takes the same parse, validation and reporting path as the rest.
     if plan.mode() == Mode::Tui {
         // The screen is drawn on the diagnostic stream the caller passed, like every
         // other thing a person sees. Drawing it on the data stream would put escape
         // sequences in what a caller asked for, which is the one thing the stream
         // contract forbids — and reaching for the process's own stderr would bypass
         // the streams this function was given.
-        return run_tui_on(command, err, crate::tui::live_keys(), out);
+        return run_tui_on(command, err, clifacet::tui::live_keys(), out);
     }
 
     let mut session = Session::start(plan, build_frontend);
@@ -541,10 +540,9 @@ fn report_usage(error: &clap::Error, out: &mut dyn Write, err: &mut dyn Write) -
 /// This is the application layer, so it answers with an exit code: the data on
 /// `out`, the diagnostic on `err`, and the same mapping [`exit_code`] applies to
 /// every other failure. A cancelled form is a cancellation, not a mistake.
-#[cfg(feature = "tui")]
 pub fn run_tui<W: Write>(
     screen: W,
-    keys: impl IntoIterator<Item = crate::tui::Key>,
+    keys: impl IntoIterator<Item = clifacet::tui::Key>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
@@ -560,11 +558,10 @@ pub fn run_tui<W: Write>(
 /// # Errors and exit codes
 ///
 /// As [`run_tui`].
-#[cfg(feature = "tui")]
 pub fn run_tui_with<W: Write, C>(
     command: &C,
     screen: W,
-    keys: impl IntoIterator<Item = crate::tui::Key>,
+    keys: impl IntoIterator<Item = clifacet::tui::Key>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32
@@ -572,7 +569,7 @@ where
     C: Command<Input = ExampleInput, Output = ExampleOutput>,
 {
     let mut state = tui_form();
-    let outcome = crate::tui::run_on(screen, &mut state, keys, tui_submit_with(command));
+    let outcome = clifacet::tui::run_on(screen, &mut state, keys, tui_submit_with(command));
     finish_tui(outcome, out, err)
 }
 
@@ -581,18 +578,17 @@ where
 /// A run that asks a person something has one place to show it: the screen and the
 /// diagnostic are the same stream, which is what lets a real invocation draw on
 /// stderr while a test asserts the escape sequences in a buffer.
-#[cfg(feature = "tui")]
 fn run_tui_on<C>(
     command: &C,
     stream: &mut dyn Write,
-    keys: impl IntoIterator<Item = crate::tui::Key>,
+    keys: impl IntoIterator<Item = clifacet::tui::Key>,
     out: &mut dyn Write,
 ) -> i32
 where
     C: Command<Input = ExampleInput, Output = ExampleOutput>,
 {
     let mut state = tui_form();
-    let outcome = crate::tui::run_on(&mut *stream, &mut state, keys, tui_submit_with(command));
+    let outcome = clifacet::tui::run_on(&mut *stream, &mut state, keys, tui_submit_with(command));
     finish_tui(outcome, out, stream)
 }
 
@@ -600,7 +596,6 @@ where
 ///
 /// The one place a form's outcome becomes an exit code, so the two entry points above
 /// cannot drift apart.
-#[cfg(feature = "tui")]
 fn finish_tui(
     outcome: Result<Vec<String>, Failure>,
     out: &mut dyn Write,
@@ -631,12 +626,11 @@ fn finish_tui(
 ///
 /// Panics if the command no longer has one of these arguments. The names are a
 /// constant beside the command they name, so a mismatch is a bug in this crate, not
-/// something a user can cause; [`crate::tui::FormState::generated`] still reports it
+/// something a user can cause; [`clifacet::tui::FormState::generated`] still reports it
 /// as a failure for anyone generating a form from someone else's command.
-#[cfg(feature = "tui")]
 #[must_use]
-pub fn tui_form() -> crate::tui::FormState {
-    crate::tui::FormState::generated(&<Cli as Facet>::command(), &["name", "repeat", "level"])
+pub fn tui_form() -> clifacet::tui::FormState {
+    clifacet::tui::FormState::generated(&<Cli as Facet>::command(), &["name", "repeat", "level"])
         .expect("the example form names arguments its own command has")
 }
 
@@ -652,8 +646,7 @@ pub fn tui_form() -> crate::tui::FormState {
 /// aliases and value parsers included — and the draft goes through the same bridge
 /// every other frontend uses. A refusal is returned as a message for the form to
 /// show, because a form that closes on a typo makes the user start again.
-#[cfg(feature = "tui")]
-pub fn tui_submit(state: &crate::tui::FormState) -> Result<Vec<String>, String> {
+pub fn tui_submit(state: &clifacet::tui::FormState) -> Result<Vec<String>, String> {
     tui_submit_with(&Example)(state)
 }
 
@@ -661,14 +654,13 @@ pub fn tui_submit(state: &crate::tui::FormState) -> Result<Vec<String>, String> 
 ///
 /// The closure it returns is the same one [`tui_submit`] is: answers become arguments,
 /// `clap` parses them, the validation bridge runs, and the command executes.
-#[cfg(feature = "tui")]
 pub fn tui_submit_with<C>(
     command: &C,
-) -> impl Fn(&crate::tui::FormState) -> Result<Vec<String>, String> + '_
+) -> impl Fn(&clifacet::tui::FormState) -> Result<Vec<String>, String> + '_
 where
     C: Command<Input = ExampleInput, Output = ExampleOutput>,
 {
-    move |state: &crate::tui::FormState| {
+    move |state: &clifacet::tui::FormState| {
         let argv = std::iter::once(String::from("example")).chain(state.arguments());
         let cli = match Cli::try_parse_from(argv) {
             Ok(cli) => cli,
@@ -683,7 +675,6 @@ where
 }
 
 /// Writes each line of data, keeping the data stream machine-readable.
-#[cfg(feature = "tui")]
 fn write_lines(lines: &[String], out: &mut dyn Write) -> std::io::Result<()> {
     for line in lines {
         writeln!(out, "{line}")?;

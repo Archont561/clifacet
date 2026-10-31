@@ -9,11 +9,20 @@ ignore = [{ id = "RUSTSEC-2026-0374", reason = "Test-only rstest-bdd transitivel
 allow = ["Apache-2.0", "MIT"]
 # proc-macro2 uses Unicode identifier data; scope the permissive Unicode
 # license to the reviewed locked crate rather than broadening the global list.
-exceptions = [{ name = "unicode-ident", version = "=1.0.27", allow = ["MIT", "Apache-2.0", "Unicode-3.0"] }]
+# `foldhash` comes in through ratatui's `hashbrown`; it is Zlib, which is
+# permissive but not one of the two licenses this project ships under, so it is
+# named here rather than added to the global list.
+exceptions = [
+  { name = "unicode-ident", version = "=1.0.27", allow = ["MIT", "Apache-2.0", "Unicode-3.0"] },
+  { name = "foldhash", version = "=0.2.0", allow = ["Zlib"] },
+]
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# A workspace crate depending on another by path alone is not the wildcard this
+# rule is about; the example crate is `publish = false` and versionless on purpose.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

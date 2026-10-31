@@ -5,8 +5,8 @@
 //! derive ever needs a private clap API or a second grammar to work.
 
 use clifacet::clap::Parser as _;
-use clifacet::example::{Cli, Example, ExampleInput};
 use clifacet::{Command, Facet};
+use clifacet_example::{Cli, Example, ExampleInput};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 

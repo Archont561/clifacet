@@ -15,7 +15,7 @@
 //!
 //! The TUI is a frontend, not a second command. Submission hands the answers back to
 //! the application, which validates them through the same bridge the flags use —
-//! see [`crate::example::run_tui`] for the whole path in one place.
+//! see `clifacet_example::run_tui` for the whole path in one place.
 //!
 //! ```
 //! # #[cfg(feature = "tui")]

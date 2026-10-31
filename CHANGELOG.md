@@ -11,11 +11,32 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- The reference application is now a workspace crate of its own, `clifacet-example`,
+  with its tests, BDD features, proptest seeds and runnable demos beside it. It depends
+  on `clifacet` and on nothing private, so it is a proof of the published API rather
+  than part of the crate it demonstrates. Run it with
+  `cargo run -p clifacet-example -- --name ada`, and the demos with
+  `cargo run -p clifacet-example --example parity_report`.
+
 - `clifacet::contract::ExitPolicy`, the documented mapping from outcome to exit code.
   `ExitPolicy::standard()` is the conventional one (0, 2, 130, 1) and the reference
-  application now names it `example::EXIT`, so the constants and the policy cannot
+  application now names it `clifacet_example::EXIT`, so the constants and the policy cannot
   drift. The four outcomes a caller distinguishes are pairwise distinct; a usage error
   shares validation's code, which is asserted so the overlap is a decision.
+
+### Removed
+
+- `clifacet::example` is gone from the library. The example was never part of the
+  library's promise — it is an application — and shipping it meant publishing a
+  reference application inside a package whose API it was supposed to demonstrate.
+  Everything it used was already public; only the `example` module itself was not.
+  Import `clifacet_example` (the `clifacet-example` crate) instead.
+
+### Changed
+
+- `clifacet_example::POLICY` is `Policy::up_to(Mode::Tui)`. The example crate enables
+  the `tui` frontend unconditionally, so a mode it documents is always a mode it can
+  host; an application that enables fewer frontends still sets a lower ceiling.
 
 ### Fixed
 
@@ -118,8 +139,6 @@ prepared, so the headings below are managed by that script.
 - Git hooks through lefthook: linters, formatters and repository checks before
   a commit, advisories and tests before a push, and convco validating the commit
   message against the `.versionrc` configuration.
-
-### Fixed
 
 - The release workflow resolves the changelog notes before the first publish, so a
   version with no readable section fails with nothing to revert instead of failing at

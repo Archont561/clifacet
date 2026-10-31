@@ -1,0 +1,28 @@
+[package]
+name = "clifacet-example"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Clifacet's reference application, built on the published API"
+publish = false
+
+# The one dependency that matters: an application depends on `clifacet`, not the
+# other way round. Nothing in the library refers to this crate, which is what makes
+# the example a proof of the public API rather than part of the library it shows.
+[dependencies]
+# The derive expands to `::clap::…` paths, so a crate that parses a derived command
+# needs `clap` itself; the workspace pins one version for both.
+clap.workspace = true
+clifacet = { path = "../clifacet", features = ["tui"] }
+
+[dev-dependencies]
+proptest.workspace = true
+rstest.workspace = true
+rstest-bdd.workspace = true
+rstest-bdd-macros.workspace = true
+
+[lints]
+workspace = true

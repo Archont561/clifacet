@@ -15,8 +15,8 @@
 
 use clifacet::Facet;
 use clifacet::clap::Parser as _;
-use clifacet::example::{self, Cli, ExampleInput, Level, MAX_REPEAT};
 use clifacet::prompt::Scripted;
+use clifacet_example::{self as example, Cli, ExampleInput, Level, MAX_REPEAT};
 use proptest::prelude::*;
 
 /// A name validation accepts unchanged: non-empty, already trimmed.

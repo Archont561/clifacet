@@ -3,7 +3,11 @@
 //! Clifacet keeps one UI-free command core and renders it through flag-based,
 //! interactive and TUI frontends (decision-1). This release is the first slice of
 //! that architecture: a command seam ([`Command`]), a library-owned failure type
-//! ([`Failure`]), and a worked, tested reference application ([`example`]).
+//! ([`Failure`]), and the frontends above them.
+//!
+//! The worked reference application lives beside this crate, in
+//! `crates/clifacet-example`: it depends on `clifacet` and on nothing private, so
+//! every seam it uses is a seam a caller has.
 //!
 //! # The seam
 //!
@@ -27,13 +31,13 @@
 //!
 //! The application owns everything around the seam: parsing with `clap`,
 //! validation, which stream the data goes to, and which exit code a failure
-//! costs. [`example`] shows that division end to end.
+//! costs. `clifacet-example` shows that division end to end.
 //!
 //! # Four frontends, one command
 //!
-//! Parsing stays the application's: [`example`] shows a `clap` command, its validated
-//! input ([`Facet`]), and the [`policy`] that decides how interactive a run may be.
-//! Everything after that is shared:
+//! Parsing stays the application's: `clifacet-example` shows a `clap` command, its
+//! validated input ([`Facet`]), and the [`policy`] that decides how interactive a
+//! run may be. Everything after that is shared:
 //!
 //! - flags — the command line the user typed;
 //! - [`prompt`] — questions asked only for what the flags left out;
@@ -63,7 +67,6 @@ extern crate self as clifacet;
 
 pub mod command;
 pub mod contract;
-pub mod example;
 pub mod facet;
 pub mod failure;
 pub mod harness;
@@ -89,10 +92,10 @@ pub use command::Command;
 pub use facet::Facet;
 pub use failure::{Failure, FailureKind};
 
-/// `clap`, re-exported because [`example::Cli`] implements its traits.
+/// `clap`, re-exported so a caller can name the version this crate was built against.
 ///
-/// A caller that parses with [`example::Cli`] needs `clap::Parser` in scope, so
-/// the version they use has to be this one: re-exporting it removes the chance of
+/// A caller that parses with a derived command needs `clap::Parser` in scope, so the
+/// version they use has to be this one: re-exporting it removes the chance of
 /// resolving a different `clap` than the derive was built against.
 pub use clap;
 

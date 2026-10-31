@@ -5,12 +5,10 @@
 //! terminal. What it must prove is that the answer a user gets does not depend on
 //! which frontend collected it.
 
-#![cfg(feature = "tui")]
-
-use clifacet::example;
 use clifacet::policy::Capabilities;
 use clifacet::prompt::Scripted;
 use clifacet::tui::{Key, app};
+use clifacet_example as example;
 use rstest::rstest;
 
 /// Runs the example as a flag invocation, returning exit code, data and diagnostic.

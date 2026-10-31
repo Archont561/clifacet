@@ -12,9 +12,9 @@ use std::rc::Rc;
 
 use clifacet::Failure;
 use clifacet::contract::ExitPolicy;
-use clifacet::example::{self, Level};
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
+use clifacet_example::{self as example, Level};
 
 /// Anything that starts an ANSI escape sequence.
 const ESC: char = '\u{1b}';
@@ -226,7 +226,6 @@ fn a_cancellation_costs_a_hundred_and_thirty_and_writes_no_data() {
     assert_eq!(data, "");
 }
 
-#[cfg(feature = "tui")]
 #[test]
 fn the_full_screen_mode_draws_on_the_diagnostic_stream() {
     use std::io::IsTerminal;
@@ -250,7 +249,6 @@ fn the_full_screen_mode_draws_on_the_diagnostic_stream() {
     assert!(diagnostic.contains("\u{1b}[?1049l"), "and left again");
 }
 
-#[cfg(feature = "tui")]
 #[test]
 fn the_full_screen_mode_writes_only_data_when_it_submits() {
     use clifacet::tui::Key;

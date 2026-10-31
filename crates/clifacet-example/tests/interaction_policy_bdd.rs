@@ -4,7 +4,7 @@
 //! buffers instead of a terminal. That is deliberate: a promise about not
 //! prompting cannot be tested by a helper that already knows the answer.
 
-use clifacet::example;
+use clifacet_example as example;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 

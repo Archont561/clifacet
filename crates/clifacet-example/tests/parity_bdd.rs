@@ -3,13 +3,11 @@
 //! Each scenario builds the same three frontends the integration tests build and
 //! compares them through `clifacet::harness` — the public API, not a test helper.
 
-#![cfg(feature = "tui")]
-
-use clifacet::example::{self, Example, ExampleInput};
 use clifacet::harness::{Outcome, Parity, Recording, Subject};
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
 use clifacet::tui::Key;
+use clifacet_example::{self as example, Example, ExampleInput};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 

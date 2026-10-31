@@ -9,7 +9,9 @@
 
 Experimental scaffold: the command core, prompts, the companion derive and the
 full-screen TUI are implemented; the JSON frontend is not.
-The workspace currently contains `clifacet` and the `clifacet-macros` procedural macro crate.
+The workspace contains `clifacet`, the `clifacet-macros` procedural macro crate, and
+`clifacet-example` — the reference application, which is a consumer of the published API
+and is not published itself.
 
 ## Develop
 
