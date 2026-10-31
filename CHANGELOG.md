@@ -46,6 +46,12 @@ prepared, so the headings below are managed by that script.
 
 ### Fixed
 
+- A full-screen run could block forever when its stdin was not a terminal. `live_keys`
+  called `crossterm::event::read()` unconditionally, so a process whose keyboard could
+  never produce an event — a pipe, a test runner, a Windows console handle that exists
+  but is not interactive — waited instead of noticing. It now ends its input when stdin
+  is not a terminal, which `run_with` already reports as a cancellation. Found by the new
+  Windows CI job (CLI-16), which is the only place the two behaviours differ.
 - A full-screen run drew its screen on `stdout`, putting escape sequences in the data
   stream a caller asked for, and bypassed the diagnostic stream the application was
   given. The form now draws on that stream — the same one prompts and diagnostics use

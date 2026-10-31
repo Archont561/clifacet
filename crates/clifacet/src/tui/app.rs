@@ -5,6 +5,8 @@
 //! this crate's; the submission is the caller's — which is what keeps the TUI from
 //! owning validation or the handler.
 
+use std::io::IsTerminal as _;
+
 use ratatui::backend::{Backend, CrosstermBackend};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -185,7 +187,19 @@ pub fn run_on_with<W: std::io::Write>(
 /// This is the only place that touches a real event stream, which is why every test
 /// drives [`run`] with a script instead.
 pub fn live_keys() -> impl Iterator<Item = Key> {
-    std::iter::from_fn(|| crossterm::event::read().ok()).map_while(|event| translate(&event))
+    keys_when_interactive(std::io::stdin().is_terminal())
+}
+
+/// The rule [`live_keys`] follows, with the decision passed in so it can be tested.
+///
+/// Without a keyboard there is nothing to read, and `event::read()` does not always
+/// say so: a process whose stdin is a pipe gets an error, but a Windows console handle
+/// that exists and is not interactive blocks forever. Ending the input instead makes
+/// [`run_with`] report a cancellation, which is what a form nobody can type into
+/// should do.
+pub fn keys_when_interactive(interactive: bool) -> impl Iterator<Item = Key> {
+    std::iter::from_fn(move || interactive.then(|| crossterm::event::read().ok()).flatten())
+        .map_while(|event| translate(&event))
 }
 
 /// Maps a terminal event onto a key the form understands.

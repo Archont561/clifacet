@@ -80,10 +80,21 @@ Prove rather than assume compatibility.
   `check_features` and `prove_msrv` imports them, so "which configurations" and "with
   which compiler, and how a failure is explained" are separate modules with one
   direction of dependency.
-- Coverage: unchanged at 932/937 (99.47%); `test-scripts` grew from 107 to 124 tests, and
-  the Rust suites stay at 24 + 220.
-- Not verified here: the macOS and Windows jobs have never run before this commit — this
-  PR is their first execution, and CI is the qualification. Everything runnable offline
+- Coverage: 936/941 (99.47%), the four new lines being the keyboard guard and its seam;
+  `test-scripts` grew from 107 to 124 tests, and
+  the Rust suites went from 24 + 220 to 24 + 221.
+- First Windows run found a real defect, which is the strongest argument for AC#2: on
+  linux-64 and macOS, `crossterm::event::read()` fails immediately when stdin is a pipe,
+  so a TUI test that reaches `live_keys` gets an empty iterator and cancels; on Windows
+  the console handle exists but is not interactive, so the read blocked and the job sat
+  in `Test every frontend together` for twenty minutes. The fix is in the library, not the
+  test: `live_keys` ends its input when stdin is not a terminal (`keys_when_interactive`
+  is the same rule with the decision passed in, so it is testable on a machine that has
+  one), and `run_with` turns "the keys ran out" into a cancellation as it already did. A
+  real terminal is unaffected: `stdin.is_terminal()` is true there, so the read still
+  waits for a person. Recorded as a `Fixed` entry in the changelog.
+- Not verified here: the macOS and Windows jobs had never run before this task — the PR is
+  their first execution, and CI is the qualification. Everything runnable offline
   on linux-64 is green: `fmt-check`, `lint`, `alint` (39 rules), `actionlint`,
   `check-features`, `backlog-check`, `sandbox-check`, `test`, `test-doc`, `test-scripts`,
   `deny-offline`, `coverage`.

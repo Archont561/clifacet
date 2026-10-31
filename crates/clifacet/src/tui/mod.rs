@@ -35,7 +35,9 @@ pub mod app;
 pub mod state;
 pub mod widgets;
 
-pub use app::{draw_form, live_keys, run, run_on, run_on_with, run_with, translate};
+pub use app::{
+    draw_form, keys_when_interactive, live_keys, run, run_on, run_on_with, run_with, translate,
+};
 pub use state::{FieldState, FormState, Key, Outcome};
 pub use widgets::{CustomField, Field, Form};
 
