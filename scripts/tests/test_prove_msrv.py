@@ -7,17 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.prove_msrv import (
-    Failure,
-    Plan,
-    build_plan,
-    declared_msrv,
-    failure_hint,
-    feature_sets,
-    main,
-    package_name,
-    run_plan,
-)
+from scripts.check_features import Failure, Plan, build_plan, combinations, run_plan
+from scripts.prove_msrv import declared_msrv, failure_hint, main
 
 WORKSPACE = {"workspace": {"package": {"version": "0.1.0", "rust-version": "1.88"}}}
 CRATE = {
@@ -48,16 +39,9 @@ def test_missing_declaration_is_an_error(manifest):
         declared_msrv(manifest)
 
 
-def test_package_name_is_read_from_the_crate_manifest():
-    assert package_name(CRATE) == "clifacet"
-
-
-def test_feature_sets_cover_the_empty_set_and_each_feature_but_not_default():
-    assert feature_sets(CRATE) == [[], ["interactive"], ["json"], ["tui"]]
-
-
-def test_plan_checks_each_feature_plus_one_all_features_run():
-    plan = build_plan("1.88", "clifacet", feature_sets(CRATE))
+def test_the_msrv_matrix_is_the_supported_feature_matrix():
+    """One list, two jobs: what stable checks is what the floor proves."""
+    plan = build_plan("1.88", "clifacet", combinations(CRATE))
 
     assert plan[0].command() == [
         "cargo",
@@ -69,30 +53,7 @@ def test_plan_checks_each_feature_plus_one_all_features_run():
         "clifacet",
         "--no-default-features",
     ]
-    assert plan[1].command()[-2:] == ["--features", "interactive"]
     assert plan[-1].command() == ["cargo", "+1.88", "check", "--locked", "--all-targets", "--all-features"]
-
-
-def test_a_plan_without_a_toolchain_uses_the_ambient_cargo():
-    assert build_plan("", "clifacet", [[]])[0].command()[0:2] == ["cargo", "check"]
-
-
-def test_run_plan_stops_at_the_first_failure():
-    plan = [Plan("1.88", ("check", "a")), Plan("1.88", ("check", "b")), Plan("1.88", ("check", "c"))]
-    seen = []
-
-    def runner(command):
-        seen.append(command[-1])
-        return completed(0 if command[-1] != "b" else 1)
-
-    failures = run_plan(plan, runner)
-
-    assert [failure.plan for failure in failures] == [plan[1]]
-    assert seen == ["a", "b"], "the last step must not run after a failure"
-
-
-def test_run_plan_reports_no_failures_when_every_step_passes():
-    assert run_plan([Plan("1.88", ("check",))], lambda _: completed(0)) == []
 
 
 def test_a_missing_toolchain_is_reported_as_a_rustup_problem():
@@ -129,11 +90,11 @@ def test_main_prints_the_plan_without_executing_it(capsys):
 
 
 def test_the_committed_manifests_produce_a_usable_plan():
-    from scripts.prove_msrv import CRATE_MANIFEST, WORKSPACE_MANIFEST, load_manifest
+    from scripts.check_features import CRATE_MANIFEST, WORKSPACE_MANIFEST, load_manifest, package_name
 
     workspace, crate = load_manifest(WORKSPACE_MANIFEST), load_manifest(CRATE_MANIFEST)
-    plan = build_plan(declared_msrv(workspace), package_name(crate), feature_sets(crate))
+    plan = build_plan(declared_msrv(workspace), package_name(crate), combinations(crate))
 
-    assert len(plan) == len(feature_sets(crate)) + 1
+    assert len(plan) == len(combinations(crate)) - 1, "the empty set and `default` collapse"
     assert all("--locked" in step.arguments for step in plan)
     assert Path(WORKSPACE_MANIFEST).name == "Cargo.toml"

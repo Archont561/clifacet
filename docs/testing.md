@@ -91,10 +91,19 @@ runtime have to agree exactly; a floating patch would silently mix versions.
   scenario bindings, the case tables and the properties all run in one `nextest`
   invocation.
 - The workspace MSRV is 1.88, and CI proves the *library* at that version across
-  every feature boundary. The MSRV job runs `cargo check`, which does not build
-  dev-dependencies, so the test-only crates above are covered by their declared
-  `rust-version` floors (all at or below 1.88) rather than by a 1.88 build. Stating
-  the difference is cheaper than discovering it later.
+  every supported feature combination — the same rows `check-features` checks on
+  stable, because both read `scripts/check_features.py` rather than keeping two
+  lists. The MSRV job runs `cargo check`, which does not build dev-dependencies, so
+  the test-only crates above are covered by their declared `rust-version` floors (all
+  at or below 1.88) rather than by a 1.88 build. Stating the difference is cheaper
+  than discovering it later.
+- The suite runs on Linux, macOS and Windows with the stable compiler, headless: each
+  frontend test drives its own buffers and keystroke scripts, so no scenario needs a
+  terminal and none is skipped for lack of one. What that proves is that the code
+  compiles and behaves the same on the three platforms — not that the full-screen
+  interface renders well in every terminal.
+- Which combinations and platforms count as supported is stated once, in
+  [development.md](development.md#supported-platforms-and-feature-combinations).
 - Coverage is enforced on source files only, counted by `scripts/check_coverage.py`
   at a 90% line target. The derive's own unit tests are selected by
   `kind(proc-macro)` in the `test-src` task; without that selector `nextest` would

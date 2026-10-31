@@ -13,6 +13,11 @@ The workspace contains `clifacet`, the `clifacet-macros` procedural macro crate,
 `clifacet-example` — the reference application, which is a consumer of the published API
 and is not published itself.
 
+Supported: the empty, `default`, `interactive`, `tui`, `json` and all-features
+configurations on Linux, macOS and Windows, with Rust 1.88 as the floor — each one
+checked in CI rather than assumed. See
+[development.md](docs/development.md#supported-platforms-and-feature-combinations).
+
 ## Develop
 
 ```sh

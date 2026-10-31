@@ -11,6 +11,12 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- A qualified compatibility matrix instead of a claimed one. `scripts/check_features.py`
+  derives the supported feature combinations from the crate manifest — the empty set, the
+  `default` set, each frontend alone and all of them together — and CI checks each on
+  stable; `scripts/prove_msrv.py` now reuses that same matrix, so the stable rows and the
+  Rust 1.88 floor cannot drift. A new `platforms` CI job runs the headless suite on Linux,
+  macOS and Windows, and `docs/development.md` states what is and is not covered.
 - The reference application is now a workspace crate of its own, `clifacet-example`,
   with its tests, BDD features, proptest seeds and runnable demos beside it. It depends
   on `clifacet` and on nothing private, so it is a proof of the published API rather
@@ -40,6 +46,12 @@ prepared, so the headings below are managed by that script.
 
 ### Fixed
 
+- A full-screen run could block forever when its stdin was not a terminal. `live_keys`
+  called `crossterm::event::read()` unconditionally, so a process whose keyboard could
+  never produce an event — a pipe, a test runner, a Windows console handle that exists
+  but is not interactive — waited instead of noticing. It now ends its input when stdin
+  is not a terminal, which `run_with` already reports as a cancellation. Found by the new
+  Windows CI job (CLI-16), which is the only place the two behaviours differ.
 - A full-screen run drew its screen on `stdout`, putting escape sequences in the data
   stream a caller asked for, and bypassed the diagnostic stream the application was
   given. The form now draws on that stream — the same one prompts and diagnostics use

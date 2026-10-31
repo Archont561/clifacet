@@ -73,6 +73,19 @@ fn events_that_are_not_keys_are_ignored() {
     );
 }
 
+/// A form with no keyboard to read must end its input, not wait for one.
+///
+/// `run_with` already treats "the keys ran out" as a cancellation, so a process whose
+/// stdin is not a terminal — a pipe, a test runner, a Windows CI job whose console handle
+/// exists but is not interactive — cancels immediately instead of blocking on an event
+/// that can never arrive.
+#[test]
+fn a_form_with_no_keyboard_reads_no_keys_instead_of_waiting() {
+    let mut keys = clifacet::tui::keys_when_interactive(false);
+
+    assert_eq!(keys.next(), None, "no keyboard means no keys, and no wait");
+}
+
 #[test]
 fn a_repeat_is_still_a_press() {
     let event = Event::Key(KeyEvent {

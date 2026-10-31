@@ -146,6 +146,44 @@ jobs:
       - name: Check every feature boundary at the MSRV
         run: python3 scripts/prove_msrv.py
 
+  # The supported platforms, with headless tests: every suite passes its own buffers
+  # and scripts instead of a terminal, so "it needs a TTY" is never why a platform is
+  # exempt. rustup rather than Pixi for the same reason the MSRV job gives — the checked
+  # in Pixi environment is linux-64 only, and the question here is the code, not the
+  # tooling wrapped around it. `fail-fast` is off so one broken platform cannot hide
+  # whether the others still pass.
+  platforms:
+    name: Supported platforms (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Report the toolchain the runner provides
+        run: |
+          rustc --version
+          cargo --version
+      - name: Cache Cargo registry downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+          key: ${{ runner.os }}-cargo-registry-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-v1-
+      # The base boundary is the one a dependency can break without any test noticing:
+      # it is the configuration with no optional frontend enabled at all.
+      - name: Check the empty feature set
+        run: cargo check --locked --all-targets -p clifacet --no-default-features
+      - name: Test every frontend together
+        run: cargo test --workspace --all-features --locked
+      - name: Test the documentation examples
+        run: cargo test --workspace --all-features --locked --doc
+
   # The changelog, the version bump and the release notes are all derived from
   # commit messages (`.versionrc` maps each type to a section), and the pre-commit
   # hook that checks them is only local. This job makes the contract enforceable
