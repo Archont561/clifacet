@@ -137,6 +137,12 @@ rules:
     level: error
     message: "The MSRV proof script is missing."
 
+  - id: require-check-docs
+    kind: file_exists
+    paths: "scripts/check_docs.py"
+    level: error
+    message: "The documentation checker is missing; the guides would be unverified prose."
+
   - id: require-check-features
     kind: file_exists
     paths: "scripts/check_features.py"

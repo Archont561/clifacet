@@ -58,6 +58,10 @@ fmt = "cargo fmt --all"
 fmt-check = "cargo fmt --all -- --check"
 lint = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
 alint = "alint check --baseline .alint-baseline.json --strict-baseline --fail-on-warning"
+# The guides are checked, not trusted: links and anchors resolve, every ```rust fence is
+# compiled into the example crate's test suite, and every documented `clifacet::…` path
+# names a public item. `--write` regenerates that file after editing a page.
+check-docs = "python scripts/check_docs.py"
 actionlint = "actionlint .github/workflows/*.yml"
 # Conventional-commit check for the `commit-msg` hook; reads the proposed message from
 # stdin. `--strip` matches Git's own cleanup of the comment block.
@@ -78,6 +82,7 @@ test = { depends-on = ["test-src", "test-integration"] }
 test-doc = "cargo test --workspace --all-features --doc --locked"
 coverage = "mkdir -p coverage && cargo llvm-cov nextest --workspace --all-features --locked --lcov --output-path coverage/lcov.info --ignore-filename-regex '(^|/)tests/' && python scripts/check_coverage.py coverage/lcov.info"
 test-scripts = "python -m pytest scripts/tests"
+docs-snippets = "python scripts/check_docs.py --write"
 # Proves the declared MSRV. CI installs that toolchain; locally this needs rustup,
 # or `--toolchain ""` to reuse the pinned compiler as a plumbing check.
 prove-msrv = "python scripts/prove_msrv.py"
@@ -87,8 +92,8 @@ bump-version = "python scripts/bump_version.py"
 # One command from any checkout: reach the remote head, restore the environment, install
 # the hooks, then prove the result with the fast checks.
 bootstrap = "bash scripts/bootstrap.sh"
-test-local = { depends-on = ["fmt-check", "lint", "alint", "test", "test-scripts", "deny", "sandbox-check"] }
+test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "test", "test-scripts", "deny", "sandbox-check"] }
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
 hooks-install = "lefthook install"
-quality = { depends-on = ["fmt-check", "lint", "alint", "skills-check", "backlog-check", "check-features", "actionlint", "deny", "audit", "sandbox-check"] }
+quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "skills-check", "backlog-check", "check-features", "actionlint", "deny", "audit", "sandbox-check"] }

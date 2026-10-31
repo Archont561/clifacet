@@ -38,6 +38,12 @@ pre-commit:
       glob: ["*.rs", "**/Cargo.toml", "Cargo.lock"]
       run: pixi run --frozen --no-install check-features
 
+    - name: check-docs
+      # Links, anchors, compiled snippets and documented names. The generated snippet file
+      # is itself an input here, so a page edited without regenerating it fails the commit.
+      glob: ["*.md", "docs/*.md", "scripts/check_docs.py", "crates/clifacet-example/tests/documented_snippets.rs"]
+      run: pixi run --frozen --no-install check-docs
+
     - name: alint
       # Repository policy covers files no other linter reads, so it runs on every commit.
       run: pixi run --frozen --no-install alint
