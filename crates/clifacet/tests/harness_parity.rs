@@ -224,3 +224,40 @@ fn an_execution_failure_costs_the_same_exit_code_whichever_mode_asked() {
         .compare("scripted prompt", prompted)
         .assert_parity();
 }
+
+#[test]
+fn no_mode_writes_a_screen_or_a_question_to_the_data_stream() {
+    // The stream contract, checked across frontends rather than per mode: what a person
+    // sees never lands in what a caller asked for. A full-screen run is the case that
+    // would tempt otherwise, since a terminal is exactly where escape sequences go.
+    let runs = [
+        ("flags", flags(&["--name", "ada"])),
+        (
+            "scripted prompt",
+            prompted(&[], [Answer::Text(String::from("ada"))]),
+        ),
+        ("headless form", form(&typing("ada"))),
+        ("cancelled form", form(&[Key::Escape])),
+    ];
+
+    for (label, outcome) in &runs {
+        assert!(
+            !outcome.data().contains('\u{1b}'),
+            "{label} wrote an escape sequence to the data stream"
+        );
+        assert!(
+            !outcome.data().contains("Who should I greet?"),
+            "{label} wrote its question to the data stream"
+        );
+    }
+
+    // And the contract that makes that possible: the modes agree on the data and the
+    // exit code, which is what a caller consuming the stream actually depends on.
+    let (_, reference) = &runs[0];
+    let parity = runs[1..3].iter().fold(
+        Parity::new("flags", reference.clone()).comparing([Subject::Exit, Subject::Data]),
+        |parity, (label, outcome)| parity.compare(*label, outcome.clone()),
+    );
+
+    assert_eq!(parity.check(), Ok(()));
+}

@@ -263,6 +263,51 @@ which is the point.
 | an execution failure costs the same exit code | `tests/harness_parity.rs` |
 | measuring, recording and comparing, without any frontend | `tests/harness.rs` |
 
+## Streams and exit codes
+
+Two contracts hold in every mode, and both are asserted rather than assumed.
+
+**The data stream carries only data.** Everything a person sees goes to the diagnostic
+stream: a question, a full-screen interface, a diagnostic. That is why a form draws on
+`stderr` — drawing it on `stdout` would put escape sequences in the output a caller
+asked for — and why a prompt writes its question to `stderr` while the answer's effect
+appears on `stdout`.
+
+| Mode | `stdout` | `stderr` |
+| --- | --- | --- |
+| flags | the requested data | the failure, if any |
+| a prompt | the requested data | the questions, then the failure, if any |
+| the form | the requested data | the screen, then the failure, if any |
+| help, `--version` | the text that was asked for | — |
+| a usage error | — | `clap`'s message |
+
+**Each outcome has its own code.** `clifacet::contract::ExitPolicy` holds the mapping,
+`ExitPolicy::standard()` is the conventional one, and the reference application names it
+`example::EXIT` so the constants and the policy cannot drift:
+
+| Outcome | Code | Why |
+| --- | --- | --- |
+| success | 0 | conventional |
+| validation failure | 2 | nothing ran; `clap` documents 2 for the same reason |
+| usage error | 2 | the same sentence as validation, so the same code |
+| cancellation | 130 | 128 + `SIGINT`; a decision, not a mistake |
+| execution failure | 1 | it ran and could not finish |
+
+The four *outcomes* a caller distinguishes — success, validation, cancellation and
+execution — are pairwise distinct, which a test asserts; usage deliberately shares
+validation's code, which is asserted too so the overlap reads as a decision.
+
+`Capabilities::detected` follows the stream rule: a full-screen interface needs the
+`tui` feature, a terminal for the screen (`stderr`) and a terminal for the data
+(`stdout`), because a piped data stream is asking for data, not for a screen.
+
+| Case | Where |
+| --- | --- |
+| the policy maps each category, and the four outcomes are distinct | `tests/outcomes.rs` |
+| a question, a screen and a diagnostic never reach the data stream | `tests/outcomes.rs`, `tests/harness_parity.rs` |
+| success, validation and a question-answered run, as scenarios | `tests/features/outcomes.feature` |
+| help is data and a usage error is a diagnostic | `tests/example_command.rs`, `tests/outcomes.rs` |
+
 ## Secrets and provenance
 
 A value wrapped in `clifacet::secret::Secret` is redacted wherever the framework

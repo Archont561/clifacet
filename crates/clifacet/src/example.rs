@@ -25,32 +25,40 @@ use std::str::FromStr;
 use clap::Parser;
 
 use crate::command::Command;
+use crate::contract::ExitPolicy;
 use crate::facet::Facet;
-use crate::failure::{Failure, FailureKind};
+use crate::failure::Failure;
 use crate::policy::{Capabilities, Mode, Policy, Request};
 use crate::prompt::{Prompter, Session, Terminal};
 use crate::secret::Secret;
 
+/// The exit codes this application gives its outcomes.
+///
+/// The numbers are the application's (decision-3); the categories are the library's.
+/// [`ExitPolicy::standard`] is that mapping in one readable place, and the constants
+/// below are names for it so a test can point at the outcome it means.
+pub const EXIT: ExitPolicy = ExitPolicy::standard();
+
 /// The process exited after doing what was asked.
-pub const EXIT_SUCCESS: i32 = 0;
+pub const EXIT_SUCCESS: i32 = EXIT.success();
 
 /// The command ran and could not complete.
-pub const EXIT_EXECUTION_FAILED: i32 = 1;
+pub const EXIT_EXECUTION_FAILED: i32 = EXIT.execution();
 
 /// The input failed validation before the command ran.
-pub const EXIT_VALIDATION_FAILED: i32 = 2;
+pub const EXIT_VALIDATION_FAILED: i32 = EXIT.validation();
 
 /// `clap` rejected the arguments, or the user asked for help or the version.
 ///
 /// The same value as validation on purpose: both mean "nothing ran, fix the
 /// invocation", and `clap` itself documents 2 for usage errors.
-pub const EXIT_USAGE: i32 = 2;
+pub const EXIT_USAGE: i32 = EXIT.usage();
 
 /// The user cancelled an interactive flow, so nothing ran.
 ///
 /// `130` is the conventional shell code for interruption, and it is deliberately
 /// not `2`: a cancellation is a decision, not a mistake in the invocation.
-pub const EXIT_CANCELLED: i32 = 130;
+pub const EXIT_CANCELLED: i32 = EXIT.cancelled();
 
 /// The largest `--repeat` this command accepts.
 pub const MAX_REPEAT: u8 = 8;
@@ -402,13 +410,12 @@ where
     // dead code rather than a fallback — it exists only to keep the two in step.
     #[cfg(feature = "tui")]
     if plan.mode() == Mode::Tui {
-        return run_tui_with(
-            command,
-            std::io::stdout(),
-            crate::tui::live_keys(),
-            out,
-            err,
-        );
+        // The screen is drawn on the diagnostic stream the caller passed, like every
+        // other thing a person sees. Drawing it on the data stream would put escape
+        // sequences in what a caller asked for, which is the one thing the stream
+        // contract forbids — and reaching for the process's own stderr would bypass
+        // the streams this function was given.
+        return run_tui_on(command, err, crate::tui::live_keys(), out);
     }
 
     let mut session = Session::start(plan, build_frontend);
@@ -452,17 +459,11 @@ fn collect(session: &mut Session, mut cli: Cli) -> Result<ExampleInput, Failure>
 ///
 /// The numbers are the application's, not the library's (decision-3), and each
 /// failure category gets its own: cancelled, execution, and anything else — mode
-/// refusals and validation — meaning "nothing ran, fix the invocation".
+/// refusals and validation — meaning "nothing ran, fix the invocation". The mapping
+/// itself lives in [`EXIT`], so it can be read in one place and asserted as a policy.
 #[must_use]
-pub const fn exit_code(failure: &Failure) -> i32 {
-    match failure.kind() {
-        FailureKind::Cancelled => EXIT_CANCELLED,
-        FailureKind::Execution => EXIT_EXECUTION_FAILED,
-        FailureKind::Validation => EXIT_VALIDATION_FAILED,
-        // Exhaustive here because this crate defines the enum; an application
-        // outside it needs a catch-all arm for the same `#[non_exhaustive]` reason,
-        // and should report an unknown category as a failure, never as success.
-    }
+pub fn exit_code(failure: &Failure) -> i32 {
+    EXIT.for_failure(failure)
 }
 
 /// Parses process arguments and runs them.
@@ -572,6 +573,39 @@ where
 {
     let mut state = tui_form();
     let outcome = crate::tui::run_on(screen, &mut state, keys, tui_submit_with(command));
+    finish_tui(outcome, out, err)
+}
+
+/// Runs the form with the screen drawn on the diagnostic stream itself.
+///
+/// A run that asks a person something has one place to show it: the screen and the
+/// diagnostic are the same stream, which is what lets a real invocation draw on
+/// stderr while a test asserts the escape sequences in a buffer.
+#[cfg(feature = "tui")]
+fn run_tui_on<C>(
+    command: &C,
+    stream: &mut dyn Write,
+    keys: impl IntoIterator<Item = crate::tui::Key>,
+    out: &mut dyn Write,
+) -> i32
+where
+    C: Command<Input = ExampleInput, Output = ExampleOutput>,
+{
+    let mut state = tui_form();
+    let outcome = crate::tui::run_on(&mut *stream, &mut state, keys, tui_submit_with(command));
+    finish_tui(outcome, out, stream)
+}
+
+/// Writes what the form produced, or reports why it did not finish.
+///
+/// The one place a form's outcome becomes an exit code, so the two entry points above
+/// cannot drift apart.
+#[cfg(feature = "tui")]
+fn finish_tui(
+    outcome: Result<Vec<String>, Failure>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
     match outcome {
         Ok(lines) => match write_lines(&lines, out) {
             Ok(()) => EXIT_SUCCESS,

@@ -11,6 +11,23 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- `clifacet::contract::ExitPolicy`, the documented mapping from outcome to exit code.
+  `ExitPolicy::standard()` is the conventional one (0, 2, 130, 1) and the reference
+  application now names it `example::EXIT`, so the constants and the policy cannot
+  drift. The four outcomes a caller distinguishes are pairwise distinct; a usage error
+  shares validation's code, which is asserted so the overlap is a decision.
+
+### Fixed
+
+- A full-screen run drew its screen on `stdout`, putting escape sequences in the data
+  stream a caller asked for, and bypassed the diagnostic stream the application was
+  given. The form now draws on that stream — the same one prompts and diagnostics use
+  — so `stdout` carries only data in every mode. `Capabilities::detected` requires a
+  terminal on both streams for a TUI, because a piped data stream asks for data rather
+  than for a screen.
+- The prompt's question was only asserted through a scripted frontend, which answers
+  without writing anything; it is now covered with a real `Terminal` writing into a
+  buffer the test owns.
 - Framework-owned secret handling: `clifacet::secret::Secret<T>` redacts itself in
   `Debug` and `Display`, so every place the framework formats a value — a diagnostic,
   a parity harness record, a form field, a failing test's message — shows `[redacted]`

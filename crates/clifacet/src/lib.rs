@@ -40,6 +40,9 @@
 //! - [`tui`] — a full-screen form built from public components (`tui` feature);
 //! - [`harness`] — the public way to prove the mode changed nothing else.
 //!
+//! [`contract`] states what a run may write where — data on the data stream, everything
+//! a person sees on the diagnostic one — and maps each outcome to an exit code.
+//!
 //! [`secret`] wraps a credential so nothing the framework prints can show it, and
 //! [`provenance`] records where each value came from without recording the value.
 //!
@@ -59,6 +62,7 @@
 extern crate self as clifacet;
 
 pub mod command;
+pub mod contract;
 pub mod example;
 pub mod facet;
 pub mod failure;
