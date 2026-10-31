@@ -109,16 +109,18 @@ impl Capabilities {
 
     /// What this process actually has.
     ///
-    /// A full-screen interface needs two things: the `tui` feature, so there is code
-    /// to draw with, and a terminal to draw on. Claiming either without the other
-    /// would let a policy resolve to a mode that cannot render, so the capability is
-    /// the conjunction and nothing else is probed.
+    /// A full-screen interface needs three things: the `tui` feature, so there is code
+    /// to draw with; a terminal for the screen, which the form draws on the diagnostic
+    /// stream; and a terminal for the data, because a piped data stream asks for data
+    /// rather than for a screen. Claiming any of them without the others would let a
+    /// policy resolve to a mode that cannot render or cannot be consumed, so the
+    /// capability is the conjunction and nothing else is probed.
     #[must_use]
     pub fn detected() -> Self {
         let terminal = std::io::stdout().is_terminal();
         Self {
             terminal,
-            tui: terminal && cfg!(feature = "tui"),
+            tui: terminal && std::io::stderr().is_terminal() && cfg!(feature = "tui"),
         }
     }
 
