@@ -21,7 +21,7 @@ one.
 `Command` is the only seam between the middle two rows, and it is the only one
 that has to stay stable for later frontends:
 
-```rust
+```rust,ignore
 pub trait Command {
     type Input;
     type Output;
@@ -81,7 +81,7 @@ Which mode a run uses is decided before anything happens, and the decision is a
 pure function of three inputs (decision-3): the **explicit request**, the
 **application's policy**, then what the **environment can offer**.
 
-```rust
+```rust,ignore
 let plan = Policy::up_to(Mode::Interactive)
     .resolve(Request::mode(Mode::Interactive), Capabilities::terminal())?;
 match plan.mode() { Mode::Interactive => …, Mode::NonInteractive => … }
@@ -126,7 +126,7 @@ invocation.
 An interactive run and a flag run are the same command. The frontend only fills the
 gaps a flag left empty, and that rule lives in one place:
 
-```rust
+```rust,ignore
 let mut session = Session::start(plan, || Box::new(Terminal::stdio()));
 let name = session.value(cli.name.take(), "Who should I greet?")?;   // never re-asks
 let output = session.run(&Example, |session| collect(session, cli))?; // collect, then run
@@ -197,7 +197,7 @@ Four rules keep it a frontend rather than a second command:
 decision-4 asks for composition without a second command, and ships exactly two ways
 to replace something, both explicit:
 
-```rust
+```rust,ignore
 // 1. One field, drawn by the application.
 Form::new(&state).with_field("name", &Masked);
 
@@ -224,7 +224,7 @@ them.
 A flag run, a prompted run and a full-screen form are the same command, and
 `clifacet::harness` is how an application proves it instead of promising it:
 
-```rust
+```rust,ignore
 let (command, effects) = Recording::new(MyCommand, describe);
 let flags = Outcome::measured(|out, err| app::main_with_command(&command, argv, headless(), .., out, err))
     .with_effects(effects.recorded());
@@ -319,7 +319,7 @@ A value wrapped in `clifacet::secret::Secret` is redacted wherever the framework
 speaks, and `clifacet::provenance` records where a value came from without recording
 the value.
 
-```rust
+```rust,ignore
 #[arg(long, value_name = "TOKEN")]
 pub token: Option<Secret<String>>,          // clap parses it, nothing prints it
 ```
@@ -374,7 +374,7 @@ application's, and is listed so absence is not mistaken for oversight:
 `clifacet::Facet` lets an existing clap command produce validated input without a
 second grammar:
 
-```rust
+```rust,ignore
 #[derive(clap::Parser, clifacet::Facet)]
 #[facet(input = ExampleInput, bridge = build_input)]
 pub struct Cli { /* clap attributes unchanged */ }

@@ -11,6 +11,18 @@ prepared, so the headings below are managed by that script.
 
 ### Added
 
+- Guides for the implemented API: [getting started](docs/getting-started.md),
+  [modes and the interaction policy](docs/modes.md), [the companion
+  derive](docs/derive.md), [TUI composition](docs/tui-composition.md),
+  [testing](docs/testing.md) and [contributing](docs/contributing.md), with a rewritten
+  root README and docs index that point at them. `docs/command-core.md` stays the
+  reference.
+- `scripts/check_docs.py` and the `check-docs` task, which make the guides part of the
+  build: relative links and `#fragment` anchors must resolve, every ```` ```rust ````
+  fence is compiled into `crates/clifacet-example/tests/documented_snippets.rs` and run
+  by the suite (a `rust,ignore` fence is an illustration), every documented
+  `clifacet::…` path is checked segment by segment against what the crate declares, and
+  the reference application is held to staying domain-neutral.
 - A qualified compatibility matrix instead of a claimed one. `scripts/check_features.py`
   derives the supported feature combinations from the crate manifest — the empty set, the
   `default` set, each frontend alone and all of them together — and CI checks each on

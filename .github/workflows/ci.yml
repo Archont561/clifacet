@@ -61,6 +61,8 @@ jobs:
         run: pixi run --frozen skills-check
       - name: Check Backlog and frozen Bun dependencies
         run: pixi run --frozen backlog-check
+      - name: Check the documentation guides
+        run: pixi run --frozen check-docs
       - name: Check generated sandbox files
         run: pixi run --frozen sandbox-check
       - name: Lint GitHub Actions

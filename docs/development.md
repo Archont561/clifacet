@@ -7,6 +7,7 @@ checked-in Pixi environment currently targets Linux x86-64.
 bash scripts/bootstrap.sh  # checkout at the remote head, environment, hooks, smoke check
 pixi run quality        # repo, skills, Backlog, features, sandbox, Rust and advisory checks
 pixi run check-features # every supported feature combination, one cargo check each
+pixi run check-docs     # links, anchors, compiled snippets and documented names
 pixi run test-src       # crate-internal src/ tests
 pixi run test-integration # external tests/ targets, including compile-fail cases
 pixi run test           # both nextest groups
@@ -23,8 +24,31 @@ through Pixi with `--no-install` (a restore already materialised the environment
 pixi run --frozen --no-install test-local
 ```
 
-That covers formatting, Clippy, alint, both nextest groups, the script tests,
-`cargo deny` and the sandbox check in about a minute on a warm checkout.
+That covers formatting, Clippy, alint, the documentation checks, both nextest groups,
+the script tests, `cargo deny` and the sandbox check in about a minute on a warm
+checkout.
+
+## Documentation is built, not written
+
+The guides are checked by the same task surface as the code:
+
+```sh
+pixi run check-docs                      # verify: links, anchors, snippets, documented names
+python scripts/check_docs.py --write     # regenerate the snippet test after editing a page
+```
+
+A ```` ```rust ```` fence in `README.md` or `docs/*.md` is not prose: `check_docs.py`
+copies it into `crates/clifacet-example/tests/documented_snippets.rs`, which the suite
+compiles and runs. `rust,ignore` is the escape hatch for a deliberate fragment, and it
+is what the reference page uses for its diagrams of shapes. Every relative link and
+`#fragment` is resolved, every `clifacet::…` path is checked segment by segment
+(stopping where a crate re-exports someone else's module), and the reference
+application is held to staying domain-neutral.
+
+The generated file is committed, so CI fails when a page was edited without
+regenerating it — a check that cannot silently pass by rewriting what it checks. It is
+marked `#[rustfmt::skip]`, because a verbatim copy of a page is not a file for the
+formatter to reflow.
 
 ## Command core
 
@@ -113,7 +137,7 @@ calls a Pixi task, so a hook and the matching CI job cannot drift:
 
 | Hook         | Runs                                                                                                 | Why there                                                                                                            |
 | ------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `pre-commit` | `fmt` (re-staged), `lint`, `check-features`, `alint`, `actionlint`, `sandbox-check`, `skills-check`   | Seconds on a warm checkout, and a commit is the last moment a fix is still free.                                      |
+| `pre-commit` | `fmt` (re-staged), `lint`, `check-features`, `check-docs`, `alint`, `actionlint`, `sandbox-check`, `skills-check` | Seconds on a warm checkout, and a commit is the last moment a fix is still free.                                      |
 | `pre-push`   | `audit-offline`, `deny-offline`, `test`, `test-doc`, `test-scripts`                                   | Minutes of work, and exactly what the push is about to hand to CI, so they run once per push instead of per commit.  |
 | `commit-msg` | `convco check --from-stdin --strip`                                                                   | The message is the input to the changelog, the version bump and the release notes.                                    |
 
