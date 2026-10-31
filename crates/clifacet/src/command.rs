@@ -8,7 +8,7 @@
 //! Parsing, validation and rendering stay outside this trait. The application
 //! turns its `clap` arguments into `Input`, rejects bad values as
 //! [`Failure::validation`](crate::Failure::validation), and writes whatever the
-//! command returns. See [`crate::example`] for a complete, tested example of that
+//! command returns. See the `clifacet-example` crate for a complete, tested example of that
 //! division.
 
 use crate::failure::Failure;

@@ -67,9 +67,15 @@ rules:
 
   - id: require-example-command
     kind: file_exists
-    paths: "crates/clifacet/examples/example.rs"
+    paths: "crates/clifacet-example/src/main.rs"
     level: error
     message: "The runnable example command is missing."
+
+  - id: require-example-manifest
+    kind: file_exists
+    paths: "crates/clifacet-example/Cargo.toml"
+    level: error
+    message: "The standalone example crate is missing."
 
   - id: require-main-source
     kind: file_exists
@@ -209,6 +215,7 @@ rules:
     path: "$.workspace.members"
     equals:
       - crates/clifacet
+      - crates/clifacet-example
       - crates/clifacet-macros
     level: error
     message: Keep workspace membership explicitly reviewed.

@@ -2,18 +2,21 @@
 
 This is the M1 slice: `clap` parses, the application validates, a UI-free command
 runs, and the application decides which stream carries the data and what a
-failure costs. `crates/clifacet/src/example.rs` is the whole thing in one place,
-and `crates/clifacet/tests/example_command.rs` drives it through buffers rather
-than a terminal.
+failure costs. `crates/clifacet-example/src/lib.rs` is the whole thing in one
+place — the reference application, in a crate of its own — and
+`crates/clifacet-example/tests/example_command.rs` drives it through buffers
+rather than a terminal. Nothing in it reaches a private path: the crate depends
+on `clifacet` exactly as a caller does, so every seam it uses is a published
+one.
 
 ## The four layers
 
 | Layer | Lives in | Owns | Must not |
 | --- | --- | --- | --- |
-| `clap` surface | `example::Cli` | flags, help, usage errors | know about the command |
+| `clap` surface | `clifacet_example::Cli` | flags, help, usage errors | know about the command |
 | Validation | `TryFrom<Cli> for ExampleInput`, reached through `Facet::validate` | rejecting bad values, defaults | run anything |
 | Command | `impl Command for Example` | the operation | touch a stream, read a terminal, know `clap` exists |
-| Application | `example::run`, `example::main` | streams, exit codes, diagnostics | contain the operation |
+| Application | `clifacet_example::run`, `clifacet_example::main` | streams, exit codes, diagnostics | contain the operation |
 
 `Command` is the only seam between the middle two rows, and it is the only one
 that has to stay stable for later frontends:
@@ -39,14 +42,14 @@ are the application's: this repository's example uses `0` success, `1` execution
 `2` validation and usage. A different application may choose otherwise without
 touching the library.
 
-**Streams are the application's.** `Command` never writes. `example::run` takes
-`out` and `err` as parameters, which is what makes a run testable without a
-terminal and is also why "stdout carries only requested machine data" is a
-property a test can assert rather than a convention.
+**Streams are the application's.** `Command` never writes.
+`clifacet_example::run` takes `out` and `err` as parameters, which is what makes a
+run testable without a terminal and is also why "stdout carries only requested
+machine data" is a property a test can assert rather than a convention.
 
 ## Demonstrated behavior
 
-Measured on `crates/clifacet` at this commit:
+Measured on `crates/clifacet-example` at this commit:
 
 | Invocation | Exit | stdout | stderr |
 | --- | --- | --- | --- |
@@ -57,8 +60,7 @@ Measured on `crates/clifacet` at this commit:
 | `example --nope` | 2 | empty | `clap` usage error |
 | `example --help` | 0 | help text | empty |
 | `example --token <revoked…>` | 1 | empty | `example: the credential [redacted] was rejected` |
-| `example --tui` (built with `tui`) | 0 | the form, then `hello, world` | empty |
-| `example --tui` (built without `tui`) | 2 | empty | `example: a TUI is not available: this command allows at most interactive use` |
+| `example --tui` | 0 | the form, then `hello, world` | empty |
 | `example --interactive` (a terminal) | 0 | `hello, ada` after answering `ada` | empty |
 | `example --interactive --explode`, answer `n` | 130 | empty | `example: the user declined to fail on purpose (--explode)` |
 | `example --yes` | 0 | `hello, world` | empty |
@@ -101,12 +103,15 @@ mode, does not imply a mode, and does not affect the exit code.
 
 ### The example's ceiling
 
-`example::POLICY` allows prompts, and allows a TUI only when the crate is built
-with the `tui` feature. Without it `--tui` is refused with exit `2` and a message
-naming what was asked for: a mode nothing can draw is not a mode, so promising it
-would be a lie. `Capabilities::detected` applies the same rule from the other side
-— the TUI capability is the feature *and* a terminal — which is why the policy can
-never resolve to a mode the binary cannot render.
+The reference application enables every frontend the library has — it depends on
+`clifacet` with the `tui` feature, and prompts come from the library's own
+`Terminal` — so `clifacet_example::POLICY` is `Policy::up_to(Mode::Tui)` and a run
+never refuses a mode it was asked for. An application that enables fewer
+frontends sets a lower ceiling: with `Policy::up_to(Mode::Interactive)`, `--tui`
+becomes a refusal with exit `2` and a message naming what was asked for, because
+a mode nothing can draw is not a mode. `Capabilities::detected` applies the same
+rule from the other side — the TUI capability is the feature *and* a terminal —
+which is why the policy can never resolve to a mode the binary cannot render.
 
 ### Cancellation is its own category
 
@@ -197,7 +202,7 @@ to replace something, both explicit:
 Form::new(&state).with_field("name", &Masked);
 
 // 2. The whole screen, drawn by the application.
-app::run_with(&mut terminal, &mut state, keys, my_screen, example::tui_submit);
+app::run_with(&mut terminal, &mut state, keys, my_screen, clifacet_example::tui_submit);
 ```
 
 Neither is a registry and neither can change behaviour. `CustomField::draw` is given
@@ -206,12 +211,12 @@ would show a stale answer; `run_with` replaces the drawing and nothing else — 
 keys, the refusals, the submission and the handler are the same loop, so a custom
 screen reaches the same validation as the generated form. `run_on_with` is the same
 hatch with the alternate screen, so a custom screen is not left to reimplement
-entering and leaving it. `examples/tui_custom_screen.rs` is both hatches in one
-runnable screen.
+entering and leaving it. `crates/clifacet-example/examples/tui_custom_screen.rs` is
+both hatches in one runnable screen.
 
 The one thing a headless test cannot reach is the process's own terminal: the size
 probe, the raw-mode restore and the live event stream. Everything they wrap is
-covered, which is why `cargo llvm-cov` reports 815 of 820 lines rather than all of
+covered, which is why `cargo llvm-cov` reports 932 of 937 lines rather than all of
 them.
 
 ## Cross-mode parity, as a published API
@@ -250,18 +255,18 @@ Three pieces, and deliberately no fourth:
   one names the question, the other names the form — so `Parity::comparing` names the
   subjects a scenario is actually about. Everything else compares all four.
 
-`examples/parity_report.rs` runs the example command three ways and prints whether the
-modes agree; it lives outside the crate, so it can only use this published surface,
-which is the point.
+`crates/clifacet-example/examples/parity_report.rs` runs the example command three
+ways and prints whether the modes agree; it lives outside the library crate, so it
+can only use this published surface, which is the point.
 
 | Case | Where |
 | --- | --- |
-| three modes reach the command with the same validated input | `tests/harness_parity.rs`, `tests/features/parity.feature` |
-| a successful run is identical in every mode | `tests/harness_parity.rs` |
-| a validation failure keeps the flags' words, and runs nothing in any mode | `tests/harness_parity.rs` |
-| dismissing a question and leaving the form are the same outcome | `tests/harness_parity.rs` |
-| an execution failure costs the same exit code | `tests/harness_parity.rs` |
-| measuring, recording and comparing, without any frontend | `tests/harness.rs` |
+| three modes reach the command with the same validated input | `clifacet-example/tests/harness_parity.rs`, `clifacet-example/tests/features/parity.feature` |
+| a successful run is identical in every mode | `clifacet-example/tests/harness_parity.rs` |
+| a validation failure keeps the flags' words, and runs nothing in any mode | `clifacet-example/tests/harness_parity.rs` |
+| dismissing a question and leaving the form are the same outcome | `clifacet-example/tests/harness_parity.rs` |
+| an execution failure costs the same exit code | `clifacet-example/tests/harness_parity.rs` |
+| measuring, recording and comparing, without any frontend | `clifacet/tests/harness.rs` |
 
 ## Streams and exit codes
 
@@ -283,7 +288,7 @@ appears on `stdout`.
 
 **Each outcome has its own code.** `clifacet::contract::ExitPolicy` holds the mapping,
 `ExitPolicy::standard()` is the conventional one, and the reference application names it
-`example::EXIT` so the constants and the policy cannot drift:
+`clifacet_example::EXIT` so the constants and the policy cannot drift:
 
 | Outcome | Code | Why |
 | --- | --- | --- |
@@ -303,10 +308,10 @@ validation's code, which is asserted too so the overlap reads as a decision.
 
 | Case | Where |
 | --- | --- |
-| the policy maps each category, and the four outcomes are distinct | `tests/outcomes.rs` |
-| a question, a screen and a diagnostic never reach the data stream | `tests/outcomes.rs`, `tests/harness_parity.rs` |
-| success, validation and a question-answered run, as scenarios | `tests/features/outcomes.feature` |
-| help is data and a usage error is a diagnostic | `tests/example_command.rs`, `tests/outcomes.rs` |
+| the policy maps each category, and the four outcomes are distinct | `clifacet-example/tests/outcomes.rs` |
+| a question, a screen and a diagnostic never reach the data stream | `clifacet-example/tests/outcomes.rs`, `clifacet-example/tests/harness_parity.rs` |
+| success, validation and a question-answered run, as scenarios | `clifacet-example/tests/features/outcomes.feature` |
+| help is data and a usage error is a diagnostic | `clifacet-example/tests/example_command.rs`, `clifacet-example/tests/outcomes.rs` |
 
 ## Secrets and provenance
 
@@ -396,13 +401,13 @@ trimmed `String` and a blank value is rejected; both rules live in
 
 | Case | Where |
 | --- | --- |
-| an alias (`--nickname`, `-n`) resolves to the same typed input as `--name` | `tests/facet_bridge.rs`, `tests/features/facet_bridge.feature` |
-| the generated command is clap's own, help and aliases included | `tests/facet_bridge.rs` |
-| a clap `default_value_t` survives the bridge | `tests/facet_bridge.rs`, `tests/example_command.rs` |
-| a custom `value_parser` (`--level`) rejects unknown values while parsing, in its own words | `tests/facet_bridge.rs` |
-| a validation rule the parser cannot express still rejects (`--repeat 9`) | `tests/facet_bridge.rs` |
-| the bridge carries every declared field | `tests/facet_bridge.rs` |
-| valid and invalid derives, with the diagnostic text as a golden file | `tests/compile_fail.rs`, `tests/ui/` |
+| an alias (`--nickname`, `-n`) resolves to the same typed input as `--name` | `clifacet-example/tests/facet_bridge.rs`, `clifacet-example/tests/features/facet_bridge.feature` |
+| the generated command is clap's own, help and aliases included | `clifacet-example/tests/facet_bridge.rs` |
+| a clap `default_value_t` survives the bridge | `clifacet-example/tests/facet_bridge.rs`, `clifacet-example/tests/example_command.rs` |
+| a custom `value_parser` (`--level`) rejects unknown values while parsing, in its own words | `clifacet-example/tests/facet_bridge.rs` |
+| a validation rule the parser cannot express still rejects (`--repeat 9`) | `clifacet-example/tests/facet_bridge.rs` |
+| the bridge carries every declared field | `clifacet-example/tests/facet_bridge.rs` |
+| valid and invalid derives, with the diagnostic text as a golden file | `clifacet/tests/compile_fail.rs`, `clifacet/tests/ui/` |
 
 Unsupported shapes fail while compiling rather than at runtime, and each has a
 `trybuild` case: a derive without `#[facet(input = …)]`, an unknown attribute key,

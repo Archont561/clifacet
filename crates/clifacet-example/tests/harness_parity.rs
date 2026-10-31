@@ -8,13 +8,11 @@
 //! mode is one small closure around the same `Recording`, so the assertions compare
 //! like with like.
 
-#![cfg(feature = "tui")]
-
-use clifacet::example::{self, Example, ExampleInput};
 use clifacet::harness::{Outcome, Parity, Recording, Subject};
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
 use clifacet::tui::Key;
+use clifacet_example::{self as example, Example, ExampleInput};
 
 /// How a run is described to a reader: the validated input, which is what the
 /// command actually received.

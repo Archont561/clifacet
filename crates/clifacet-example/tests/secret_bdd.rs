@@ -3,10 +3,10 @@
 //! Both scenarios drive the published surface: the example's own entry point, and the
 //! provenance type an application records its inputs with.
 
-use clifacet::example;
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
 use clifacet::provenance::{Provenance, Source};
+use clifacet_example as example;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 

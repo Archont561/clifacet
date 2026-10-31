@@ -6,8 +6,9 @@
 //! non-interactively and demonstrating its stream and exit behavior.
 
 use clifacet::clap::Parser as _;
-use clifacet::example::{self, Cli, Example, ExampleInput, Level, MAX_REPEAT};
+use clifacet::policy::Mode;
 use clifacet::{Command, Failure, FailureKind};
+use clifacet_example::{self as example, Cli, Example, ExampleInput, Level, MAX_REPEAT};
 
 /// Runs one invocation and returns its exit code, data stream and diagnostic stream.
 #[allow(
@@ -205,6 +206,22 @@ fn a_closed_data_stream_becomes_an_execution_failure() {
 
     assert_eq!(code, example::EXIT_EXECUTION_FAILED);
     assert!(String::from_utf8_lossy(&err).contains("cannot write the output"));
+}
+
+#[test]
+fn the_process_frontend_is_constructible_without_touching_a_terminal() {
+    // A consumer builds the same frontend the binary uses; it locks stdin and holds
+    // stderr, but asks nothing, so constructing one on a test runner is safe.
+    let _frontend = example::terminal_frontend();
+}
+
+#[test]
+fn the_application_offers_every_mode_the_library_has() {
+    assert_eq!(
+        example::POLICY.ceiling(),
+        Mode::Tui,
+        "a consumer that enables the `tui` frontend can offer every mode"
+    );
 }
 
 #[test]

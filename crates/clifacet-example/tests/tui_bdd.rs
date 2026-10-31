@@ -4,10 +4,8 @@
 //! scenarios exercise the production path — enter the alternate screen, edit the
 //! draft, submit or cancel, leave the screen — against a buffer and a script.
 
-#![cfg(feature = "tui")]
-
-use clifacet::example;
 use clifacet::tui::Key;
+use clifacet_example as example;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 

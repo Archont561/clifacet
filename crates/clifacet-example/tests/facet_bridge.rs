@@ -7,7 +7,7 @@
 
 use clifacet::Facet;
 use clifacet::clap::Parser as _;
-use clifacet::example::{Cli, ExampleInput, Level};
+use clifacet_example::{Cli, ExampleInput, Level};
 
 /// Parses and validates one command line, failing the test on a parse error.
 fn validated(args: &[&str]) -> ExampleInput {

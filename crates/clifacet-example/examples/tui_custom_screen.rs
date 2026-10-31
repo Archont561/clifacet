@@ -6,15 +6,15 @@
 //! is typed still goes through `clap` and the example's handler.
 //!
 //! ```sh
-//! pixi run --frozen -x cargo run --features tui --example tui_custom_screen
+//! pixi run --frozen -x cargo run -p clifacet-example --example tui_custom_screen
 //! ```
 
-use clifacet::example;
 use clifacet::tui::ratatui::buffer::Buffer;
 use clifacet::tui::ratatui::layout::Rect;
 use clifacet::tui::ratatui::style::{Modifier, Style};
 use clifacet::tui::ratatui::widgets::{Paragraph, Widget};
 use clifacet::tui::{CustomField, FieldState, Form, FormState, app};
+use clifacet_example as example;
 
 /// Draws an answer as stars, so a screen recording does not leak it.
 struct Masked;

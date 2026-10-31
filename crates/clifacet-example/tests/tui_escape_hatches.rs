@@ -5,15 +5,13 @@
 //! collect a draft, and both still submit it through `clap` and the same handler.
 //! Neither needs a registry, a backend abstraction or a second command.
 
-#![cfg(feature = "tui")]
-
-use clifacet::example;
 use clifacet::tui::ratatui::Terminal;
 use clifacet::tui::ratatui::backend::TestBackend;
 use clifacet::tui::ratatui::buffer::Buffer;
 use clifacet::tui::ratatui::layout::Rect;
 use clifacet::tui::ratatui::widgets::{Paragraph, Widget};
 use clifacet::tui::{CustomField, FieldState, Form, FormState, Key, app};
+use clifacet_example as example;
 
 /// A field that hides the answer it draws.
 ///

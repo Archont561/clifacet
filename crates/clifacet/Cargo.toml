@@ -17,16 +17,6 @@ interactive = ["dep:inquire"]
 tui = ["dep:ratatui", "dep:crossterm"]
 json = ["dep:serde_json"]
 
-# Both escape hatches are demonstrated in an example that can be run, not only in tests.
-[[example]]
-name = "tui_custom_screen"
-required-features = ["tui"]
-
-# The parity harness, used the way an outside crate would use it.
-[[example]]
-name = "parity_report"
-required-features = ["tui"]
-
 [dependencies]
 clifacet-macros.workspace = true
 clap.workspace = true
@@ -41,9 +31,6 @@ serde_json = { workspace = true, optional = true }
 assert_cmd.workspace = true
 trybuild.workspace = true
 rstest.workspace = true
-rstest-bdd.workspace = true
-rstest-bdd-macros.workspace = true
-proptest.workspace = true
 
 [lints]
 workspace = true

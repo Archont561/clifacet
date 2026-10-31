@@ -28,22 +28,26 @@ That covers formatting, Clippy, alint, both nextest groups, the script tests,
 
 ## Command core
 
-The UI-free command seam lives in `crates/clifacet/src/{command,failure,example}.rs`,
-secrets and their provenance in `crates/clifacet/src/{secret,provenance}.rs`, and
-`docs/command-core.md` records the four layers, the ownership rules and what is deliberately
-not implemented yet. Run the reference command against the real streams with:
+The UI-free command seam lives in `crates/clifacet/src/{command,failure}.rs`, the
+frontends in `crates/clifacet/src/{prompt,policy,tui}`, secrets and their provenance in
+`crates/clifacet/src/{secret,provenance}.rs`, and `docs/command-core.md` records the four
+layers, the ownership rules and what is deliberately not implemented yet. The reference
+application is a crate of its own, `crates/clifacet-example`, which depends on `clifacet`
+and on nothing private: it is the proof that the published API is enough. Run it against
+the real streams with:
 
 ```sh
-pixi run --frozen -x cargo run --example example -- --name ada --repeat 2
+pixi run --frozen -x cargo run -p clifacet-example -- --name ada --repeat 2
 ```
 
 Its tests pass their own buffers instead of a terminal, so `test-integration` covers the success,
 validation, execution, usage and help paths without a TTY.
 
-The full-screen form is behind the `tui` feature, and it needs a real terminal to be typed into:
+The full-screen form needs a real terminal to be typed into; the example crate enables
+the library's `tui` feature:
 
 ```sh
-pixi run --frozen -x cargo run --features tui --example example -- --tui
+pixi run --frozen -x cargo run -p clifacet-example -- --tui
 ```
 
 Its tests need neither: `tui::app::run` takes a `ratatui` backend and a list of keys, so
@@ -138,7 +142,7 @@ rechecks the tools and can use the network again.
 ## Minimum supported Rust version
 
 `[workspace.package] rust-version` is the oldest compiler this repository claims
-to support; both crates inherit it. The claim is verified, not assumed:
+to support; every crate inherits it. The claim is verified, not assumed:
 
 ```sh
 python scripts/prove_msrv.py --print-toolchain   # the declared version
@@ -356,13 +360,16 @@ compatible with that version, while normal CI uses Pixi 0.83.0.
 `clifacet::VERSION` and `clifacet::version()` give the package version;
 `clifacet_macros::version!()` expands to the macro package version. `clifacet`
 also re-exports `version!()`. Crate-internal tests live in `src/tests.rs`;
-consumer-facing integration and compile-fail tests live under `tests/`.
+consumer-facing integration and compile-fail tests live under `tests/`. The reference
+application keeps its own suite beside it, in `crates/clifacet-example/tests/`.
 Procedural macro crates cannot expose a normal public constant.
 
-The LCOV gate checks executable lines in both crates' `src/` directories and
-fails if either crate has no source coverage. It merges repeated line records
-because procedural macros run during compilation in multiple processes. It
-also reconciles LCOV's line summaries with those merged line hits before upload.
+The LCOV gate checks executable lines in both published crates' `src/` directories
+and fails if either crate has no source coverage. The example crate is excluded on
+purpose: it is an application, it is not published, and its own suite already
+exercises it end to end. The gate merges repeated line records because procedural
+macros run during compilation in multiple processes, and it reconciles LCOV's line
+summaries with those merged line hits before upload.
 It matches the source paths and 90% threshold in `codecov.yml`. The separate
 `src/tests.rs` file is excluded by cargo-llvm-cov's default test-file filter.
 Since the library is a scaffold, its current coverage percentage is not

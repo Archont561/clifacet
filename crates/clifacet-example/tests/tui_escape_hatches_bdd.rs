@@ -4,9 +4,6 @@
 //! widget, so both hatches are scenarios rather than screenshots: they are drawn into
 //! a `TestBackend` and submitted through the example's own handler.
 
-#![cfg(feature = "tui")]
-
-use clifacet::example;
 use clifacet::prompt::Scripted;
 use clifacet::tui::ratatui::Terminal;
 use clifacet::tui::ratatui::backend::TestBackend;
@@ -14,6 +11,7 @@ use clifacet::tui::ratatui::buffer::Buffer;
 use clifacet::tui::ratatui::layout::Rect;
 use clifacet::tui::ratatui::widgets::{Paragraph, Widget};
 use clifacet::tui::{CustomField, FieldState, Form, FormState, Key, app};
+use clifacet_example as example;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 

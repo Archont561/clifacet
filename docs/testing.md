@@ -6,9 +6,9 @@ job, and this page records what is actually installed and how to run it.
 
 | Question | Tool | Command | Lives in |
 | --- | --- | --- | --- |
-| Which value does each layer produce, for this argv? | `rstest` cases | `pixi run test` | `crates/clifacet/tests/validation_matrix.rs` |
-| Does the user-facing promise hold, end to end? | `rstest-bdd` | `pixi run test` | `crates/clifacet/tests/features/`, `*_bdd.rs` |
-| Does it hold for inputs no table would enumerate? | `proptest` | `pixi run test` | `crates/clifacet/tests/properties.rs` |
+| Which value does each layer produce, for this argv? | `rstest` cases | `pixi run test` | `crates/clifacet-example/tests/validation_matrix.rs` |
+| Does the user-facing promise hold, end to end? | `rstest-bdd` | `pixi run test` | `crates/clifacet-example/tests/features/`, `*_bdd.rs` |
+| Does it hold for inputs no table would enumerate? | `proptest` | `pixi run test` | `crates/clifacet-example/tests/properties.rs` |
 | Does a mistake in the derive read clearly? | `trybuild` | `pixi run test` | `crates/clifacet/tests/ui/`, `crates/clifacet-macros/tests/ui/` |
 
 `pixi run test-local` runs all of them plus fmt, clippy, alint, the Python checks
@@ -17,8 +17,9 @@ and `cargo deny`; it is the gate before a feature is claimed.
 A fifth question sits across all three modes — does the mode that collected the input
 change anything else? — and `clifacet::harness` is the published answer: it measures a
 run, records what the command received, and compares runs from different frontends.
-`tests/harness_parity.rs` drives the example through flags, a scripted prompt and the
-headless form, and `tests/harness.rs` covers the harness itself. See
+`crates/clifacet-example/tests/harness_parity.rs` drives the reference application
+through flags, a scripted prompt and the headless form, and
+`crates/clifacet/tests/harness.rs` covers the harness itself. See
 [`command-core.md`](command-core.md#cross-mode-parity-as-a-published-api).
 
 ## What each layer asserts
@@ -32,8 +33,9 @@ headless form, and `tests/harness.rs` covers the harness itself. See
   the range check) happens on the way in, and every value is runnable.
 - **validation** — what is refused, with the exact message the user reads.
 
-Stream and exit-code behavior stays in `example_command.rs`, which drives the
-application through buffers; the matrix does not repeat it.
+Stream and exit-code behavior stays in
+`crates/clifacet-example/tests/example_command.rs`, which drives the application
+through buffers; the matrix does not repeat it.
 
 ## Properties, and what they are allowed to claim
 
@@ -55,12 +57,12 @@ that every run writes to the data stream, which a usage error does not. The
 invariant was corrected, not the assertion weakened: failure must explain itself on
 the diagnostic stream, and the two streams never carry output at the same time.
 
-Interactive flows are driven through `example::main_with`: capabilities are stated
+Interactive flows are driven through `clifacet_example::main_with`: capabilities are stated
 and the frontend is scripted (`clifacet::prompt::Scripted`), so no test can reach a
 real terminal. A test that prompts without a script fails with an exhausted-script
 error instead of waiting for input.
 
-Failing seeds are written to `crates/clifacet/tests/proptest-regressions/` and are
+Failing seeds are written to `crates/clifacet-example/tests/proptest-regressions/` and are
 committed, so a failure found on one machine re-runs on every other.
 
 ## Installed versions, as measured
