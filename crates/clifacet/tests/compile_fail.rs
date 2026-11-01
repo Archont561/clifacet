@@ -4,6 +4,14 @@
 //! to prove an *existing* clap command, so the errors it can raise have to say
 //! what to write instead.
 #[test]
+fn the_command_attribute_wraps_clap_and_reports_what_it_cannot_wrap() {
+    let cases = trybuild::TestCases::new();
+    cases.pass("tests/ui/command_valid.rs");
+    cases.compile_fail("tests/ui/command_missing_input.rs");
+    cases.compile_fail("tests/ui/command_on_enum.rs");
+}
+
+#[test]
 fn the_facet_derive_reports_what_it_cannot_bridge() {
     let cases = trybuild::TestCases::new();
     cases.pass("tests/ui/facet_valid.rs");

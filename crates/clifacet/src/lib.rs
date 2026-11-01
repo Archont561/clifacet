@@ -102,6 +102,39 @@ pub use clap;
 /// Expands to the version of the `clifacet-macros` package.
 pub use clifacet_macros::version;
 
+/// Wraps a struct in clap's parser and the [`Facet`] bridge, in one attribute.
+///
+/// This is the same pairing as `#[derive(clap::Parser, clifacet::Facet)]` plus
+/// `#[facet(input = …)]`, emitted as one attribute because the two have to agree:
+///
+/// ```
+/// use clifacet::{Facet, Failure};
+///
+/// #[clifacet::command(input = Greeting)]
+/// #[command(name = "greet", about = "Say hello")]
+/// struct Cli {
+///     #[arg(long, alias = "nickname")]
+///     name: Option<String>,
+/// }
+///
+/// #[derive(Debug, PartialEq)]
+/// struct Greeting {
+///     name: Option<String>,
+/// }
+///
+/// let cli = <Cli as clifacet::clap::Parser>::try_parse_from(["greet", "--nickname", "ada"])
+///     .expect("an alias parses");
+/// assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
+/// ```
+///
+/// It takes the same keys as `#[facet(…)]`. `clap` must still be a direct dependency of
+/// the calling crate, because clap's own derive expands to code naming `clap::…`; this
+/// crate re-exports [`clap`], so the version is the one this macro was built against.
+///
+/// The name lives in the macro namespace, which is why it can sit beside the [`command`]
+/// module without either shadowing the other.
+pub use clifacet_macros::command;
+
 /// Derives [`Facet`], the companion derive for a clap command.
 ///
 /// Re-exported so an application depends on `clifacet` alone; the trait and the
