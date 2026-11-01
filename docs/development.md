@@ -355,8 +355,16 @@ contents. Two things it cannot prove, because they need a registry to answer:
   indexed, so the answer is "re-run the same dispatch"; the first real release is
   what confirms it.
 
-Record the dispatch, the run URL and its result before treating the release path as
-proven. Until then, AC#2 of CLI-18 is only half met, and `0.1.0` stays unauthorised.
+The rehearsal has been run once, successfully, on the `0.1.0` promotion (2026-11-01).
+It confirmed that the version sites agree, that the notes resolve before anything is
+packaged, and that the macro crate packages against the committed lockfile. Everything
+gated on a real release — the OIDC exchange, the publish loop, the tag — was skipped, so
+those remain unproven until a maintainer authorises one.
+
+When verifying a rehearsal, read the step list rather than trusting a summary: the
+irreversible steps are separate steps gated on `!inputs.dry_run`, so "skipped" there is
+the evidence that nothing published, and `git ls-remote --tags` plus `gh release list`
+confirm from the repository side that the tag step did not run.
 
 ## Rust dependencies and features
 
