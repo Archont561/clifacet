@@ -87,8 +87,8 @@ def test_every_step_calls_a_pixi_task_or_a_tool_directly(path):
 def test_the_release_workflow_delegates_every_step_to_the_release_script(workflow):
     tasks = re.findall(r"pixi run --frozen release (\w+)", workflow)
 
-    assert tasks == ["preflight", "package", "report", "publish", "tag"], (
-        "the five decisions live in scripts/release.py; the workflow only calls them"
+    assert tasks == ["preflight", "package", "report", "publish", "tag", "changelog"], (
+        "the six decisions live in scripts/release.py; the workflow only calls them"
     )
 
 
@@ -148,6 +148,24 @@ def test_the_tag_step_uses_the_notes_preflight_verified(workflow):
     assert "steps.preflight.outputs.notes_path" in tag, (
         "re-deriving the notes after publishing can fail on a release that already shipped"
     )
+
+
+def test_the_changelog_is_regenerated_only_after_the_tag_exists(workflow):
+    tag = workflow.index("Tag the release")
+    regen = workflow.index("Regenerate the changelog")
+    step = workflow[regen:]
+
+    assert tag < regen, "a version section names a tag, and the tag is created above"
+    assert "if: ${{ !inputs.dry_run }}" in step[:400], "a dry run publishes nothing, so it tags nothing"
+    assert "GITHUB_TOKEN" in step[:600], "the push needs a token the checkout does not persist"
+
+
+def test_the_changelog_check_runs_in_ci_with_the_history_it_needs():
+    ci = CI.read_text(encoding="utf-8")
+    quality = ci[ci.index("  quality:"):]
+
+    assert "pixi run --frozen changelog-check" in quality
+    assert "fetch-depth: 0" in quality[:3000], "convco reads tags and commits, not a shallow clone"
 
 
 def test_every_action_is_pinned_to_a_commit(workflow):

@@ -44,9 +44,13 @@ jobs:
       contents: write
       id-token: write
     steps:
+      # Full history, because the changelog and the notes are rendered from the commits
+      # and tags, not read from a file. Credentials stay out of `.git/config`: the one push
+      # this job makes is done by a script that takes the token from the environment.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:
           pixi-version: v0.83.0
@@ -89,3 +93,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NOTES_PATH: ${{ steps.preflight.outputs.notes_path }}
         run: pixi run --frozen release tag
+      # A version section names a tag, and the tag exists only after the publish above, so
+      # the changelog cannot be part of the release commit. It is regenerated here from the
+      # same commits the notes came from, and pushed as its own commit — the one thing a
+      # release leaves for later, done by the run that knows the tag exists.
+      - name: Regenerate the changelog for the tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pixi run --frozen release changelog

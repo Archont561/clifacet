@@ -1,9 +1,9 @@
 # convco configuration. https://convco.github.io/configuration/
 #
 # Commit messages are the input to the changelog, the version bump and the release notes, so the
-# type-to-section mapping lives here rather than in each tool. The headings match the
-# Keep a Changelog sections `scripts/bump_version.py` promotes, and `header` is the preamble
-# already at the top of CHANGELOG.md, so a regenerated changelog starts the same way.
+# type-to-section mapping lives here rather than in each tool. `scripts/changelog.py` renders
+# `CHANGELOG.md` through this file, so the sections below are what a reader sees: `header` is the
+# preamble, `types` decides which commits earn a section, and `hidden` is the only way one stops.
 header: |
   # Changelog
 
@@ -11,8 +11,9 @@ header: |
 
   The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-  `scripts/bump_version.py` promotes the `Unreleased` section when a release is
-  prepared, so the headings below are managed by that script.
+  This file is generated: `pixi run changelog` renders it from the conventional
+  commits with `convco`, and `pixi run changelog-check` fails when the committed
+  copy has drifted. Edit the commit messages, not the file.
 
 types:
   - type: feat
@@ -30,15 +31,19 @@ types:
   - type: revert
     section: Reverted
     hidden: false
+  # The changelog is read by someone upgrading, not by someone reviewing the
+  # repository: a user action is a feature, a fix or a behaviour change. Workflow
+  # plumbing, dependency bumps and prose belong in the git history, which is where
+  # the commit link in every entry already leads.
   - type: docs
     section: Documentation
-    hidden: false
+    hidden: true
   - type: build
     section: Build
-    hidden: false
+    hidden: true
   - type: ci
     section: CI
-    hidden: false
+    hidden: true
   # Repository upkeep: it belongs in the history, not in what a user reads when upgrading.
   - type: test
     section: Tests
@@ -53,8 +58,11 @@ types:
 # Before 1.0 a breaking change advances the minor version (0.1 -> 0.2), not 0.1 -> 1.0.
 preMajor: true
 releaseCommitMessageFormat: "chore(release): {{currentTag}}"
+# `#` alone would link every `AC#1` in a commit body to issue 1; a prefix that names
+# the intent (`closes #12`) is the only kind that stays true when prose quotes a number.
 issuePrefixes:
-  - "#"
+  - "closes #"
+  - "fixes #"
 host: https://github.com
 owner: Archont561
 repository: clifacet

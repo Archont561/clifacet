@@ -94,6 +94,11 @@ docs-snippets = "python scripts/check_docs.py --write"
 # or `--toolchain ""` to reuse the pinned compiler as a plumbing check.
 prove-msrv = "python scripts/prove_msrv.py"
 bump-version = "python scripts/bump_version.py"
+# The changelog is rendered, not written: `convco changelog` reads the conventional commits
+# through `.versionrc`, and the script turns its output into Keep a Changelog. `check` is
+# what CI runs, so the committed copy cannot drift from the history it describes.
+changelog = "python scripts/changelog.py regen"
+changelog-check = "python scripts/changelog.py check"
 # The release workflow's decisions, not its plumbing: `preflight` proves the version, the
 # inherited manifests and the notes before anything is packaged; `package`, `report`,
 # `publish` and `tag` are the four steps that used to be shell inside `release.yml`.
@@ -117,4 +122,4 @@ test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "test",
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
 hooks-install = "lefthook install"
-quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "skills-check", "backlog-check", "check-features", "actionlint", "check-advisory", "check-packages", "deny", "audit", "sandbox-check"] }
+quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "changelog-check", "skills-check", "backlog-check", "check-features", "actionlint", "check-advisory", "check-packages", "deny", "audit", "sandbox-check"] }
