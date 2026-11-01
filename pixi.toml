@@ -92,7 +92,12 @@ bump-version = "python scripts/bump_version.py"
 # One command from any checkout: reach the remote head, restore the environment, install
 # the hooks, then prove the result with the fast checks.
 bootstrap = "bash scripts/bootstrap.sh"
-test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "test", "test-scripts", "deny", "sandbox-check"] }
+# The inner loop, and the gate `AGENTS.md` names: it runs after a restore, with
+# `--no-install` and no network, so every task in it has to be offline-safe. That rules
+# out `deny` (it fetches the RustSec database) in favour of `deny-offline`, and it is why
+# `audit` is absent rather than replaced: an offline audit steps aside with a message,
+# which is pre-push's job, not a gate's. `quality` is the CI command and keeps both.
+test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "test", "test-doc", "test-scripts", "deny-offline", "sandbox-check"] }
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
 hooks-install = "lefthook install"

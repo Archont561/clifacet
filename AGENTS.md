@@ -100,6 +100,25 @@ When unsure about the goal, priority, or next step, read and follow
 before continuing. If an important decision is unresolved, ask the maintainer
 rather than silently broadening scope.
 
+## GitHub operations from an agent session
+
+`git` and `gh` work here; two `gh` commands do not, and knowing which saves a detour:
+
+| Command | Result | What to do instead |
+| --- | --- | --- |
+| `gh pr edit` | 403 from the app token | amend the commit message with `git commit --amend`, or describe the change in a PR comment |
+| `gh run cancel` | 403 from the app token | push a fix on the same branch: the `ci` concurrency group cancels the superseded run |
+
+`gh run watch`, `gh pr checks --watch`, `gh pr merge` and `gh api` all work, including
+reading an environment's protection rules:
+
+```sh
+gh api repos/Archont561/clifacet/environments/crates --jq '.protection_rules'
+```
+
+Never request credentials in chat; if `git` or `gh` fails with an authentication error,
+report it and ask for the connection to be re-established.
+
 ## Ownership and safety
 
 - `pixi-sandbox.toml` is the authored sandbox policy. Regenerate the publisher,

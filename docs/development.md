@@ -248,10 +248,17 @@ gh workflow run release.yml                     # dry run: packages the macro cr
 gh workflow run release.yml -f dry_run=false    # real release; see the authorization note below
 ```
 
-The dispatch only runs from `main`. As of 2026-10-30 the `crates` environment
-has **no protection rules**, so it does not stop a run: the manual dispatch is
-the only authorization gate today. Add required reviewers to `crates` before
-relying on the environment as the gate that decision-7 describes.
+The dispatch only runs from `main`, and the `crates` environment enforces that from
+its own side too: its only protection rule is a **branch policy** naming `main`, so a
+run from any other ref cannot deploy into it. That is a scope gate, not an approval
+gate — as of 2026-10-31 the environment still has **no required reviewers**, so nothing
+asks a person before the job publishes. The manual dispatch plus the maintainer who
+authorizes it are therefore the authorization gate that decision-7 describes; add
+required reviewers to `crates` to make the environment enforce it. Verified with:
+
+```sh
+gh api repos/Archont561/clifacet/environments/crates --jq '.protection_rules, .deployment_branch_policy'
+```
 
 The notes are resolved before anything is packaged: if `CHANGELOG.md` has no dated
 section for the version being released, the run stops with nothing published, and a

@@ -58,6 +58,15 @@ prepared, so the headings below are managed by that script.
 
 ### Fixed
 
+- `test-local` — the offline gate every guide and `AGENTS.md` tell a contributor to run
+  with `--no-install` after a restore — depended on `deny`, which fetches the RustSec
+  database. On a restored, network-free checkout it failed for a reason that had nothing
+  to do with the change being checked. It now uses `deny-offline` and also runs the
+  doctests, and `scripts/tests/test_pixi_tasks.py` asserts the gate stays offline-safe.
+- The `crates` environment was documented as having "no protection rules". It has one: a
+  branch policy restricted to `main`. The claim now distinguishes that scope gate from the
+  approval gate that is still missing (required reviewers), and records the query that
+  establishes it.
 - A full-screen run could block forever when its stdin was not a terminal. `live_keys`
   called `crossterm::event::read()` unconditionally, so a process whose keyboard could
   never produce an event — a pipe, a test runner, a Windows console handle that exists
@@ -179,7 +188,8 @@ prepared, so the headings below are managed by that script.
   passed on the command line (visible in `ps` and shell history), an environment
   variable, and a prompted answer the terminal echoes are documented boundaries, not
   guarantees; a credential held as a plain `String` is not protected at all.
-- The `crates` GitHub environment has no protection rules yet, so release
-  authorization rests on the manual dispatch alone.
+- The `crates` GitHub environment restricts deployments to `main` (a branch policy) but
+  has no required reviewers, so nothing asks a person before a run publishes. Release
+  authorization rests on the manual dispatch and the maintainer who made it.
 
 [Unreleased]: https://github.com/Archont561/clifacet/commits/main

@@ -61,3 +61,13 @@ ruleset requiring a pull request with the `quality`, `Tests and source coverage`
 `Conventional commit messages` and `lock guard` checks, plus a tag ruleset restricting `v*`
 creation to the release workflow, closes them. The `crates` environment remains the last line:
 the tag is created inside the gated job.
+
+- 2026-10-31: correction to the finding above. The `crates` environment now has one
+  protection rule — a branch policy restricted to `main` — so it does gate *where* a
+  release may run from, even though it still has **no required reviewers** and therefore
+  gates nothing on *who* authorized it. The conclusion is unchanged: the manual dispatch
+  remains the authorization gate, and required reviewers are still the missing piece for
+  decision-7. `docs/development.md` and the changelog's known limitations were corrected
+  to say exactly this rather than "no protection rules", and the query that establishes
+  it is written beside the claim.
+
