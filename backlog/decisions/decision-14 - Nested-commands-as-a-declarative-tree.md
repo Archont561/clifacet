@@ -152,6 +152,9 @@ has none of its own — it has a choice to make. That is the picker below.
   decides what that costs; the example already maps clap's own verdict.
 - **Sequencing.** This builds on decision-13's field attribute, so it lands after CLI-28:
   each leaf is an ordinary struct using it, and the tree adds only the choice.
+- **Where the enum is written.** decision-15 keeps this shape and proposes a macro that
+  emits it from one line per command, so a `Commands` enum is generated rather than typed
+  out. The variants, the `Request` type and the delegation below are unchanged either way.
 
 ## Verified
 
