@@ -30,7 +30,7 @@ use clifacet::Facet;
 use clifacet::Failure;
 use clifacet::contract::ExitPolicy;
 use clifacet::policy::{Capabilities, Mode, Policy, Request};
-use clifacet::prompt::{Prompter, Session, Terminal};
+use clifacet::prompt::{Dialog, Prompter, Session, Terminal};
 use clifacet::secret::Secret;
 
 /// The exit codes this application gives its outcomes.
@@ -357,10 +357,30 @@ impl Command for Example {
 /// owns real streams, and it is deliberately thin so that everything below it can
 /// be driven by buffers.
 pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
-    run_with(cli, Capabilities::detected(), terminal_frontend, out, err)
+    run_with(cli, Capabilities::detected(), dialog_frontend, out, err)
 }
 
-/// The frontend a real process uses.
+/// The frontend a real process uses: the library's `inquire` dialog.
+///
+/// Presentation is a choice the application makes here and nowhere else. The dialog
+/// asks the same two questions [`terminal_frontend`] does — a value and a yes/no —
+/// and differs only in how they look, which is why swapping it changed no other line
+/// in this crate: the session still decides *whether* a question may be asked, and a
+/// supplied value is still never re-asked.
+///
+/// Constructing it touches no terminal; the dialog is only entered when a question is
+/// actually asked, so a plan that turns out to ask nothing costs nothing.
+#[must_use]
+pub fn dialog_frontend() -> Box<dyn Prompter> {
+    Box::new(Dialog::new())
+}
+
+/// The dependency-free reader: the same seam, without a dialog.
+///
+/// It is what a scripted flow, a test or a terminal without a rich frontend wants —
+/// a question written to `stderr` and a line read from `stdin` — and it is kept here
+/// to show that the choice is the application's: both implement [`Prompter`], and
+/// [`run_with`] takes either.
 ///
 /// Constructing it locks stdin and holds stderr, but touches neither until a
 /// question is actually asked, so this is safe to build and discard.

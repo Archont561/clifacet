@@ -32,10 +32,16 @@
 //! [`Scripted`] for tests and for scripted flows. Neither knows what it is asking
 //! about, which is why both fit any command.
 
+#[cfg(feature = "interactive")]
+mod dialog;
+
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::{BufRead, Write};
 use std::rc::Rc;
+
+#[cfg(feature = "interactive")]
+pub use dialog::Dialog;
 
 use crate::command::Command;
 use crate::failure::Failure;

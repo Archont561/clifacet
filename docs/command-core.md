@@ -152,11 +152,55 @@ let output = session.run(&Example, |session| collect(session, cli))?; // collect
   a cancelled question, a bad answer or an exhausted script returns before the
   command is reachable.
 
-Two adapters ship. `Terminal` asks a person: questions go to the *diagnostic*
-stream so the data stream stays machine-readable, end of input is a cancellation
-rather than an empty answer, and a typo re-asks instead of guessing. `Scripted`
-answers from a list and is the seam every test uses — a flow can be driven end to
-end without a terminal and cannot reach one by accident.
+Three adapters ship, all of them implementations of the same two-method
+`Prompter` seam:
+
+| Adapter | Feature | What it is |
+| --- | --- | --- |
+| `Terminal` | none | a question written to the *diagnostic* stream and a line read from `stdin`; end of input is a cancellation rather than an empty answer |
+| `Dialog` | `interactive` | the same two questions as an `inquire` dialog — a cursor, a help line, bracketed paste — drawn on `stderr` |
+| `Scripted` | none | answers from a list; the seam every test uses, so a flow is driven end to end without a terminal and cannot reach one by accident |
+
+`Dialog` is the one a real process usually wants, and it changes nothing else: the
+session still decides whether a question may be asked, a supplied value is still
+never re-asked, and `--yes` still answers confirmations without a dialog appearing.
+Escape or Ctrl-C is a `FailureKind::Cancelled`; a dialog that cannot reach a terminal
+is an *execution* failure that says so, rather than a question nobody can answer.
+
+Because presentation is a seam and not a setting, an application can ship its own.
+Implement `Prompter` — two methods, `ask` and `confirm` — and hand it to
+`Session::start`:
+
+```rust
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Dialog, Prompter, Session};
+
+// Presentation is the application's choice: the library's dialog, or any `Prompter`
+// of its own. Constructing one touches no terminal.
+let build_dialog = || Box::new(Dialog::new()) as Box<dyn Prompter>;
+
+// A run that may ask nothing never calls that builder, which is what keeps a piped
+// run non-interactive however rich the frontend is.
+let plan = Policy::non_interactive()
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("the run resolves");
+let mut session = Session::start(plan, build_dialog);
+
+assert_eq!(
+    session.value(None, "Which license?").expect("nothing may ask"),
+    None,
+    "a missing value stays missing, and the dialog is never built"
+);
+```
+
+On a plan that *does* permit questions, the same builder is called once and the dialog
+asks what the flags left out.
+
+What a custom frontend cannot change is the decision that allowed it: the builder is
+only called when the plan asks something, so a richer widget can never turn a piped
+run into an interactive one. `examples/simple/src/lib.rs` is the worked example — the
+process uses `dialog_frontend()` and keeps `terminal_frontend()` beside it to show the
+choice is the application's.
 
 `FailureKind::Cancelled` is how "the user changed their mind" travels. Answering a
 confirmation with `no` is a *decision* (`Ok(false)`); dismissing the question, or

@@ -54,7 +54,7 @@ shortcut to seeing a mode work:
 ```sh
 cargo run -p clifacet-example                            # asks for what the flags left out
 cargo run -p clifacet-example -- --name ada --repeat 2    # flags only
-cargo run -p clifacet-example -- --interactive            # asks, even off a terminal's default
+cargo run -p clifacet-example -- --interactive            # the dialog, explicitly
 cargo run -p clifacet-example -- --tui                    # the full-screen form
 ```
 

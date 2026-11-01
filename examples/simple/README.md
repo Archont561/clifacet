@@ -44,7 +44,7 @@ cargo run -p clifacet-example -- --name ada | cat
 | Mode | What happens | How to get it |
 | --- | --- | --- |
 | non-interactive | flags in, data out — nothing is ever asked | no terminal, or `--name` and friends with a pipe |
-| interactive | a question only for what the flags left out | the default on a terminal, or `--interactive` |
+| interactive | an `inquire` dialog asks only for what the flags left out | the default on a terminal, or `--interactive` |
 | TUI | a full-screen form generated from the command | `--tui` |
 | refused | nothing runs, and the diagnostic says why | ask for a mode this binary cannot draw |
 
@@ -53,6 +53,12 @@ The application states both halves of that policy in one line:
 ```text
 pub const POLICY: Policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
 ```
+
+The dialog is the application's choice, not the framework's: `src/lib.rs` names
+`dialog_frontend()` for the process and keeps `terminal_frontend()` beside it, a plain
+question-and-line-reader built on the same two-method `Prompter` seam. Swapping them
+changes no other line, because the session decides *whether* a question may be asked
+and a supplied value is never re-asked either way.
 
 `up_to` is permission — both frontends are enabled here — and `prefer` is intent:
 prompts are what an unadorned run gets, and the form is what `--tui` asks for. A

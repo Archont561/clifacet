@@ -210,9 +210,16 @@ fn a_closed_data_stream_becomes_an_execution_failure() {
 
 #[test]
 fn the_process_frontend_is_constructible_without_touching_a_terminal() {
-    // A consumer builds the same frontend the binary uses; it locks stdin and holds
-    // stderr, but asks nothing, so constructing one on a test runner is safe.
-    let _frontend = example::terminal_frontend();
+    // A consumer builds the same frontend the binary uses; nothing is read or drawn
+    // until a question is asked, so constructing one on a test runner is safe.
+    let _frontend = example::dialog_frontend();
+}
+
+#[test]
+fn the_dependency_free_reader_is_still_a_frontend() {
+    // Two implementations of one seam: the process uses the dialog, and a scripted or
+    // minimal flow uses the plain reader. Neither is special to the application.
+    let _plain = example::terminal_frontend();
 }
 
 #[test]
