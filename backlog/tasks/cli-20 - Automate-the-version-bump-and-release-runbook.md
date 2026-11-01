@@ -4,7 +4,7 @@ title: Automate the version bump and release runbook
 status: In Progress
 assignee: []
 created_date: '2026-10-30 16:30'
-updated_date: '2026-11-01 20:03'
+updated_date: '2026-11-01 20:17'
 labels: []
 milestone: m-5
 dependencies:
@@ -34,6 +34,8 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 - AC#4 therefore stays open, narrowed to what it now means: the next release must exercise `bump-version 0.1.1 --relock` — manifest sites, changelog promotion, lock refresh — and a dispatch from the resulting `main`. That is one release away and needs no new tooling.
 - Consequence to know before that release: `CHANGELOG.md`'s `## [Unreleased]` section is now **empty**, because the entries merged between the promotion and the release shipped inside `0.1.0` and were moved into its section rather than left describing a version they were already part of. The bump refuses an empty section, which is the intended guard: the next release has to describe itself.
 - Also reconciled: the `v0.1.0` release notes on GitHub were generated from the promotion, so they do not list the entries that were moved afterwards. Refreshing them is `gh release edit v0.1.0 --notes-file <file>`, a one-line maintainer action; it was not done here because the notes are a published artifact.
+
+- 2026-11-01: `v0.1.0`'s published notes were refreshed to the corrected changelog section (`gh release edit v0.1.0 --notes-file …`). The gap was real and structural, not a slip: `release.py tag` deliberately leaves an existing release alone, so the manual step is the only way to rewrite notes after the fact. `docs/development.md` §Release now says so, and says why re-dispatching cannot do it.
 <!-- SECTION:NOTES:END -->
 
 ## Notes

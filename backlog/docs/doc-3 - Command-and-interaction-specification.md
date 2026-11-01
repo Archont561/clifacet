@@ -3,11 +3,11 @@ id: doc-3
 title: Command and interaction specification
 type: other
 created_date: '2026-10-29 15:28'
-updated_date: '2026-10-29 15:28'
+updated_date: '2026-11-01 20:30'
 ---
 # Status
 
-This document is a proposed implementation target; decision-1 is the accepted architecture and decisions 2–3 carry proposed details. APIs shown are descriptive, not working code.
+This document was written as an implementation target. All three decisions behind it are now accepted (decision-1 for the architecture; decisions 2–3 accepted on 2026-11-01), and `0.1.0` shipped against them. The APIs shown stay descriptive rather than copied: `docs/command-core.md`, `docs/derive.md` and `docs/modes.md` carry the working signatures, and those pages are compiled by `check-docs`.
 
 # Flow
 
