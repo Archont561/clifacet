@@ -4,7 +4,7 @@ A run has exactly one mode, decided before anything happens, by a pure function 
 three inputs (decision-3):
 
 1. **what the user asked for** — `--interactive`, `--tui`, or nothing;
-2. **what the application allows** — its `Policy`;
+2. **what the application allows and prefers** — its `Policy`;
 3. **what the environment can offer** — its `Capabilities`.
 
 ```rust
@@ -27,10 +27,81 @@ Two properties make this more than a preference list:
 - **A policy is a ceiling, not a wish.** `Policy::up_to(Mode::Interactive)` means
   prompts are allowed and a TUI is not. Interaction can only ever *decrease*: a
   terminal on its own is never consent to prompt.
+- **Permission and intent are two answers, not one.** The ceiling says what a run
+  *may* do; the preference says what it does when the user asked for nothing. See
+  [permission and intent](#permission-and-intent).
 - **A refusal has no plan, so it has no frontend.** `Plan` is the only value that can
   build one, through `Plan::with_frontend`, which answers `None` when the mode asks
   nothing. "A forbidden mode never constructs a prompter" is therefore structural
   rather than a convention.
+
+## Permission and intent
+
+`Policy` answers two different questions, and a policy that can only answer the first
+has to conflate them: the mode it permits the most becomes the mode it uses by
+default. `Policy::prefer` separates them.
+
+```rust
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+
+// Permission: prompts are allowed, a full-screen form is allowed. Intent: prompts are
+// what an unadorned run gets.
+let policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
+
+let plan = policy
+    .resolve(Request::none(), Capabilities::terminal_with_tui())
+    .expect("prompts are permitted and possible");
+assert_eq!(plan.mode(), Mode::Interactive, "the preference, not the ceiling");
+
+// A request still wins, and is still bounded by the ceiling rather than the preference.
+let plan = policy
+    .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui())
+    .expect("a TUI is permitted here");
+assert_eq!(plan.mode(), Mode::Tui);
+
+// Intent can also be *less* interactive than permission: a command that may prompt
+// for someone who asks for it does not have to offer a prompt unasked.
+let cautious = Policy::up_to(Mode::Tui).prefer(Mode::NonInteractive);
+let plan = cautious
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("a run that asks nothing always resolves");
+assert_eq!(plan.mode(), Mode::NonInteractive);
+```
+
+Three rules keep the pair honest:
+
+| Rule | Why |
+| --- | --- |
+| a preference above the ceiling does not compile | `prefer` checks the ceiling in a `const fn`, so `const POLICY: Policy = Policy::up_to(Mode::Interactive).prefer(Mode::Tui);` is an evaluation error rather than a silent downgrade |
+| no stated preference means the ceiling | a policy written before `prefer` existed keeps its behavior, which is why the two are separate values instead of a reinterpreted ceiling |
+| the environment still only subtracts | capability steps *down* from the preference, never up, so a terminal can never add interest the application did not state |
+
+Which default an application should choose is a judgement, not a rule: prompts are the
+sensible default for a command a person runs by hand, and `Policy::non_interactive()`
+or `.prefer(Mode::NonInteractive)` for one whose job is destructive — a prompt that
+appears because a terminal happened to be attached is not consent.
+
+## Why "all arguments are supplied" is not a mode trigger
+
+It is tempting to make completeness choose the mode: prompt only when a flag is
+missing. The value level already does that, and the mode is the wrong place for it:
+
+- **Defaults make the test vacuous.** A command whose arguments all have defaults is
+  "fully specified" on every invocation, so interaction would never happen; the real
+  question is whether an argument came from the command line, which is a fact about
+  one value rather than about the run.
+- **Gap-filling is already the guarantee.** `Session::value(Some(value), …)` returns
+  the value untouched and never builds a frontend, so a supplied flag is never
+  re-asked — the same prompt run and flag run are one command.
+- **Confirmations are not gaps.** Asking "are you sure?" about `--explode` is a
+  question about a fully specified invocation. Completeness cannot decide it, so a
+  mode chosen by completeness would have to special-case it.
+- **A resolvable mode is testable.** `resolve(request, capabilities)` is a pure
+  function of three values; a mode that depends on `argv` makes every test case need
+  an argument vector to go with it.
+
+The application still decides whether to ask a confirmation at all — the example asks
+only when the plan permits it, and `--yes` answers instead of asking.
 
 ## The four modes
 

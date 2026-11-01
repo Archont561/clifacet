@@ -85,6 +85,46 @@ fn unavailable(requested: Mode, missing: Capability) -> Refusal {
     Capabilities::headless(),
     Ok(Mode::NonInteractive)
 )]
+// A preference is the mode an application would like when nothing was asked for.
+// It is still bounded by the ceiling, which is permission rather than intent.
+#[case::preference_beats_the_ceiling(
+    Request::none(),
+    Policy::up_to(Mode::Tui).prefer(Mode::Interactive),
+    Capabilities::terminal_with_tui(),
+    Ok(Mode::Interactive)
+)]
+#[case::preference_still_steps_down_for_capability(
+    Request::none(),
+    Policy::up_to(Mode::Tui).prefer(Mode::Tui),
+    Capabilities::terminal(),
+    Ok(Mode::Interactive)
+)]
+#[case::preference_can_be_less_interactive_than_the_ceiling(
+    Request::none(),
+    Policy::up_to(Mode::Tui).prefer(Mode::NonInteractive),
+    Capabilities::terminal_with_tui(),
+    Ok(Mode::NonInteractive)
+)]
+#[case::preference_never_survives_a_headless_environment(
+    Request::none(),
+    Policy::up_to(Mode::Tui).prefer(Mode::Interactive),
+    Capabilities::headless(),
+    Ok(Mode::NonInteractive)
+)]
+// An explicit request still wins over the preference, and permission still bounds
+// the request: a preference decides a default, nothing more.
+#[case::request_beats_the_preference(
+    Request::mode(Mode::Tui),
+    Policy::up_to(Mode::Tui).prefer(Mode::Interactive),
+    Capabilities::terminal_with_tui(),
+    Ok(Mode::Tui)
+)]
+#[case::request_below_the_preference_is_honored(
+    Request::mode(Mode::NonInteractive),
+    Policy::up_to(Mode::Tui).prefer(Mode::Tui),
+    Capabilities::terminal_with_tui(),
+    Ok(Mode::NonInteractive)
+)]
 // A capability on its own is never consent: without a policy that permits it, a
 // terminal does not make the run interactive (decision-3).
 #[case::a_terminal_is_not_consent(
@@ -104,6 +144,51 @@ fn resolution_follows_request_then_policy_then_capability(
         .map(clifacet::policy::Plan::mode);
 
     assert_eq!(resolved, expected);
+}
+
+#[rstest]
+#[case::ceiling_when_nothing_is_preferred(Policy::up_to(Mode::Tui), Mode::Tui)]
+#[case::preference_when_one_is_stated(
+    Policy::up_to(Mode::Tui).prefer(Mode::Interactive),
+    Mode::Interactive
+)]
+#[case::a_non_interactive_policy_has_one_answer(Policy::non_interactive(), Mode::NonInteractive)]
+fn the_default_mode_is_the_preference_or_the_ceiling(
+    #[case] policy: Policy,
+    #[case] expected: Mode,
+) {
+    assert_eq!(
+        policy.default_mode(),
+        expected,
+        "a policy that states no preference wants the most it permits"
+    );
+}
+
+#[test]
+#[should_panic(expected = "a policy cannot prefer a mode above its ceiling")]
+fn a_preference_above_the_ceiling_is_a_bug_not_a_default() {
+    // Permission is the ceiling, intent is the preference: asking for more
+    // interaction than the application allows has no sensible resolution, so it is
+    // refused where it is written rather than downgraded where it is used. In a
+    // `const` policy this is a compile-time error; the example states its policy
+    // that way.
+    let _ = Policy::up_to(Mode::Interactive).prefer(Mode::Tui);
+}
+
+#[test]
+fn a_preference_is_reported_as_written() {
+    assert_eq!(Policy::up_to(Mode::Tui).preference(), None);
+    assert_eq!(
+        Policy::up_to(Mode::Tui)
+            .prefer(Mode::Interactive)
+            .preference(),
+        Some(Mode::Interactive)
+    );
+    assert_eq!(
+        Policy::up_to(Mode::Tui).prefer(Mode::Interactive).ceiling(),
+        Mode::Tui,
+        "stating a preference does not change what is permitted"
+    );
 }
 
 #[rstest]

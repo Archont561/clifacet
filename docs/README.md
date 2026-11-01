@@ -10,6 +10,7 @@ the JSON frontend is reserved and not implemented.
 | Page | Read it when |
 | --- | --- |
 | [Getting started](getting-started.md) | adding the crate and writing a first command |
+| [The simple example](../examples/simple/README.md) | wanting a working command to copy, and the flags it takes |
 | [Modes and the interaction policy](modes.md) | deciding which mode a run uses, and what it costs |
 | [The companion derive](derive.md) | giving an existing `clap` command validated input |
 | [TUI composition](tui-composition.md) | drawing your own field or screen |

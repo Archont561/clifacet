@@ -38,7 +38,7 @@ python scripts/check_docs.py --write     # regenerate the snippet test after edi
 ```
 
 A ```` ```rust ```` fence in `README.md` or `docs/*.md` is not prose: `check_docs.py`
-copies it into `crates/clifacet-example/tests/documented_snippets.rs`, which the suite
+copies it into `examples/simple/tests/documented_snippets.rs`, which the suite
 compiles and runs. `rust,ignore` is the escape hatch for a deliberate fragment, and it
 is what the reference page uses for its diagrams of shapes. Every relative link and
 `#fragment` is resolved, every `clifacet::…` path is checked segment by segment
@@ -56,7 +56,7 @@ The UI-free command seam lives in `crates/clifacet/src/{command,failure}.rs`, th
 frontends in `crates/clifacet/src/{prompt,policy,tui}`, secrets and their provenance in
 `crates/clifacet/src/{secret,provenance}.rs`, and `docs/command-core.md` records the four
 layers, the ownership rules and what is deliberately not implemented yet. The reference
-application is a crate of its own, `crates/clifacet-example`, which depends on `clifacet`
+application is a crate of its own, `examples/simple`, which depends on `clifacet`
 and on nothing private: it is the proof that the published API is enough. Run it against
 the real streams with:
 
@@ -535,7 +535,7 @@ compatible with that version, while normal CI uses Pixi 0.83.0.
 `clifacet_macros::version!()` expands to the macro package version. `clifacet`
 also re-exports `version!()`. Crate-internal tests live in `src/tests.rs`;
 consumer-facing integration and compile-fail tests live under `tests/`. The reference
-application keeps its own suite beside it, in `crates/clifacet-example/tests/`.
+application keeps its own suite beside it, in `examples/simple/tests/`.
 Procedural macro crates cannot expose a normal public constant.
 
 The LCOV gate checks executable lines in both published crates' `src/` directories

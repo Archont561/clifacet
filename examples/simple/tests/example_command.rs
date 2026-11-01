@@ -225,6 +225,32 @@ fn the_application_offers_every_mode_the_library_has() {
 }
 
 #[test]
+fn the_application_asks_by_default_and_draws_only_when_asked() {
+    // Permission and intent, asserted separately: every mode is allowed, prompts
+    // are what an unadorned run gets, and the form is what `--tui` asks for.
+    assert_eq!(
+        example::POLICY.preference(),
+        Some(Mode::Interactive),
+        "prompts are the default this application states"
+    );
+    assert_eq!(
+        example::POLICY.default_mode(),
+        Mode::Interactive,
+        "a run that asks for nothing gets prompts, not the form"
+    );
+    assert_eq!(
+        example::POLICY
+            .resolve(
+                clifacet::policy::Request::mode(Mode::Tui),
+                clifacet::policy::Capabilities::terminal_with_tui()
+            )
+            .map(clifacet::policy::Plan::mode),
+        Ok(Mode::Tui),
+        "`--tui` is still honored under the preference"
+    );
+}
+
+#[test]
 fn a_failure_displays_only_its_message() {
     let failure = Failure::validation("--repeat must be between 1 and 8, got 0");
 

@@ -9,16 +9,25 @@
 //! ```
 //! use clifacet::policy::{Capabilities, Mode, Policy, Request};
 //!
-//! let policy = Policy::up_to(Mode::Interactive);
+//! // Permission and intent are separate: prompts are what this application wants by
+//! // default, a full-screen form is what it will do when asked.
+//! let policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
 //!
 //! // An explicit request wins, if the policy permits it.
-//! let plan = policy.resolve(Request::mode(Mode::Interactive), Capabilities::terminal())
-//!     .expect("prompts are permitted here");
+//! let plan = policy
+//!     .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui())
+//!     .expect("a TUI is permitted here");
+//! assert_eq!(plan.mode(), Mode::Tui);
+//!
+//! // Without a request, the preference decides — not the ceiling.
+//! let plan = policy
+//!     .resolve(Request::none(), Capabilities::terminal_with_tui())
+//!     .expect("a terminal can host prompts");
 //! assert_eq!(plan.mode(), Mode::Interactive);
 //!
-//! // Without a request, the policy's preference decides, and capability can only
-//! // take interaction away.
-//! let plan = policy.resolve(Request::none(), Capabilities::headless())
+//! // Capability can only take interaction away from that default.
+//! let plan = policy
+//!     .resolve(Request::none(), Capabilities::headless())
 //!     .expect("a headless run still resolves");
 //! assert_eq!(plan.mode(), Mode::NonInteractive);
 //!
@@ -34,10 +43,10 @@ use std::io::IsTerminal;
 
 /// How a run talks to the user.
 ///
-/// The ordering is meaningful: interaction only ever *decreases* when a
-/// preference is unavailable, so `NonInteractive < Interactive < Tui` is the
-/// scale a [`Policy`] ceiling is compared against.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// The ordering is meaningful: interaction only ever *decreases* when a mode is
+/// unavailable, so `NonInteractive < Interactive < Tui` is the scale a [`Policy`]
+/// ceiling and preference are compared against.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum Mode {
     /// Flags in, data out. Nothing is ever asked.
     #[default]
@@ -49,6 +58,20 @@ pub enum Mode {
 }
 
 impl Mode {
+    /// The position of this mode on the interaction scale.
+    ///
+    /// The comparison operators are derived from this one number rather than beside
+    /// it, so `Mode` is ordered in exactly one place and a `Policy` can compare a
+    /// preference with a ceiling in a `const fn` — which is what lets a policy that
+    /// asks for more than it permits fail to compile.
+    const fn rank(self) -> u8 {
+        match self {
+            Self::NonInteractive => 0,
+            Self::Interactive => 1,
+            Self::Tui => 2,
+        }
+    }
+
     /// Whether this mode may ask the user anything.
     ///
     /// This is the single source of truth for "may a frontend be constructed?",
@@ -56,6 +79,18 @@ impl Mode {
     #[must_use]
     pub const fn asks_the_user(self) -> bool {
         !matches!(self, Self::NonInteractive)
+    }
+}
+
+impl Ord for Mode {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.rank().cmp(&other.rank())
+    }
+}
+
+impl PartialOrd for Mode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -196,14 +231,24 @@ impl Request {
     }
 }
 
-/// How much interaction an application permits, whatever the environment offers.
+/// How much interaction an application permits, and how much it wants by default.
 ///
-/// A policy is a ceiling, not a preference list: `Policy::up_to(Mode::Interactive)`
-/// means prompts are allowed and a TUI is not. Fewer modes are always allowed,
-/// because less interaction never exceeds a permission.
+/// A policy answers two different questions, and keeping them apart is the whole
+/// point of the type:
+///
+/// - **permission** — the ceiling. `Policy::up_to(Mode::Interactive)` means prompts
+///   are allowed and a TUI is not. Fewer modes are always allowed, because less
+///   interaction never exceeds a permission.
+/// - **intent** — the preference. It is the mode a run uses when the user asked for
+///   nothing, and it may be *below* the ceiling: a destructive command can permit a
+///   prompt for the user who asks for one while never offering it unasked.
+///
+/// With no preference stated, the ceiling doubles as the default, which is what a
+/// policy meant before there was a way to say otherwise.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Policy {
     ceiling: Mode,
+    preference: Option<Mode>,
 }
 
 impl Policy {
@@ -212,19 +257,66 @@ impl Policy {
     pub const fn non_interactive() -> Self {
         Self {
             ceiling: Mode::NonInteractive,
+            preference: None,
         }
     }
 
     /// The most interactive mode this application is willing to enter.
     #[must_use]
     pub const fn up_to(ceiling: Mode) -> Self {
-        Self { ceiling }
+        Self {
+            ceiling,
+            preference: None,
+        }
+    }
+
+    /// The mode this application uses when the user asks for nothing.
+    ///
+    /// A preference is not a permission: it can lower the default below the ceiling,
+    /// never raise it above the ceiling. Asking for more interaction than the policy
+    /// permits has no sensible resolution, so it panics here rather than being
+    /// silently clamped — and because this is a `const fn`, a policy declared with
+    /// `const` fails to compile instead of failing at run time.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `preference` is above this policy's ceiling.
+    #[must_use]
+    pub const fn prefer(self, preference: Mode) -> Self {
+        assert!(
+            preference.rank() <= self.ceiling.rank(),
+            "a policy cannot prefer a mode above its ceiling"
+        );
+        Self {
+            preference: Some(preference),
+            ..self
+        }
     }
 
     /// The most interactive mode this policy permits.
     #[must_use]
     pub const fn ceiling(self) -> Mode {
         self.ceiling
+    }
+
+    /// The mode this policy prefers when the user asks for nothing, if it states one.
+    #[must_use]
+    pub const fn preference(self) -> Option<Mode> {
+        self.preference
+    }
+
+    /// The mode a run uses when the user asks for nothing, before the environment
+    /// has a say.
+    ///
+    /// It is the stated preference, or the ceiling when none is stated: an
+    /// application that never says which mode it wants still wants the most it
+    /// permits.
+    #[must_use]
+    pub const fn default_mode(self) -> Mode {
+        match self.preference {
+            Some(preference) => preference,
+            None => self.ceiling,
+        }
     }
 
     /// Applies the precedence and answers with a plan, or with the reason it cannot.
@@ -235,26 +327,27 @@ impl Policy {
     /// ceiling, and [`Refusal::Unavailable`] when the environment cannot host the
     /// permitted mode. Neither outcome runs anything.
     pub fn resolve(self, request: Request, capabilities: Capabilities) -> Result<Plan, Refusal> {
-        let mode = match request.requested() {
-            Some(requested) => {
-                if requested > self.ceiling {
-                    return Err(Refusal::Forbidden {
-                        requested,
-                        ceiling: self.ceiling,
-                    });
-                }
-                if let Some(missing) = capabilities.missing_for(requested) {
-                    return Err(Refusal::Unavailable { requested, missing });
-                }
-                requested
+        let mode = if let Some(requested) = request.requested() {
+            if requested > self.ceiling {
+                return Err(Refusal::Forbidden {
+                    requested,
+                    ceiling: self.ceiling,
+                });
             }
-            // No request: the most interactive mode this policy permits that the
-            // environment supports. Interaction only ever decreases, so a terminal
-            // can never add consent the policy withheld.
-            None => [Mode::Tui, Mode::Interactive, Mode::NonInteractive]
+            if let Some(missing) = capabilities.missing_for(requested) {
+                return Err(Refusal::Unavailable { requested, missing });
+            }
+            requested
+        } else {
+            // No request: the policy's default, or the most interactive mode below it
+            // that the environment supports when the default cannot be hosted.
+            // Interaction only ever decreases from the default, so a terminal can
+            // never add consent the policy withheld nor interest it did not state.
+            let default = self.default_mode();
+            [Mode::Tui, Mode::Interactive, Mode::NonInteractive]
                 .into_iter()
-                .find(|candidate| *candidate <= self.ceiling && capabilities.supports(*candidate))
-                .unwrap_or(Mode::NonInteractive),
+                .find(|candidate| *candidate <= default && capabilities.supports(*candidate))
+                .unwrap_or(Mode::NonInteractive)
         };
 
         Ok(Plan {

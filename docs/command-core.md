@@ -2,9 +2,9 @@
 
 This is the M1 slice: `clap` parses, the application validates, a UI-free command
 runs, and the application decides which stream carries the data and what a
-failure costs. `crates/clifacet-example/src/lib.rs` is the whole thing in one
+failure costs. `examples/simple/src/lib.rs` is the whole thing in one
 place — the reference application, in a crate of its own — and
-`crates/clifacet-example/tests/example_command.rs` drives it through buffers
+`examples/simple/tests/example_command.rs` drives it through buffers
 rather than a terminal. Nothing in it reaches a private path: the crate depends
 on `clifacet` exactly as a caller does, so every seam it uses is a published
 one.
@@ -49,7 +49,7 @@ machine data" is a property a test can assert rather than a convention.
 
 ## Demonstrated behavior
 
-Measured on `crates/clifacet-example` at this commit:
+Measured on `examples/simple` at this commit:
 
 | Invocation | Exit | stdout | stderr |
 | --- | --- | --- | --- |
@@ -101,15 +101,22 @@ Two properties make this more than a preference list:
 `--yes` answers confirmations and decides nothing else: it does not change the
 mode, does not imply a mode, and does not affect the exit code.
 
-### The example's ceiling
+### The example's policy
 
 The reference application enables every frontend the library has — it depends on
 `clifacet` with the `tui` feature, and prompts come from the library's own
-`Terminal` — so `clifacet_example::POLICY` is `Policy::up_to(Mode::Tui)` and a run
-never refuses a mode it was asked for. An application that enables fewer
-frontends sets a lower ceiling: with `Policy::up_to(Mode::Interactive)`, `--tui`
-becomes a refusal with exit `2` and a message naming what was asked for, because
-a mode nothing can draw is not a mode. `Capabilities::detected` applies the same
+`Terminal` — so `clifacet_example::POLICY` permits everything:
+`Policy::up_to(Mode::Tui).prefer(Mode::Interactive)`. A run therefore never refuses
+a mode it was asked for, and an invocation with no flags asks for what the flags left
+out instead of taking over the terminal: prompts are what the application *wants*,
+the form is what `--tui` *asks* for.
+
+An application that enables fewer frontends sets a lower ceiling: with
+`Policy::up_to(Mode::Interactive)`, `--tui` becomes a refusal with exit `2` and a
+message naming what was asked for, because a mode nothing can draw is not a mode.
+The preference moves the default without moving that boundary — a command whose job
+is destructive states `.prefer(Mode::NonInteractive)` and prompts only for a user who
+asks it to. See [modes § Permission and intent](modes.md#permission-and-intent). `Capabilities::detected` applies the same
 rule from the other side — the TUI capability is the feature *and* a terminal —
 which is why the policy can never resolve to a mode the binary cannot render.
 
@@ -211,7 +218,7 @@ would show a stale answer; `run_with` replaces the drawing and nothing else — 
 keys, the refusals, the submission and the handler are the same loop, so a custom
 screen reaches the same validation as the generated form. `run_on_with` is the same
 hatch with the alternate screen, so a custom screen is not left to reimplement
-entering and leaving it. `crates/clifacet-example/examples/tui_custom_screen.rs` is
+entering and leaving it. `examples/simple/examples/tui_custom_screen.rs` is
 both hatches in one runnable screen.
 
 The one thing a headless test cannot reach is the process's own terminal: the size
@@ -255,7 +262,7 @@ Three pieces, and deliberately no fourth:
   one names the question, the other names the form — so `Parity::comparing` names the
   subjects a scenario is actually about. Everything else compares all four.
 
-`crates/clifacet-example/examples/parity_report.rs` runs the example command three
+`examples/simple/examples/parity_report.rs` runs the example command three
 ways and prints whether the modes agree; it lives outside the library crate, so it
 can only use this published surface, which is the point.
 

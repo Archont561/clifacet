@@ -32,14 +32,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 DOCS = ROOT / "docs"
-SNIPPETS = ROOT / "crates" / "clifacet-example" / "tests" / "documented_snippets.rs"
+SNIPPETS = ROOT / "examples" / "simple" / "tests" / "documented_snippets.rs"
 
 # The crates a guide may name. Anything else is not checked, so a guide may still
 # mention `std`, `ratatui` or `clap` without this script pretending to know them.
 CRATES = ("clifacet", "clifacet_example")
 SOURCE_ROOTS = (
     ROOT / "crates" / "clifacet" / "src",
-    ROOT / "crates" / "clifacet-example" / "src",
+    ROOT / "examples" / "simple" / "src",
 )
 
 # Domains the reference application deliberately is not. Kept short and concrete:
@@ -294,7 +294,7 @@ def check_domain(root: Path = ROOT) -> list[Finding]:
 
 def check_staleness(root: Path = ROOT) -> list[Finding]:
     """The committed snippet file is what the pages currently generate."""
-    target = root / "crates" / "clifacet-example" / "tests" / "documented_snippets.rs"
+    target = root / "examples" / "simple" / "tests" / "documented_snippets.rs"
     if not target.is_file():
         return [Finding("snippets", target, 1, "the generated snippet file is missing")]
     if target.read_text(encoding="utf-8") != generated_snippets(root):

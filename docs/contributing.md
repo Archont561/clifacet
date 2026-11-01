@@ -52,7 +52,7 @@ pixi run --frozen check-docs   # links, anchors, compiled snippets, documented n
 
 - Every relative link has to resolve, and every `#fragment` to a heading that exists.
 - A ```` ```rust ```` fence is **compiled**: `scripts/check_docs.py` writes it into
-  `crates/clifacet-example/tests/documented_snippets.rs`, which the suite builds. A
+  `examples/simple/tests/documented_snippets.rs`, which the suite builds. A
   fence tagged `rust,ignore` is an illustration and is not compiled — use it when the
   code is deliberately a fragment.
 - Every `clifacet::…` path is checked segment by segment, so a guide cannot teach a
@@ -85,7 +85,7 @@ the changelog cannot use.
 | --- | --- |
 | `crates/clifacet/src` | the library: the command seam, the frontends, the policy, the contract |
 | `crates/clifacet-macros` | the `Facet` derive |
-| `crates/clifacet-example` | the reference application, its tests and runnable demos — not published |
+| `examples/simple` | the reference application, its tests and runnable demos — not published |
 | `docs/` | these guides |
 | `backlog/` | decisions, milestones and tasks, as the source of direction |
 | `scripts/` | the repository checks, each with a pytest suite in `scripts/tests/` |

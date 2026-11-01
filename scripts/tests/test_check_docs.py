@@ -187,7 +187,7 @@ def test_the_checked_pages_are_the_readme_and_the_guides():
 
 def test_the_generated_file_is_up_to_date():
     """CI can fail on a stale snippet file, which is what makes the check bite."""
-    committed = (ROOT / "crates" / "clifacet-example" / "tests" / "documented_snippets.rs").read_text(
+    committed = (ROOT / "examples" / "simple" / "tests" / "documented_snippets.rs").read_text(
         encoding="utf-8"
     )
 

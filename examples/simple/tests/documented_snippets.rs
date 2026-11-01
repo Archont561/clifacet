@@ -137,10 +137,37 @@ fn modes_snippet_1() {
     assert!(refused.is_err());
 }
 
-/// `modes.md`, line 68.
+/// `modes.md`, line 44.
 #[rustfmt::skip]
 #[test]
 fn modes_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    // Permission: prompts are allowed, a full-screen form is allowed. Intent: prompts are
+    // what an unadorned run gets.
+    let policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
+    let plan = policy
+        .resolve(Request::none(), Capabilities::terminal_with_tui())
+        .expect("prompts are permitted and possible");
+    assert_eq!(plan.mode(), Mode::Interactive, "the preference, not the ceiling");
+    // A request still wins, and is still bounded by the ceiling rather than the preference.
+    let plan = policy
+        .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui())
+        .expect("a TUI is permitted here");
+    assert_eq!(plan.mode(), Mode::Tui);
+    // Intent can also be *less* interactive than permission: a command that may prompt
+    // for someone who asks for it does not have to offer a prompt unasked.
+    let cautious = Policy::up_to(Mode::Tui).prefer(Mode::NonInteractive);
+    let plan = cautious
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("a run that asks nothing always resolves");
+    assert_eq!(plan.mode(), Mode::NonInteractive);
+}
+
+/// `modes.md`, line 139.
+#[rustfmt::skip]
+#[test]
+fn modes_snippet_3() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::contract::ExitPolicy;
     use clifacet::{Failure, FailureKind};

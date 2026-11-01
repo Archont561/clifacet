@@ -63,7 +63,7 @@ code a failure costs.
 | --- | --- |
 | `clifacet::command` | what a command is: validated input in, data or a failure out |
 | `clifacet::facet` | how a `clap` command becomes typed, validated input |
-| `clifacet::policy` | which mode a run may use, resolved from a request, a policy and what the environment offers |
+| `clifacet::policy` | which mode a run may use and which it prefers, resolved from a request, a policy and what the environment offers |
 | `clifacet::prompt` | how a question is asked — and how to script the answers in a test |
 | `clifacet::tui` | the full-screen form, its fields, and the two escape hatches for drawing your own |
 | `clifacet::contract` | what a run may write where, and what each outcome costs |
@@ -86,10 +86,14 @@ published to crates.io**: releasing is a manual, authorized workflow dispatch, n
 side effect of a merge.
 
 ```sh
-cargo run -p clifacet-example -- --name ada --repeat 2   # flags
-cargo run -p clifacet-example -- --interactive           # a prompt
-cargo run -p clifacet-example -- --tui                   # the full-screen form
+cargo run -p clifacet-example                            # asks for what the flags left out
+cargo run -p clifacet-example -- --name ada --repeat 2    # flags
+cargo run -p clifacet-example -- --interactive            # a prompt, or a refusal
+cargo run -p clifacet-example -- --tui                    # the full-screen form
 ```
+
+[`examples/simple`](examples/simple/README.md) is that application, with its own
+README, its sources and its suite.
 
 ## Workspace
 
@@ -97,7 +101,7 @@ cargo run -p clifacet-example -- --tui                   # the full-screen form
 | --- | --- |
 | `clifacet` | the library: the command seam, the frontends, the interaction policy, the result contract |
 | `clifacet-macros` | the `Facet` derive, the `#[clifacet::command]` wrapper and `version!`, re-exported through `clifacet` |
-| `clifacet-example` | the reference application, its tests and runnable demos — a consumer of the published API, not published itself |
+| `clifacet-example` (in [`examples/simple`](examples/simple/README.md)) | the reference application, its tests and runnable demos — a consumer of the published API, not published itself |
 
 ## Documentation
 

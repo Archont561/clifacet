@@ -16,7 +16,7 @@ publish = false
 # The derive expands to `::clap::…` paths, so a crate that parses a derived command
 # needs `clap` itself; the workspace pins one version for both.
 clap.workspace = true
-clifacet = { path = "../clifacet", features = ["tui"] }
+clifacet = { path = "../../crates/clifacet", features = ["tui"] }
 
 [dev-dependencies]
 proptest.workspace = true
