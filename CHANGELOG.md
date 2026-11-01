@@ -10,6 +10,11 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### Added
+
+* **examples:** wrap the backlog.md CLI and record the authoring gaps
+([b753b84](https://github.com/Archont561/clifacet/commit/b753b84db784ac647960f619c96e2f29a139fa32))
+
 ## [0.1.0] - 2026-11-01
 
 ### ⚠ BREAKING CHANGE

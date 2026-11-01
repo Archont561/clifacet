@@ -1,0 +1,24 @@
+[package]
+name = "clifacet-backlog-lite"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "A friendly wrapper around the Backlog.md CLI, built on the published clifacet API"
+publish = false
+
+[[bin]]
+name = "bl"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+clifacet = { path = "../../crates/clifacet", features = ["interactive"] }
+
+[dev-dependencies]
+rstest.workspace = true
+
+[lints]
+workspace = true
