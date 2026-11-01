@@ -78,6 +78,9 @@ deny-offline = "cargo deny check bans licenses sources"
 # unmaintained crate is gone (so the exception must go too) or when the path the guide
 # quotes no longer matches Cargo.lock. Offline: it reads three files and the lockfile.
 check-advisory = "python scripts/check_advisory_exception.py"
+# What `cargo publish` would upload, checked offline with `cargo package --list`: the
+# licence texts and README must be in the tarball, and test scaffolding must not be.
+check-packages = "python scripts/check_packages.py"
 # `kind(proc-macro)` is separate: nextest classifies a proc-macro crate's own unit
 # tests that way, so `kind(lib)` alone would skip the derive's diagnostics tests.
 test-src = "cargo nextest run --workspace --all-features --locked -E 'kind(lib) + kind(proc-macro)'"
@@ -101,8 +104,8 @@ bootstrap = "bash scripts/bootstrap.sh"
 # out `deny` (it fetches the RustSec database) in favour of `deny-offline`, and it is why
 # `audit` is absent rather than replaced: an offline audit steps aside with a message,
 # which is pre-push's job, not a gate's. `quality` is the CI command and keeps both.
-test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "test", "test-doc", "test-scripts", "deny-offline", "check-advisory", "sandbox-check"] }
+test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "test", "test-doc", "test-scripts", "deny-offline", "check-advisory", "check-packages", "sandbox-check"] }
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
 hooks-install = "lefthook install"
-quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "skills-check", "backlog-check", "check-features", "actionlint", "check-advisory", "deny", "audit", "sandbox-check"] }
+quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "skills-check", "backlog-check", "check-features", "actionlint", "check-advisory", "check-packages", "deny", "audit", "sandbox-check"] }

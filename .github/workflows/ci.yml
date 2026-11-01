@@ -63,6 +63,8 @@ jobs:
         run: pixi run --frozen backlog-check
       - name: Check the advisory exception is still warranted
         run: pixi run --frozen check-advisory
+      - name: Check what each crate would publish
+        run: pixi run --frozen check-packages
       - name: Check the documentation guides
         run: pixi run --frozen check-docs
       - name: Check generated sandbox files

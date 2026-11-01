@@ -308,6 +308,44 @@ reverting anything.
    gh workflow run release.yml -f dry_run=false
    ```
 
+### Rehearse a release
+
+The tarball is the part of a release that cannot be taken back, so the package
+contents are checked without publishing. `check-packages` runs `cargo package
+--list` for both crates — the same listing `cargo publish` uploads, resolved
+offline from the lockfile — and fails when a crate would ship without its
+`Cargo.toml`, `src/lib.rs`, `README.md` or licence texts, when it would ship
+repository-only paths (BDD `.feature` files, `.pixi-sandbox/`, `target/`), or when
+a registry-page field (`description`, `license`, `repository`, `rust-version`) is
+missing or inherits from a workspace table that does not define it. It runs in
+`test-local`, in `quality` and in CI, so a manifest change that quietly drops the
+licence files fails before anyone dispatches anything.
+
+```sh
+pixi run check-packages                     # the contents contract, offline
+pixi run check-packages --list              # the same, plus a file count per crate
+gh workflow run release.yml                 # the rehearsal: packages the macro crate, publishes nothing
+```
+
+Both licence texts live at the repository root and inside each published crate,
+because a tarball that omits them is a distribution without the Apache text it
+claims to be licensed under. `check-packages` compares the copies byte for byte, so
+they cannot drift; edit the root files and copy them across.
+
+A rehearsal proves the ordering, the version sites, the notes, the metadata and the
+contents. Two things it cannot prove, because they need a registry to answer:
+
+- **registry availability** — that `clifacet-macros <version>` is visible on the
+  index by the time the main crate is packaged. The workflow polls for up to five
+  minutes and fails rather than publishing blind.
+- **partial-failure recovery** — that a run which published one crate and then
+  failed can be finished. The design is that the loop skips any version already
+  indexed, so the answer is "re-run the same dispatch"; the first real release is
+  what confirms it.
+
+Record the dispatch, the run URL and its result before treating the release path as
+proven. Until then, AC#2 of CLI-18 is only half met, and `0.1.0` stays unauthorised.
+
 ## Rust dependencies and features
 
 The root Cargo manifest centralizes dependency versions. The main crate includes

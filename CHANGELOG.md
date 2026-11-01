@@ -30,6 +30,13 @@ prepared, so the headings below are managed by that script.
   unmaintained crate is gone (so both ID-wide exceptions must be deleted), when either
   `deny.toml` or `.cargo/audit.toml` no longer carries the exception, or when
   `docs/development.md` quotes a path the lockfile no longer agrees with.
+- `scripts/check_packages.py` and the `check-packages` task, which check what
+  `cargo publish` would upload without publishing anything: both crates must package
+  their manifest, source root, README and licence texts, must not package repository-only
+  paths such as BDD `.feature` files or `.pixi-sandbox/`, and must declare the metadata a
+  crates.io page shows. Writing it found that neither published crate shipped the licence
+  texts at all — they were only at the repository root — so each crate now carries
+  `LICENSE-MIT` and `LICENSE-APACHE`, checked byte for byte against the root copies.
 - A qualified compatibility matrix instead of a claimed one. `scripts/check_features.py`
   derives the supported feature combinations from the crate manifest — the empty set, the
   `default` set, each frontend alone and all of them together — and CI checks each on
