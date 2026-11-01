@@ -141,6 +141,9 @@ short about text.
 - **Migration stays additive.** A hand-written enum, as in decision-14, keeps working: the
   macro emits exactly that shape, and an application can start with the enum and adopt the
   macro later, or never.
+- **Composition with the procedural layer is measured in decision-16**: the macro emits
+  `#[clifacet::command(..)]` and lets the attribute expand, and path arguments cross the
+  boundary as raw tokens because a `:ty` fragment does not reach the derive.
 - **A tree that outgrows the list has a documented door.** Past roughly twenty commands
   the build-script helper is worth its cost, and because it must emit the same generated
   shape, moving to it changes `mod.rs` and nothing else.
