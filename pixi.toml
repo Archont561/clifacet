@@ -74,6 +74,10 @@ audit-offline = "python scripts/audit_local.py"
 # Advisories need the RustSec database, so the other three checks are the offline-safe
 # subset; `deny` (the full one) stays a CI task.
 deny-offline = "cargo deny check bans licenses sources"
+# An advisory exception with no expiry is a decision nobody revisits: this fails when the
+# unmaintained crate is gone (so the exception must go too) or when the path the guide
+# quotes no longer matches Cargo.lock. Offline: it reads three files and the lockfile.
+check-advisory = "python scripts/check_advisory_exception.py"
 # `kind(proc-macro)` is separate: nextest classifies a proc-macro crate's own unit
 # tests that way, so `kind(lib)` alone would skip the derive's diagnostics tests.
 test-src = "cargo nextest run --workspace --all-features --locked -E 'kind(lib) + kind(proc-macro)'"
@@ -97,8 +101,8 @@ bootstrap = "bash scripts/bootstrap.sh"
 # out `deny` (it fetches the RustSec database) in favour of `deny-offline`, and it is why
 # `audit` is absent rather than replaced: an offline audit steps aside with a message,
 # which is pre-push's job, not a gate's. `quality` is the CI command and keeps both.
-test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "test", "test-doc", "test-scripts", "deny-offline", "sandbox-check"] }
+test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "test", "test-doc", "test-scripts", "deny-offline", "check-advisory", "sandbox-check"] }
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
 sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
 hooks-install = "lefthook install"
-quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "skills-check", "backlog-check", "check-features", "actionlint", "deny", "audit", "sandbox-check"] }
+quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "skills-check", "backlog-check", "check-features", "actionlint", "check-advisory", "deny", "audit", "sandbox-check"] }

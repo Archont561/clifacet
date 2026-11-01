@@ -137,6 +137,12 @@ rules:
     level: error
     message: "The MSRV proof script is missing."
 
+  - id: require-check-advisory
+    kind: file_exists
+    paths: "scripts/check_advisory_exception.py"
+    level: error
+    message: "The advisory-exception check is missing; the RustSec exception would never expire."
+
   - id: require-check-docs
     kind: file_exists
     paths: "scripts/check_docs.py"
