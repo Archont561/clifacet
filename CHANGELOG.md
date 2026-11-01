@@ -18,6 +18,15 @@ prepared, so the headings below are managed by that script.
   drift. `clap` still has to be a direct dependency, because `clap`'s own derive expands
   to code naming `clap::…`. `#[derive(clap::Parser, clifacet::Facet)]` is unchanged and
   still works.
+- `clifacet::prompt::Dialog`, the `interactive` feature's dialog frontend, built on
+  `inquire`. It implements the same two-method `Prompter` seam as the plain `Terminal`
+  and the test `Scripted`, so it draws on `stderr` and decides nothing: a plan that may
+  ask nothing never constructs it, a supplied value is never re-asked, and `--yes`
+  still answers confirmations without a dialog appearing. Escape and Ctrl-C become
+  `FailureKind::Cancelled`, and a dialog that cannot reach a terminal is an execution
+  failure that says so instead of waiting for an answer that cannot come. The example
+  asks through it (`dialog_frontend`) and keeps `terminal_frontend` beside it to show
+  the frontend is the application's choice.
 - `Policy::prefer(Mode)`, which separates what an application *permits* from what it
   *wants*: the ceiling still bounds everything, and the preference decides the mode used
   when the user asked for nothing, without ever falling back to the ceiling when one is

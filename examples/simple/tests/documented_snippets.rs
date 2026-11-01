@@ -51,6 +51,29 @@ fn readme_snippet_2() {
     }
 }
 
+/// `command-core.md`, line 177.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    use clifacet::prompt::{Dialog, Prompter, Session};
+    // Presentation is the application's choice: the library's dialog, or any `Prompter`
+    // of its own. Constructing one touches no terminal.
+    let build_dialog = || Box::new(Dialog::new()) as Box<dyn Prompter>;
+    // A run that may ask nothing never calls that builder, which is what keeps a piped
+    // run non-interactive however rich the frontend is.
+    let plan = Policy::non_interactive()
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("the run resolves");
+    let mut session = Session::start(plan, build_dialog);
+    assert_eq!(
+        session.value(None, "Which license?").expect("nothing may ask"),
+        None,
+        "a missing value stays missing, and the dialog is never built"
+    );
+}
+
 /// `derive.md`, line 7.
 #[rustfmt::skip]
 #[test]

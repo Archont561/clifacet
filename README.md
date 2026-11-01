@@ -64,7 +64,7 @@ code a failure costs.
 | `clifacet::command` | what a command is: validated input in, data or a failure out |
 | `clifacet::facet` | how a `clap` command becomes typed, validated input |
 | `clifacet::policy` | which mode a run may use and which it prefers, resolved from a request, a policy and what the environment offers |
-| `clifacet::prompt` | how a question is asked — and how to script the answers in a test |
+| `clifacet::prompt` | how a question is asked: a plain reader, an `inquire` dialog, or your own — and how to script the answers in a test |
 | `clifacet::tui` | the full-screen form, its fields, and the two escape hatches for drawing your own |
 | `clifacet::contract` | what a run may write where, and what each outcome costs |
 | `clifacet::harness` | proof that a different frontend changed nothing else |
@@ -72,8 +72,10 @@ code a failure costs.
 | `clifacet::provenance` | where a value came from, recorded without recording the value |
 
 Frontends are features, so an application pays only for what it uses: `interactive`
-(prompts), `tui` (full screen), and a reserved `json` boundary with no flag behind it
-yet.
+(prompts, with an `inquire` dialog), `tui` (full screen), and a reserved `json`
+boundary with no flag behind it yet. Prompts are a two-method seam — `ask` and
+`confirm` — so the dialog is a default rather than a fixture: an application can hand
+`Session` its own frontend and keep the policy, the streams and the exit codes.
 
 ## Status
 
