@@ -32,6 +32,25 @@ fn readme_snippet_1() {
     }
 }
 
+/// `README.md`, line 34.
+#[rustfmt::skip]
+#[test]
+fn readme_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::Facet;
+    #[clifacet::command(input = Greeting)]
+    #[command(name = "greet", about = "Say hello")]
+    struct Cli {
+        /// Who to greet.
+        #[arg(long, alias = "nickname")]
+        name: Option<String>,
+    }
+    /// Validated input. Every value of it is runnable.
+    struct Greeting {
+        name: Option<String>,
+    }
+}
+
 /// `derive.md`, line 7.
 #[rustfmt::skip]
 #[test]
