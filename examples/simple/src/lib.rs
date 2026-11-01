@@ -182,14 +182,20 @@ pub struct InteractionFlags {
     pub yes: bool,
 }
 
-/// How interactive this application is willing to be.
+/// How interactive this application is, in both senses.
 ///
-/// Prompts and the full-screen form are both permitted — [`run`] supplies a terminal
-/// frontend for the first and [`run_tui`] hosts the second. The crate enables both
-/// frontends, so the ceiling is the most interactive mode the library has: an
-/// application that enables only prompts would pass `Mode::Interactive` here and
-/// have `--tui` refused instead.
-pub const POLICY: Policy = Policy::up_to(Mode::Tui);
+/// **Permission**: prompts and the full-screen form are both allowed — [`run`]
+/// supplies a terminal frontend for the first and [`run_tui`] hosts the second. The
+/// crate enables both frontends, so the ceiling is the most interactive mode the
+/// library has: an application that enables only prompts would pass
+/// `Mode::Interactive` here and have `--tui` refused instead.
+///
+/// **Intent**: prompts are the default. A run with no flags asks for what the flags
+/// left out, because that is the mode a person at a terminal expects; the form is
+/// what `--tui` asks for, not what a bare invocation gets. Stating the preference is
+/// all this line adds — the ceiling still has the final say on what is permitted, and
+/// the environment on what is possible.
+pub const POLICY: Policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
 
 /// The mode the user asked for, if any.
 ///

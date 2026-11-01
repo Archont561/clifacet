@@ -4,14 +4,26 @@
 //! buffers instead of a terminal. That is deliberate: a promise about not
 //! prompting cannot be tested by a helper that already knows the answer.
 
+use clifacet::policy::Capabilities;
+use clifacet::prompt::{Answer, Scripted};
 use clifacet_example as example;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
+
+/// Anything that starts an ANSI escape sequence, which only a screen draws.
+const ESC: char = '\u{1b}';
 
 /// What one run produced, shared between the steps of a scenario.
 #[derive(Default)]
 struct Run {
     argv: Vec<String>,
+    /// The environment the run is told it has, when a scenario states one.
+    ///
+    /// `None` means the process's own, which is what `example::main` detects; a
+    /// scenario that needs a terminal says so here instead of depending on the
+    /// machine running the suite.
+    capabilities: Option<Capabilities>,
+    answers: Vec<Answer>,
     code: i32,
     data: String,
     diagnostic: String,
@@ -22,11 +34,22 @@ impl Run {
     fn execute(&mut self) {
         let mut out = Vec::new();
         let mut err = Vec::new();
-        self.code = example::main(
-            self.argv.iter().map(std::ffi::OsString::from),
-            &mut out,
-            &mut err,
-        );
+        let answers = self.answers.clone();
+        let code = match self.capabilities {
+            Some(capabilities) => example::main_with(
+                self.argv.clone(),
+                capabilities,
+                move || Box::new(Scripted::new(answers)),
+                &mut out,
+                &mut err,
+            ),
+            None => example::main(
+                self.argv.iter().map(std::ffi::OsString::from),
+                &mut out,
+                &mut err,
+            ),
+        };
+        self.code = code;
         self.data = String::from_utf8_lossy(&out).into_owned();
         self.diagnostic = String::from_utf8_lossy(&err).into_owned();
     }
@@ -46,6 +69,34 @@ fn the_application_runs_non_interactively(run: &mut Run) {
 fn the_user_asks_for_a_tui(run: &mut Run) {
     run.argv.push(String::from("--tui"));
     run.execute();
+}
+
+#[given("a terminal that could host a full-screen form")]
+fn a_terminal_that_could_host_a_full_screen_form(run: &mut Run) {
+    run.capabilities = Some(Capabilities::terminal_with_tui());
+    run.answers = vec![Answer::Text(String::from("ada"))];
+}
+
+#[when("the user runs with no flags")]
+fn the_user_runs_with_no_flags(run: &mut Run) {
+    run.execute();
+}
+
+#[then("the answer becomes the data")]
+fn the_answer_becomes_the_data(run: &Run) {
+    assert_eq!(
+        run.data, "hello, ada\n",
+        "the prompted answer is the input the command ran on"
+    );
+}
+
+#[then("no screen is drawn")]
+fn no_screen_is_drawn(run: &Run) {
+    assert!(
+        !run.diagnostic.contains(ESC),
+        "a preference for prompts must not draw the form, got {:?}",
+        run.diagnostic
+    );
 }
 
 #[when("the user runs with --yes")]
@@ -102,6 +153,15 @@ fn the_exit_code_says_the_run_succeeded(run: &Run) {
 )]
 #[test]
 fn a_refused_mode_runs_nothing(run: Run) {
+    let _ = run;
+}
+
+#[scenario(
+    path = "tests/features/interaction_policy.feature",
+    name = "An application that prefers prompts asks instead of drawing a screen"
+)]
+#[test]
+fn a_preference_for_prompts_asks_rather_than_draws(run: Run) {
     let _ = run;
 }
 

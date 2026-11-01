@@ -107,8 +107,8 @@ they constrain, in one `fn`.
 Because the derive's promise is "the same command with typed input", the interesting
 assertions are about parity, not about the macro: a flag alias, a `default_value_t`
 and a custom `value_parser` all have to reach the same input as their canonical
-spellings. `crates/clifacet-example/tests/facet_bridge.rs` and
-`crates/clifacet-example/tests/features/facet_bridge.feature` are the worked examples.
+spellings. `examples/simple/tests/facet_bridge.rs` and
+`examples/simple/tests/features/facet_bridge.feature` are the worked examples.
 
 The full reference, including the private-API rule that keeps the derive honest, is in
 [Command core § The companion derive](command-core.md#the-companion-derive).

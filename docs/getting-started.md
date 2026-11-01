@@ -48,14 +48,18 @@ table is the application's decision.
 ## Run it
 
 Parsing, validation, the streams and the exit code belong to the application. The
-reference application in `crates/clifacet-example` shows the whole path, and is the
+reference application in `examples/simple` shows the whole path, and is the
 shortcut to seeing a mode work:
 
 ```sh
-cargo run -p clifacet-example -- --name ada --repeat 2   # flags
-cargo run -p clifacet-example -- --interactive           # a prompt
-cargo run -p clifacet-example -- --tui                   # the full-screen form
+cargo run -p clifacet-example                            # asks for what the flags left out
+cargo run -p clifacet-example -- --name ada --repeat 2    # flags only
+cargo run -p clifacet-example -- --interactive            # asks, even off a terminal's default
+cargo run -p clifacet-example -- --tui                    # the full-screen form
 ```
+
+Its own [README](../examples/simple/README.md) is the guided tour: the flags, the four
+modes, the exit codes and which test proves each promise.
 
 Its library is the shape to copy: a `clap` struct, a `TryFrom` bridge to validated
 input, the command, and an application layer that owns both streams and the exit

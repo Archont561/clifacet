@@ -123,4 +123,4 @@ restore and the live event stream. Everything they wrap is covered, which is why
 coverage report has five uncovered lines rather than a list of them.
 
 The runnable versions of both hatches are in
-`crates/clifacet-example/examples/tui_custom_screen.rs`.
+`examples/simple/examples/tui_custom_screen.rs`.

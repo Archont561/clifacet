@@ -18,9 +18,26 @@ prepared, so the headings below are managed by that script.
   drift. `clap` still has to be a direct dependency, because `clap`'s own derive expands
   to code naming `clap::…`. `#[derive(clap::Parser, clifacet::Facet)]` is unchanged and
   still works.
+- `Policy::prefer(Mode)`, which separates what an application *permits* from what it
+  *wants*: the ceiling still bounds everything, and the preference decides the mode used
+  when the user asked for nothing, without ever falling back to the ceiling when one is
+  stated. `Policy::preference()` reports it and `Policy::default_mode()` resolves it, so
+  a run that asks nothing is explainable in one call. A preference above the ceiling
+  cannot be written: `prefer` checks it in a `const fn`, so a `const` policy asks for
+  too much at compile time instead of being silently clamped. Without a preference, a
+  policy behaves exactly as before — the ceiling is the default.
 
 ### Changed
 
+- The reference application moved from `crates/clifacet-example` to
+  [`examples/simple`](examples/simple/README.md) and gained the README it was missing:
+  what to run, the flags, the four modes, the streams, the exit codes and which test
+  proves each promise. The package name is unchanged, so `cargo run -p clifacet-example`
+  and every documented path still work; the workspace member, the Alint rules, the
+  hook globs, the `check-docs` paths and the guides follow the new location.
+- The example's policy is now `Policy::up_to(Mode::Tui).prefer(Mode::Interactive)`: a
+  run with no flags asks for what the flags left out, and `--tui` is what opens the
+  form. Permissions are unchanged — every mode is still available to it.
 - The release and CI workflows are plumbing now. Every decision they used to make in shell
   lives in a script with tests that need neither a registry nor a runner: `scripts/release.py`
   (`preflight`, `package`, `report`, `publish`, `tag`), `scripts/commit_range.py`,
@@ -42,7 +59,7 @@ prepared, so the headings below are managed by that script.
   reference.
 - `scripts/check_docs.py` and the `check-docs` task, which make the guides part of the
   build: relative links and `#fragment` anchors must resolve, every ```` ```rust ````
-  fence is compiled into `crates/clifacet-example/tests/documented_snippets.rs` and run
+  fence is compiled into `examples/simple/tests/documented_snippets.rs` and run
   by the suite (a `rust,ignore` fence is an illustration), every documented
   `clifacet::…` path is checked segment by segment against what the crate declares, and
   the reference application is held to staying domain-neutral.
