@@ -267,6 +267,7 @@ rules:
       - crates/clifacet
       - crates/clifacet-macros
       - examples/simple
+      - examples/backlog-lite
     level: error
     message: Keep workspace membership explicitly reviewed.
 

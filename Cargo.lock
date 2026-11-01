@@ -356,6 +356,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clifacet-backlog-lite"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "clifacet",
+ "rstest",
+]
+
+[[package]]
 name = "clifacet-example"
 version = "0.1.0"
 dependencies = [
