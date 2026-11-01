@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
+import subprocess
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path

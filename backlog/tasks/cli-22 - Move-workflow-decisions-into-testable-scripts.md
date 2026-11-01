@@ -73,6 +73,22 @@ read, when the version never appears — arrive once, on a real release.
   `import sys` was missing from `advisory_cache.py`, which was a `NameError` at the first
   task run. The suite imported the modules as packages and saw neither, which is exactly why
   the entry-point test starts each script in a subprocess.
+- 2026-11-01: **a third bug of the same class, and this one CI found.** The quality job
+  failed at `Clean restored advisory databases` with no message. The cause was a missing
+  `import subprocess`: my earlier edit replaced the whole import block and dropped it. Every
+  test for `clean` injects a fake runner, so `_run` — the adapter the workflow actually
+  calls — was never executed, and the local run of the task printed "nothing to clean"
+  because there was no restored clone to touch. Reproduced by cloning a local repository into
+  a temporary `CARGO_HOME` and running the task: `NameError: name 'subprocess' is not
+  defined`. Fixed, and covered by two adapter tests that use the real thing:
+  `test_clean_reaches_the_real_runner_by_default` clones and dirties a git repository, and
+  `test_the_real_fetch_reports_an_unreachable_index_instead_of_raising` calls `_fetch`
+  against a closed port. The lesson is in the tests now: a fake seam proves the rules, and
+  something has to exercise the adapter under it.
+- 2026-11-01: the CI failure also improved one message. A transport failure now reports the
+  error text rather than `HTTP 0`, and `release report` says `unreadable` for a crate whose
+  index entry it could not read — the old `curl -sf | grep` reported that case as "absent",
+  which is the one word it must not be.
 - BDD: narrowed and stated. This change adds no user-visible workflow — it moves maintenance
   logic — so an `rstest-bdd` scenario would describe a repository check rather than a promise
   to a user. The promise is expressed as executable examples over the two seams.

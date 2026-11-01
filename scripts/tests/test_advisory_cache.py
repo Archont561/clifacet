@@ -14,6 +14,10 @@ week-year, and the week-year is not the calendar year at the turn of a year.
 from __future__ import annotations
 
 import datetime
+import shutil
+import subprocess
+
+import pytest
 
 from scripts.advisory_cache import cache_key, clean, default_paths, main
 
@@ -88,6 +92,35 @@ def test_the_default_paths_fall_back_to_the_home_directory(tmp_path):
     paths = default_paths(cargo_home=None, home=tmp_path)
 
     assert tmp_path / ".cargo" / "advisory-db" in paths
+
+
+def test_clean_reaches_the_real_runner_by_default(tmp_path):
+    """The injected runner never touches `_run`, which is what the workflow calls.
+
+    A missing import there is invisible to every other test here and fails on a runner
+    that has a restored clone — exactly how `import subprocess` was lost once.
+    """
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+
+    clone = tmp_path / "advisory-db"
+    clone.mkdir()
+    _git(clone, "init", "--quiet")
+    (clone / "entry.txt").write_text("clean\n", encoding="utf-8")
+    _git(clone, "add", "entry.txt")
+    _git(clone, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "seed")
+    (clone / "entry.txt").write_text("dirty\n", encoding="utf-8")
+    (clone / "untracked.txt").write_text("junk\n", encoding="utf-8")
+
+    cleaned = clean([clone])
+
+    assert cleaned == [clone]
+    assert (clone / "entry.txt").read_text(encoding="utf-8") == "clean\n"
+    assert not (clone / "untracked.txt").exists(), "`clean -ffdx` removes untracked files"
+
+
+def _git(directory, *arguments):
+    subprocess.run(["git", "-C", str(directory), *arguments], check=True, capture_output=True)
 
 
 def test_main_writes_the_week_key_as_a_step_output(tmp_path, capsys):

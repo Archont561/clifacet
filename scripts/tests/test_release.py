@@ -16,6 +16,7 @@ import pytest
 
 from scripts.release import (
     MAIN,
+    _fetch,
     MACROS,
     ORDER,
     Poll,
@@ -103,6 +104,21 @@ def test_a_failing_index_read_is_unreadable_not_absent():
 
     assert result.state == "unreadable"
     assert "503" in result.detail
+
+
+def test_a_transport_failure_says_why_rather_than_reporting_http_0():
+    result = probe(fetch_returning({MAIN: (0, "connection refused")}), MAIN, VERSION)
+
+    assert result.state == "unreadable"
+    assert "connection refused" in result.detail
+
+
+def test_the_real_fetch_reports_an_unreachable_index_instead_of_raising():
+    """`_fetch` is the adapter the workflow uses; the tests above never reach it."""
+    status, body = _fetch("http://127.0.0.1:1/index", timeout=2)
+
+    assert status == 0
+    assert body
 
 
 # --- publishing --------------------------------------------------------------

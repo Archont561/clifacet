@@ -119,7 +119,8 @@ def probe(fetch: Fetch, crate: str, version: str) -> Probe:
         return Probe(crate, version, state)
     if status == 404:
         return Probe(crate, version, "absent", "not on the index at all")
-    return Probe(crate, version, "unreadable", f"HTTP {status}")
+    detail = f"HTTP {status}" if status else body.strip() or "the index could not be reached"
+    return Probe(crate, version, "unreadable", detail)
 
 
 def publish(
