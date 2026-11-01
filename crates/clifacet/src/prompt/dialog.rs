@@ -15,6 +15,8 @@
 //!
 //! [`Terminal`]: crate::prompt::Terminal
 
+use std::io::IsTerminal;
+
 use inquire::{Confirm, InquireError, Text};
 
 use crate::failure::Failure;
@@ -51,10 +53,16 @@ impl Dialog {
 
 impl Prompter for Dialog {
     fn ask(&mut self, question: &str) -> Result<String, Failure> {
+        if !can_ask() {
+            return Err(no_terminal());
+        }
         Text::new(question).prompt().map_err(failure)
     }
 
     fn confirm(&mut self, question: &str) -> Result<bool, Failure> {
+        if !can_ask() {
+            return Err(no_terminal());
+        }
         // No is the default: a confirmation that nobody answered must not be read as
         // consent, which is also what `Session::confirm` does when nothing may ask.
         Confirm::new(question)
@@ -62,6 +70,24 @@ impl Prompter for Dialog {
             .prompt()
             .map_err(failure)
     }
+}
+
+/// Whether this process has an input device a dialog can read keys from.
+///
+/// Checked before `inquire` is called, rather than only trusting the error it
+/// reports. `inquire` turns a failed raw-mode switch into [`InquireError::NotTTY`],
+/// but *how* raw mode fails is the platform's business: on Windows a redirected
+/// stdin does not always produce the error code that mapping looks for, and the
+/// prompt can then wait for a key that will never arrive. One `isatty` on stdin is
+/// the cheap, portable answer, and it makes "no terminal" a reported failure on
+/// every platform instead of a hang on some.
+fn can_ask() -> bool {
+    std::io::stdin().is_terminal()
+}
+
+/// The failure a dialog reports when there is nothing to read keys from.
+fn no_terminal() -> Failure {
+    Failure::execution("the dialog needs a terminal, and this run has none")
 }
 
 /// Turns a dialog error into the failure category it means.
@@ -74,9 +100,7 @@ fn failure(error: InquireError) -> Failure {
     match error {
         InquireError::OperationCanceled => Failure::cancelled("the dialog was dismissed"),
         InquireError::OperationInterrupted => Failure::cancelled("the dialog was interrupted"),
-        InquireError::NotTTY => {
-            Failure::execution("the dialog needs a terminal, and this run has none")
-        }
+        InquireError::NotTTY => no_terminal(),
         other => Failure::execution(format!("the dialog could not run: {other}")),
     }
 }

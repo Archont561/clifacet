@@ -165,7 +165,10 @@ Three adapters ship, all of them implementations of the same two-method
 session still decides whether a question may be asked, a supplied value is still
 never re-asked, and `--yes` still answers confirmations without a dialog appearing.
 Escape or Ctrl-C is a `FailureKind::Cancelled`; a dialog that cannot reach a terminal
-is an *execution* failure that says so, rather than a question nobody can answer.
+is an *execution* failure that says so, rather than a question nobody can answer. That
+is checked on stdin before `inquire` is entered, because how a raw-mode switch fails is
+the platform's business — one `isatty` makes "no terminal" a reported failure
+everywhere instead of a wait on some platforms.
 
 Because presentation is a seam and not a setting, an application can ship its own.
 Implement `Prompter` — two methods, `ask` and `confirm` — and hand it to

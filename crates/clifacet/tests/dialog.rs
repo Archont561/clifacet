@@ -15,9 +15,13 @@ use clifacet::prompt::{Dialog, Prompter, Session};
 /// Whether this process can be asked anything at all.
 ///
 /// A dialog that *can* reach a terminal would wait for a person, so the tests that
-/// expect a failure skip themselves instead of hanging the suite.
+/// expect a failure skip themselves instead of hanging the suite. All three streams
+/// are checked, not just the one the adapter reads: a runner that has any of them
+/// attached to a console is a runner where a stray dialog could still block.
 fn headless() -> bool {
     !std::io::stdin().is_terminal()
+        && !std::io::stdout().is_terminal()
+        && !std::io::stderr().is_terminal()
 }
 
 /// The failure a dialog on a terminal-less process reports.
