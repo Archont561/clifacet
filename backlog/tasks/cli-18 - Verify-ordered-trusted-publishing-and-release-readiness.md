@@ -1,9 +1,10 @@
 ---
 id: CLI-18
 title: Verify ordered trusted publishing and release readiness
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-29 15:28'
+updated_date: '2026-11-01 20:03'
 labels: []
 milestone: m-5
 dependencies:
@@ -22,10 +23,20 @@ Rehearse the authored two-crate publication contract end to end.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `release.yml` publishes macro-first using environment `crates`, job-scoped OIDC and pinned official actions.
-- [ ] #2 Macro-first publication, registry availability, partial-failure recovery and package contents are verified without an unauthorized live release.
-- [ ] #3 Release is performed only after explicit maintainer authorization and recorded successful gates.
+- [x] #1 `release.yml` publishes macro-first using environment `crates`, job-scoped OIDC and pinned official actions.
+- [x] #2 Macro-first publication, registry availability, partial-failure recovery and package contents are verified without an unauthorized live release.
+- [x] #3 Release is performed only after explicit maintainer authorization and recorded successful gates.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+- 2026-11-01: **reconciled against a live release.** The maintainer dispatched `release.yml` with `dry_run` unchecked; run [41344566334](https://github.com/Archont561/clifacet/actions/runs/41344566334) (36s) ran exactly the three steps every rehearsal lists as skipped — `Exchange the OIDC token for a short-lived crates.io token`, `Publish both crates in dependency order`, `Tag the release and attach the changelog notes` — while `Report the dry run` was the step that skipped. The repository agrees: tag `v0.1.0` points at `f11daf63`, and GitHub Release `v0.1.0` was created 2026-11-01T19:17:59Z with 13,710 characters of changelog notes attached.
+- Bookkeeping, now fixed: AC#1 was proven statically on 2026-10-31 (ten tests in `scripts/tests/test_release_workflow.py`) but its box had never been checked, and the task still read "To Do" while most of its work was done. Both are reconciled here; nothing in the release path changed.
+- AC#2, clause by clause: **macro-first publication** — the publish loop ran and the main crate was packaged only after the macro crate appeared on the index; **registry availability** — confirmed by that loop succeeding, which is what the five-minute poll exists to prove; **package contents** — `check-packages` offline plus the real `cargo package` step; **partial-failure recovery** — proven by rule only (`scripts/tests/test_release.py` covers 404-means-publish, 500-means-stop and already-indexed-is-skipped), because the first release had no partial failure to recover from. Checked on that basis, with the gap named rather than hidden.
+- AC#3 is satisfied: the release happened only after a maintainer-authorized dispatch and green gates on `main`.
+- Residual risk, recorded rather than closed: the `crates` environment still has **no required reviewers**, so authorization rests on the manual dispatch and the maintainer who made it. That stays in the changelog's known limitations.
+<!-- SECTION:NOTES:END -->
 
 ## Notes
 
