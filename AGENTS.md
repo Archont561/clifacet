@@ -108,6 +108,10 @@ rather than silently broadening scope.
 | --- | --- | --- |
 | `gh pr edit` | 403 from the app token | amend the commit message with `git commit --amend`, or describe the change in a PR comment |
 | `gh run cancel` | 403 from the app token | push a fix on the same branch: the `ci` concurrency group cancels the superseded run |
+| `gh workflow run` | 403 from the app token (`Resource not accessible by integration`) | a maintainer dispatches from the Actions tab, or from their own authenticated `gh`; record the run URL in the task afterwards |
+
+Reading is unrestricted: `gh run list`, `gh run view`, `gh run watch` and `gh pr checks`
+all work, so a run can be watched to completion even when it had to be started by hand.
 
 `gh run watch`, `gh pr checks --watch`, `gh pr merge` and `gh api` all work, including
 reading an environment's protection rules:

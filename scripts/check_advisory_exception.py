@@ -37,6 +37,7 @@ AUDIT = ROOT / ".cargo" / "audit.toml"
 DOCS = ROOT / "docs" / "development.md"
 
 ADVISORY = "RUSTSEC-2026-0374"
+SECTION = "## Dependency advisory exception"
 # The top of the path: the crate that pulls the unmaintained one in, transitively.
 CRATE = "rstest-bdd"
 TARGET = "basic-toml"
@@ -46,6 +47,10 @@ PACKAGE = re.compile(r"^\[\[package\]\]$")
 NAME = re.compile(r'^name = "(.*)"$')
 VERSION = re.compile(r'^version = "(.*)"$')
 DEPENDENCY = re.compile(r'^"(.*)",$')
+# The guide quotes the chain as `name version` pairs joined by the separator. Requiring a
+# version on every hop is what separates a dependency path from prose: the release
+# section contains lines like "Actions → release → Run workflow", and those are not paths.
+PATH_LINE = re.compile(rf"^[a-z0-9_.-]+ \d[^\s]*(?:{SEPARATOR}[a-z0-9_.-]+ \d[^\s]*)+$")
 
 
 @dataclass(frozen=True)
@@ -131,10 +136,32 @@ def render_path(path: list[tuple[str, str]] | None) -> str:
 
 
 def documented_path(text: str) -> str:
-    """The path the guide currently quotes, or an empty string when it quotes none."""
-    for line in text.splitlines():
-        if SEPARATOR in line:
-            return line.strip()
+    """The path the guide quotes in its advisory section, or an empty string.
+
+    Scoped to the section and matched on shape, not on the presence of the separator:
+    the same file describes release steps with arrows, and picking the first line that
+    contains one made the check report its own documentation.
+    """
+    for line in _section(text, SECTION).splitlines():
+        stripped = line.strip()
+        if PATH_LINE.match(stripped):
+            return stripped
+    return ""
+
+
+def _section(text: str, heading: str) -> str:
+    """The body of `heading`, up to the next heading of the same or higher level."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() == heading:
+            level = len(heading) - len(heading.lstrip("#"))
+            body = []
+            for candidate in lines[index + 1:]:
+                stripped = candidate.strip()
+                if stripped.startswith("#") and len(stripped) - len(stripped.lstrip("#")) <= level:
+                    break
+                body.append(candidate)
+            return "\n".join(body)
     return ""
 
 
