@@ -4,9 +4,9 @@ title: Automate the version bump and release runbook
 status: In Progress
 assignee: []
 created_date: '2026-10-30 16:30'
-updated_date: '2026-11-01 20:42'
+updated_date: '2026-11-01 22:46'
 labels: []
-milestone: m-5
+milestone: m-10
 dependencies:
   - CLI-4
 type: task

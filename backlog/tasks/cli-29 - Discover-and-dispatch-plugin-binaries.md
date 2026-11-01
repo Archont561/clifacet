@@ -4,8 +4,9 @@ title: Discover and dispatch plugin binaries
 status: To Do
 assignee: []
 created_date: '2026-11-01 22:22'
+updated_date: '2026-11-01 22:46'
 labels: []
-milestone: m-5
+milestone: m-8
 dependencies: []
 type: task
 ordinal: 29000
