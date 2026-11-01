@@ -9,6 +9,17 @@ prepared, so the headings below are managed by that script.
 
 ## [Unreleased]
 
+### Changed
+
+- The release and CI workflows are plumbing now. Every decision they used to make in shell
+  lives in a script with tests that need neither a registry nor a runner: `scripts/release.py`
+  (`preflight`, `package`, `report`, `publish`, `tag`), `scripts/commit_range.py`,
+  `scripts/advisory_cache.py`, and `scripts/github_actions.py` for the two Actions file
+  protocols. `release.yml` shrank from 216 lines to 90 and no longer names a crate, an index
+  URL or `cargo publish`; a test fails when a `run:` block grows a shell condition, a loop or
+  a command substitution. A crate whose index entry cannot be read is reported as
+  unreadable rather than as absent, which is the one thing it must not be mistaken for.
+
 ## [0.1.0] - 2026-11-01
 
 ### Added

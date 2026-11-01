@@ -11,6 +11,7 @@ That is a claim about a dependency graph, so it is checked rather than remembere
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -69,6 +70,27 @@ def test_quality_keeps_the_fetching_checks(tasks):
 
     assert "deny" in depends
     assert "audit" in depends
+
+
+def test_every_task_a_workflow_calls_exists(tasks):
+    """A renamed task breaks a workflow at push time, which is the worst time to learn."""
+    workflows = ROOT / ".github" / "workflows"
+    called = set()
+    for path in workflows.glob("*.yml"):
+        called.update(re.findall(r"pixi run (?:--frozen|-x) ([-\w]+)", path.read_text(encoding="utf-8")))
+
+    assert called, "the workflows should call Pixi tasks"
+    assert sorted(called - set(tasks)) == []
+
+
+def test_the_workflow_facing_scripts_have_a_task_each(tasks):
+    """The release and CI logic is run from workflows, so each entry point is a task."""
+    for name, script in (
+        ("release", "scripts/release.py"),
+        ("commit-range", "scripts/commit_range.py"),
+        ("advisory-cache", "scripts/advisory_cache.py"),
+    ):
+        assert tasks.get(name) == f"python {script}"
 
 
 def test_every_offline_wrapper_exists_for_its_fetching_counterpart(tasks):

@@ -94,6 +94,15 @@ docs-snippets = "python scripts/check_docs.py --write"
 # or `--toolchain ""` to reuse the pinned compiler as a plumbing check.
 prove-msrv = "python scripts/prove_msrv.py"
 bump-version = "python scripts/bump_version.py"
+# The release workflow's decisions, not its plumbing: `preflight` proves the version, the
+# inherited manifests and the notes before anything is packaged; `package`, `report`,
+# `publish` and `tag` are the four steps that used to be shell inside `release.yml`.
+release = "python scripts/release.py"
+# The `commit-messages` job: which commits this run introduced, and the convco call for
+# them. Two branches that used to be a step output and a second shell step.
+commit-range = "python scripts/commit_range.py"
+# The RustSec database cache: its ISO week key, and resetting whatever the cache restored.
+advisory-cache = "python scripts/advisory_cache.py"
 # The offline, no-install subset worth running before every commit; `quality`
 # also fetches Bun packages and the RustSec database, so it stays a CI command.
 # One command from any checkout: reach the remote head, restore the environment, install

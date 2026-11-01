@@ -158,6 +158,13 @@ so `convco changelog` and `scripts/bump_version.py` agree on headings. CI enforc
 `commit-messages` job runs `convco check` over the pull request's commits, so a contributor
 without hooks cannot merge a message the changelog cannot read.
 
+The CI job's own decisions are scripts too — `scripts/commit_range.py` resolves which
+commits a run introduced, and `scripts/advisory_cache.py` computes the advisory-cache week
+key and resets whatever the cache restored. A workflow step is expected to be one
+`pixi run` call; `scripts/tests/test_release_workflow.py` fails when a `run:` block grows
+a shell condition, a loop or a command substitution, because none of those can be tested
+without a runner.
+
 `actionlint` only runs its embedded shell checks when a `shellcheck` binary is on `PATH`, and
 it used to find one on the CI runner but not in the Pixi environment — so a `run:` block could
 pass locally and fail CI. `shellcheck` is now a pinned Pixi dependency, which removes that gap
@@ -265,6 +272,26 @@ section for the version being released, the run stops with nothing published, an
 dry run reports it too. The tag step reuses that verified file rather than reading the
 changelog a second time, so a release that has already shipped cannot fail on notes.
 
+`release.yml` is plumbing — the `crates` environment, the OIDC token, five steps and the
+pinned actions. Every decision is in `scripts/release.py`, which is why it can be tested
+rather than only observed: the dry run below is the first time most of it was ever
+exercised, and a publish is the second.
+
+| Task | What it decides |
+| --- | --- |
+| `pixi run release preflight` | the ref is `main`, the three version sites agree, both crates inherit that version, and the changelog section for it is readable — then writes `version` and `notes_path` as step outputs |
+| `pixi run release package` | packages the macro crate with `--locked` |
+| `pixi run release report` | the dry run's summary: for each crate, whether this version is on the index, and what a publish run would do |
+| `pixi run release publish` | macro first, then main, skipping any version already indexed |
+| `pixi run release tag` | the GitHub Release from the notes file preflight verified, left alone if it already exists |
+
+`release preflight` runs offline against this checkout, so the failure that used to need
+a dispatch is now one local command:
+
+```sh
+pixi run --frozen --no-install release preflight
+```
+
 A dry run packages and verifies the macro crate only. The main crate cannot be
 packaged before its macro version is published, so it is packaged inside the
 publish loop. That loop publishes the macro crate first, waits
@@ -347,13 +374,17 @@ they cannot drift; edit the root files and copy them across.
 A rehearsal proves the ordering, the version sites, the notes, the metadata and the
 contents. Two things it cannot prove, because they need a registry to answer:
 
-- **registry availability** — that `clifacet-macros <version>` is visible on the
-  index by the time the main crate is packaged. The workflow polls for up to five
-  minutes and fails rather than publishing blind.
+- **registry availability** — that the macro crate is visible on the index by the
+  time the main crate is packaged. `release publish` polls for up to five minutes and
+  fails rather than publishing blind.
 - **partial-failure recovery** — that a run which published one crate and then
-  failed can be finished. The design is that the loop skips any version already
-  indexed, so the answer is "re-run the same dispatch"; the first real release is
-  what confirms it.
+  failed can be finished. `scripts/tests/test_release.py` proves the rule locally (an
+  already-indexed crate is skipped, so a re-run publishes only what is missing), but
+  the registry behaviour it relies on is only confirmed by a real release.
+
+Both of those are decisions now, not shell: `release publish` is exercised in the suite
+against a fake index and a fake runner, including the 404-means-publish,
+500-means-stop and never-indexed-means-fail paths.
 
 The rehearsal has been run once, successfully, on the `0.1.0` promotion (2026-11-01).
 It confirmed that the version sites agree, that the notes resolve before anything is

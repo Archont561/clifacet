@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,6 +202,32 @@ def _update_links(text: str, version: str) -> str:
             lines.insert(index + 1, tag_line)
             break
     return "\n".join(lines) + "\n"
+
+
+def crate_pins(root: Path, crates: Sequence[str]) -> list[str]:
+    """Crates that declare their own `version` instead of inheriting the workspace one.
+
+    Both published crates use `version.workspace = true`, so the workspace table is the
+    only place a release has to read. A crate that pins a version is not a syntax error —
+    it is a silently different release, which is why the release job refuses it.
+    """
+    problems = []
+    for crate in crates:
+        manifest = root / "crates" / crate / "Cargo.toml"
+        try:
+            package = tomllib.loads(manifest.read_text(encoding="utf-8")).get("package", {})
+        except (OSError, tomllib.TOMLDecodeError) as error:
+            problems.append(f"{manifest} cannot be read: {error}")
+            continue
+        declared = package.get("version")
+        if declared is None:
+            continue
+        if isinstance(declared, dict) and declared.get("workspace") is True:
+            continue
+        problems.append(
+            f"{manifest} pins version {declared} instead of inheriting the workspace version"
+        )
+    return problems
 
 
 def relock() -> int:

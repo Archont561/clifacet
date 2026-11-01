@@ -6,6 +6,7 @@ import pytest
 
 from scripts.bump_version import (
     bump,
+    crate_pins,
     changelog_notes,
     inconsistencies,
     main,
@@ -127,6 +128,34 @@ def test_a_manifest_without_a_version_section_is_an_error():
 def test_a_manifest_without_a_macro_requirement_is_an_error():
     with pytest.raises(ValueError, match="clifacet-macros"):
         bump(CARGO.replace('clifacet-macros = { version = "0.1.0", path = "crates/clifacet-macros" }\n', ""), PIXI, "0.2.0")
+
+
+def test_a_crate_that_inherits_the_workspace_version_is_not_a_pin(tmp_path):
+    crate = tmp_path / "crates" / "clifacet-macros"
+    crate.mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        '[package]\nname = "clifacet-macros"\nversion.workspace = true\n', encoding="utf-8"
+    )
+
+    assert crate_pins(tmp_path, ["clifacet-macros"]) == []
+
+
+def test_a_crate_that_declares_its_own_version_is_reported(tmp_path):
+    """The workspace version is the one place a release reads; a pin overrides it silently."""
+    crate = tmp_path / "crates" / "clifacet-macros"
+    crate.mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        '[package]\nname = "clifacet-macros"\nversion = "0.0.9"\n', encoding="utf-8"
+    )
+
+    problems = crate_pins(tmp_path, ["clifacet-macros"])
+
+    assert len(problems) == 1
+    assert "clifacet-macros" in problems[0] and "0.0.9" in problems[0]
+
+
+def test_a_missing_crate_manifest_is_reported_not_ignored(tmp_path):
+    assert crate_pins(tmp_path, ["clifacet-macros"]), "an unreadable manifest cannot be assumed consistent"
 
 
 def test_promote_turns_unreleased_into_the_release_and_reopens_it():
