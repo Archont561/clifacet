@@ -61,6 +61,29 @@ fn derive_snippet_1() {
     assert_eq!(count.0, 3);
 }
 
+/// `derive.md`, line 41.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::clap::Parser;
+    use clifacet::Facet;
+    #[clifacet::command(input = Greeting)]
+    #[command(name = "greet", about = "Say hello")]
+    struct Cli {
+        /// Who to greet.
+        #[arg(long, alias = "nickname")]
+        name: Option<String>,
+    }
+    /// The typed input, built field by field.
+    #[derive(Debug, PartialEq)]
+    struct Greeting {
+        name: Option<String>,
+    }
+    let cli = Cli::try_parse_from(["greet", "--nickname", "ada"]).expect("clap parses it");
+    assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
+}
+
 /// `getting-started.md`, line 26.
 #[rustfmt::skip]
 #[test]

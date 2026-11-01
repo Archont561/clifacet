@@ -8,6 +8,7 @@
 
 use syn::DeriveInput;
 
+use crate::command::expand as expand_command;
 use crate::facet::expand;
 
 /// Expands a derive on the given source, as the macro would.
@@ -239,4 +240,168 @@ fn a_unit_struct_is_rejected_as_a_command() {
     );
 
     assert!(message.contains("tuple and unit structs"), "{message}");
+}
+
+// --- `#[clifacet::command(...)]`: clap and the derive, in one attribute -------
+
+/// Expands the attribute on the given source, as the macro would.
+fn command(attribute: &str, source: &str) -> syn::Result<String> {
+    expand_command(
+        &attribute.parse().expect("the attribute parses"),
+        source.parse().expect("the item parses"),
+    )
+    .map(|tokens| tokens.to_string())
+}
+
+/// Expands an attribute that must be rejected, returning the reported message.
+fn rejected_command(attribute: &str, source: &str) -> String {
+    command(attribute, source)
+        .err()
+        .map(|error| error.to_string())
+        .expect("this attribute must be rejected")
+}
+
+#[test]
+fn the_command_attribute_wraps_clap_and_the_derive_together() {
+    let tokens = command(
+        "input = Greeting",
+        r"
+        struct Cli {
+            name: Option<String>,
+        }
+        ",
+    )
+    .expect("a named struct with an input type is supported");
+
+    assert!(
+        tokens.contains(" [derive (:: clap :: Parser , :: clifacet :: Facet)]"),
+        "{tokens}"
+    );
+    assert!(tokens.contains(" [facet (input = Greeting)]"), "{tokens}");
+    assert!(
+        tokens.contains("struct Cli"),
+        "the item is re-emitted: {tokens}"
+    );
+}
+
+#[test]
+fn the_command_attribute_keeps_the_item_untouched() {
+    let source = r#"
+        #[derive(Debug)]
+        #[command(name = "example", about = "A command")]
+        struct Cli {
+            /// The name to greet.
+            #[arg(long, alias = "nickname")]
+            name: Option<String>,
+        }
+        "#;
+
+    let tokens = command("input = Greeting", source).expect("a full command struct is supported");
+
+    for kept in [
+        "# [derive (Debug)]",
+        "# [command (name = \"example\" , about = \"A command\")]",
+        "# [doc = \" The name to greet.\"]",
+        "# [arg (long , alias = \"nickname\")]",
+    ] {
+        assert!(tokens.contains(kept), "`{kept}` was dropped: {tokens}");
+    }
+}
+
+#[test]
+fn the_command_attribute_passes_a_bridge_through() {
+    let tokens = command(
+        "input = Greeting, bridge = example::build",
+        "struct Cli { name: Option<String> }",
+    )
+    .expect("a bridge is supported");
+
+    assert!(
+        tokens.contains(" [facet (input = Greeting , bridge = example :: build)]"),
+        "{tokens}"
+    );
+}
+
+#[test]
+fn the_command_attribute_requires_an_input_type_and_says_so_in_its_own_name() {
+    let message = rejected_command("", "struct Cli { name: Option<String> }");
+
+    assert!(
+        message.contains("[clifacet::command(input = YourInputType)]"),
+        "the message must name the attribute the caller wrote: {message}"
+    );
+}
+
+#[test]
+fn the_command_attribute_rejects_an_enum_because_the_bridge_needs_a_struct() {
+    let message = rejected_command("input = Greeting", "enum Cli { A, B }");
+
+    assert!(message.contains("struct"), "{message}");
+}
+
+#[test]
+fn the_command_attribute_refuses_to_derive_claps_parser_twice() {
+    let message = rejected_command(
+        "input = Greeting",
+        r"
+        #[derive(clap::Parser)]
+        struct Cli { name: Option<String> }
+        ",
+    );
+
+    assert!(message.contains("Parser"), "{message}");
+    assert!(
+        message.contains("[clifacet::command"),
+        "the message should point at the attribute that already does it: {message}"
+    );
+}
+
+#[test]
+fn the_command_attribute_refuses_to_derive_facet_twice() {
+    let message = rejected_command(
+        "input = Greeting",
+        r"
+        #[derive(clifacet::Facet)]
+        struct Cli { name: Option<String> }
+        ",
+    );
+
+    assert!(message.contains("Facet"), "{message}");
+}
+
+#[test]
+fn the_command_attribute_refuses_a_second_facet_attribute() {
+    let message = rejected_command(
+        "input = Greeting",
+        r"
+        #[facet(input = Greeting)]
+        struct Cli { name: Option<String> }
+        ",
+    );
+
+    assert!(
+        message.contains("facet"),
+        "two `#[facet(...)]` attributes would declare the input twice: {message}"
+    );
+}
+
+#[test]
+fn the_command_attribute_leaves_the_derive_available_on_its_own() {
+    // The wrapper is sugar, not a replacement: `#[derive(Facet)]` still works, and the
+    // wrapper emits exactly that derive rather than a second implementation of it.
+    let wrapped = command("input = Greeting", "struct Cli { name: Option<String> }")
+        .expect("the wrapper expands");
+    let derived = expanded(
+        r"
+        #[facet(input = Greeting)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("the derive expands");
+
+    assert!(wrapped.contains("Facet"), "{wrapped}");
+    assert!(
+        derived.contains("impl :: clifacet :: Facet for Cli"),
+        "{derived}"
+    );
 }

@@ -9,6 +9,16 @@ prepared, so the headings below are managed by that script.
 
 ## [Unreleased]
 
+### Added
+
+- `#[clifacet::command(input = …)]`, which wraps `clap`'s parser and the input bridge in
+  one attribute instead of two that have to agree. It expands to the item exactly as
+  written, preceded by `#[derive(::clap::Parser, ::clifacet::Facet)]` and `#[facet(…)]`,
+  so the wrapper emits the derive rather than a second implementation and the two cannot
+  drift. `clap` still has to be a direct dependency, because `clap`'s own derive expands
+  to code naming `clap::…`. `#[derive(clap::Parser, clifacet::Facet)]` is unchanged and
+  still works.
+
 ### Changed
 
 - The release and CI workflows are plumbing now. Every decision they used to make in shell
