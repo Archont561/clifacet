@@ -143,6 +143,12 @@ rules:
     level: error
     message: "The advisory-exception check is missing; the RustSec exception would never expire."
 
+  - id: require-check-packages
+    kind: file_exists
+    paths: "scripts/check_packages.py"
+    level: error
+    message: "The package-contents check is missing; a release could ship an incomplete tarball."
+
   - id: require-check-docs
     kind: file_exists
     paths: "scripts/check_docs.py"
