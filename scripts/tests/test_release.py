@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 
+from scripts.changelog import UnreleasedError
 from scripts.release import (
     MAIN,
     _fetch,
@@ -341,11 +342,7 @@ name = "clifacet"
 version = "0.1.0"
 """
 
-CHANGELOG = """# Changelog
-
-## [Unreleased]
-
-## [0.1.0] - 2026-11-01
+NOTES = """## [0.1.0] - 2026-11-01
 
 ### Added
 
@@ -353,11 +350,15 @@ CHANGELOG = """# Changelog
 """
 
 
-def release_tree(tmp_path, changelog=CHANGELOG, macro_version_inherits=True):
+def _notes(version):
+    """Stand-in for `scripts.changelog`, which needs a git history to render."""
+    return NOTES
+
+
+def release_tree(tmp_path, macro_version_inherits=True):
     """A tree shaped like the repository as far as the release job cares."""
     (tmp_path / "Cargo.toml").write_text(CARGO, encoding="utf-8")
     (tmp_path / "pixi.toml").write_text(PIXI, encoding="utf-8")
-    (tmp_path / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
     for crate in (MACROS, MAIN):
         directory = tmp_path / "crates" / crate
         directory.mkdir(parents=True)
@@ -369,7 +370,7 @@ def release_tree(tmp_path, changelog=CHANGELOG, macro_version_inherits=True):
 
 
 def test_preflight_reads_the_version_the_manifests_record(tmp_path):
-    result = preflight(root=release_tree(tmp_path), ref="refs/heads/main")
+    result = preflight(root=release_tree(tmp_path), ref="refs/heads/main", notes_from=_notes)
 
     assert result.version == VERSION
     assert "The first release." in result.notes
@@ -378,7 +379,7 @@ def test_preflight_reads_the_version_the_manifests_record(tmp_path):
 def test_preflight_writes_the_outputs_the_later_steps_need(tmp_path):
     output = tmp_path / "output"
 
-    preflight(root=release_tree(tmp_path), ref="refs/heads/main", output=output)
+    preflight(root=release_tree(tmp_path), ref="refs/heads/main", output=output, notes_from=_notes)
 
     text = output.read_text(encoding="utf-8")
     assert "version=0.1.0" in text
@@ -390,14 +391,27 @@ def test_preflight_refuses_a_ref_that_is_not_main(tmp_path):
         preflight(root=release_tree(tmp_path), ref="refs/heads/some-branch")
 
 
-def test_preflight_explains_how_to_make_the_notes_readable(tmp_path):
-    """The failure the first rehearsal actually produced."""
-    tree = release_tree(tmp_path, changelog="# Changelog\n\n## [Unreleased]\n\n### Added\n\n- x\n")
+def test_preflight_refuses_a_release_with_nothing_to_describe_it(tmp_path):
+    """The failure a real dispatch produced: no section, and nothing published."""
+    def empty(version):
+        raise UnreleasedError("nothing to release: no conventional commit follows the last tag")
 
     with pytest.raises(ReleaseError) as failure:
-        preflight(root=tree, ref="refs/heads/main")
+        preflight(root=release_tree(tmp_path), ref="refs/heads/main", notes_from=empty)
 
-    assert "--promote-current" in str(failure.value)
+    assert "no notes to attach" in str(failure.value)
+    assert "nothing to release" in str(failure.value)
+
+
+def test_preflight_ignores_a_committed_changelog(tmp_path):
+    """The file is an artifact of the commits; a stale copy cannot supply the notes."""
+    tree = release_tree(tmp_path)
+    (tree / "CHANGELOG.md").write_text("## [0.1.0] - 2026-11-01\n\n- stale prose\n", encoding="utf-8")
+
+    result = preflight(root=tree, ref="refs/heads/main", notes_from=_notes)
+
+    assert "stale prose" not in result.notes
+    assert "The first release." in result.notes
 
 
 def test_preflight_refuses_a_crate_that_pins_its_own_version(tmp_path):
@@ -418,7 +432,7 @@ def test_preflight_refuses_version_sites_that_disagree(tmp_path):
 
 def test_preflight_without_a_ref_runs_locally(tmp_path):
     """No GITHUB_REF means a developer running it by hand, not a dispatch."""
-    assert preflight(root=release_tree(tmp_path), ref="").version == VERSION
+    assert preflight(root=release_tree(tmp_path), ref="", notes_from=_notes).version == VERSION
 
 
 # --- the command the workflow calls -----------------------------------------
@@ -435,5 +449,11 @@ def test_main_reports_a_preflight_failure_without_a_traceback(tmp_path, capsys):
 def test_main_preflight_prints_the_version_it_resolved(tmp_path, capsys):
     tree = release_tree(tmp_path)
 
-    assert main(["preflight", "--root", str(tree)], ref="refs/heads/main", output=tmp_path / "out") == 0
+    code = main(
+        ["preflight", "--root", str(tree)],
+        ref="refs/heads/main",
+        output=tmp_path / "out",
+        notes_from=_notes,
+    )
+    assert code == 0
     assert "release version: 0.1.0" in capsys.readouterr().out

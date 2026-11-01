@@ -4,7 +4,7 @@ title: Automate the version bump and release runbook
 status: In Progress
 assignee: []
 created_date: '2026-10-30 16:30'
-updated_date: '2026-11-01 20:17'
+updated_date: '2026-11-01 20:42'
 labels: []
 milestone: m-5
 dependencies:
@@ -22,8 +22,8 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 `scripts/bump_version.py` rewrites every recorded version site, with pytest coverage and no network.
-- [x] #2 The changelog is promoted by the same command, and an empty `Unreleased` section blocks the bump.
-- [x] #3 `release.yml` tags the release and attaches the changelog notes only after both crates publish.
+- [x] #2 The bump leaves `CHANGELOG.md` alone: it is rendered from the commits, and a release whose commits say nothing is refused before anything is packaged.
+- [x] #3 `release.yml` tags the release and attaches the rendered notes only after both crates publish.
 - [ ] #4 A full release is rehearsed end to end on a real version bump.
 <!-- AC:END -->
 
@@ -36,6 +36,9 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 - Also reconciled: the `v0.1.0` release notes on GitHub were generated from the promotion, so they do not list the entries that were moved afterwards. Refreshing them is `gh release edit v0.1.0 --notes-file <file>`, a one-line maintainer action; it was not done here because the notes are a published artifact.
 
 - 2026-11-01: `v0.1.0`'s published notes were refreshed to the corrected changelog section (`gh release edit v0.1.0 --notes-file …`). The gap was real and structural, not a slip: `release.py tag` deliberately leaves an existing release alone, so the manual step is the only way to rewrite notes after the fact. `docs/development.md` §Release now says so, and says why re-dispatching cannot do it.
+
+- 2026-11-01: AC#2 rewritten, with the ACs re-set rather than silently re-worded: it used to require that "the changelog is promoted by the same command, and an empty `Unreleased` section blocks the bump". Both halves are gone because the changelog is no longer written by hand or promoted by the bump — `convco` renders it from the commits and the release refuses a tree whose commits since the last tag say nothing, which is the same protection sourced from the commits instead of the file. The evidence for the new wording is the test pair that now guards the absence: `test_main_does_not_touch_the_changelog` in `scripts/tests/test_bump_version.py`, and `test_preflight_ignores_a_committed_changelog` in `scripts/tests/test_release.py`. `--promote-current` and `--skip-changelog` are deleted, not deprecated, so a stale runbook step fails loudly.
+- AC#4 is untouched and still open for the same reason: the next release has to be cut on a real `bump-version 0.1.1 --relock`, and now also has to prove the post-tag changelog commit lands.
 <!-- SECTION:NOTES:END -->
 
 ## Notes

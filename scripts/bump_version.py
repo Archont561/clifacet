@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bump the release version across every manifest that records it, and read notes.
+"""Record a release version in every manifest that carries it.
 
 The version lives in three places, and `release.yml` fails if they disagree:
 
@@ -7,20 +7,18 @@ The version lives in three places, and `release.yml` fails if they disagree:
 - `Cargo.toml` `[workspace.dependencies] clifacet-macros`, the pinned requirement
 - `pixi.toml` `[workspace] version`, the environment version
 
-Bumping them by hand is how a release drifts, so one command rewrites all three,
-promotes the changelog's `Unreleased` section to the new version, and leaves the
-relock to `cargo`. `--check` verifies the three agree without writing anything,
-which is what CI and `release.yml` use.
+Bumping them by hand is how a release drifts, so one command rewrites all three, and
+`--check` verifies they agree without writing anything — which is what CI and
+`release.yml` use.
 
-An application starting at its first version has nothing to bump to: the version
-sites already record it, so `--promote-current` dates the `Unreleased` section
-without touching them.
+The changelog is deliberately *not* here. It is rendered from the conventional commits by
+`scripts/changelog.py`, so a bump cannot disagree with the history it claims to describe:
+the version sites say which version is next, and the commits say what it contains.
 """
 
 from __future__ import annotations
 
 import argparse
-import datetime
 import re
 import shutil
 import subprocess
@@ -33,16 +31,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CARGO_MANIFEST = ROOT / "Cargo.toml"
 PIXI_MANIFEST = ROOT / "pixi.toml"
-CHANGELOG = ROOT / "CHANGELOG.md"
-REPOSITORY = "https://github.com/Archont561/clifacet"
 
 # Semver as Cargo accepts it: three numeric parts, optional pre-release and build.
 SEMVER = re.compile(
     r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
     r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
 )
-
-RELEASE_HEADING = "## [Unreleased]"
 
 
 @dataclass(frozen=True)
@@ -134,76 +128,6 @@ def bump(cargo: str, pixi: str, version: str) -> tuple[str, str]:
     return cargo, pixi
 
 
-LINK_DEFINITION = re.compile(r"^\[[^\]]+\]:\s")
-
-
-def _sections(text: str) -> list[tuple[str, list[str]]]:
-    """Split a changelog into `##` sections, ignoring trailing link definitions.
-
-    Keep a Changelog puts `[version]: url` references after the last section, so
-    they must not leak into that section's notes.
-    """
-    sections: list[tuple[str, list[str]]] = []
-    for line in text.splitlines():
-        if line.startswith("## "):
-            sections.append((line, []))
-        elif sections and not LINK_DEFINITION.match(line):
-            sections[-1][1].append(line)
-    return sections
-
-
-def changelog_notes(text: str, version: str) -> str:
-    """Return the body of the changelog section for `version`."""
-    for heading, body in _sections(text):
-        if heading == f"## [{version}]" or heading.startswith(f"## [{version}] "):
-            notes = "\n".join(body).strip()
-            if not notes:
-                raise ValueError(f"the changelog section for {version} is empty")
-            return notes + "\n"
-    known = ", ".join(heading.split()[1].strip("[]") for heading, _ in _sections(text)) or "none"
-    raise ValueError(f"CHANGELOG.md has no '## [{version}]' section (found: {known})")
-
-
-def promote_changelog(text: str, version: str, date: str) -> str:
-    """Turn the `Unreleased` section into the released version and reopen it.
-
-    Entries are required, so a bump cannot quietly ship an empty changelog.
-    """
-    if f"## [{version}]" in text:
-        raise ValueError(f"CHANGELOG.md already has a '## [{version}]' section")
-    headings = [heading for heading, _ in _sections(text)]
-    if RELEASE_HEADING not in headings:
-        raise ValueError(f"CHANGELOG.md has no '{RELEASE_HEADING}' section")
-    for heading, body in _sections(text):
-        if heading != RELEASE_HEADING:
-            continue
-        if not "\n".join(body).strip():
-            raise ValueError(f"'{RELEASE_HEADING}' is empty; describe the change before releasing")
-        break
-    text = text.replace(RELEASE_HEADING, f"## [{version}] - {date}", 1)
-    # Reopen an empty Unreleased section directly above the released one.
-    released = f"## [{version}] - {date}"
-    text = text.replace(released, f"{RELEASE_HEADING}\n\n{released}", 1)
-    return _update_links(text, version)
-
-
-def _update_links(text: str, version: str) -> str:
-    """Point the changelog's link references at the version that just shipped."""
-    current = "[Unreleased]: "
-    if current not in text:
-        return text
-    tag_line = f"[{version}]: {REPOSITORY}/releases/tag/v{version}"
-    if tag_line in text:
-        return text
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        if line.startswith(current):
-            lines[index] = f"[Unreleased]: {REPOSITORY}/compare/v{version}...HEAD"
-            lines.insert(index + 1, tag_line)
-            break
-    return "\n".join(lines) + "\n"
-
-
 def crate_pins(root: Path, crates: Sequence[str]) -> list[str]:
     """Crates that declare their own `version` instead of inheriting the workspace one.
 
@@ -262,14 +186,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("version", nargs="?", help="new version to record, for example 0.2.0")
     parser.add_argument("--print-version", action="store_true", help="print the current version and exit")
     parser.add_argument("--check", action="store_true", help="fail if the recorded versions disagree")
-    parser.add_argument("--notes", metavar="VERSION", help="print the changelog section for VERSION")
-    parser.add_argument(
-        "--promote-current",
-        action="store_true",
-        help="date the Unreleased section as the recorded version, without bumping",
-    )
     parser.add_argument("--dry-run", action="store_true", help="show the change without writing it")
-    parser.add_argument("--skip-changelog", action="store_true", help="do not promote the changelog")
     parser.add_argument("--relock", action="store_true", help="refresh Cargo.lock after writing")
     arguments = parser.parse_args(argv)
 
@@ -289,43 +206,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 1
             print(f"bump-version: all three version sites record {current}")
             return 0
-        if arguments.notes is not None:
-            if not CHANGELOG.is_file():
-                raise ValueError("CHANGELOG.md is missing")
-            sys.stdout.write(changelog_notes(CHANGELOG.read_text(encoding="utf-8"), arguments.notes))
-            return 0
-        if arguments.promote_current:
-            # The first release of an application: the version is already recorded, so
-            # the only thing missing is the dated section that `--notes` reads. The
-            # manifests are left alone on purpose — this is not a bump.
-            if not CHANGELOG.is_file():
-                raise ValueError("CHANGELOG.md is missing")
-            today = datetime.datetime.now(datetime.UTC).date().isoformat()
-            promoted = promote_changelog(CHANGELOG.read_text(encoding="utf-8"), current, today)
-            if arguments.dry_run:
-                print(f"bump-version: would promote {RELEASE_HEADING} to '## [{current}] - {today}'")
-                return 0
-            CHANGELOG.write_text(promoted, encoding="utf-8")
-            print(f"bump-version: promoted {RELEASE_HEADING} to '## [{current}] - {today}'")
-            return 0
         if arguments.version is None:
-            parser.error(
-                "a version is required unless --check, --print-version, --notes or --promote-current is used"
-            )
+            parser.error("a version is required unless --check or --print-version is used")
 
         version = parse_version(arguments.version)
         if version == current:
             raise ValueError(f"{version} is already the recorded version")
         new_cargo, new_pixi = bump(cargo, pixi, version)
-        new_changelog = None
-        if not arguments.skip_changelog:
-            if not CHANGELOG.is_file():
-                raise ValueError("CHANGELOG.md is missing; pass --skip-changelog to release without notes")
-            new_changelog = promote_changelog(
-                CHANGELOG.read_text(encoding="utf-8"),
-                version,
-                datetime.datetime.now(datetime.UTC).date().isoformat(),
-            )
     except ValueError as error:
         print(f"bump-version: {error}", file=sys.stderr)
         return 1
@@ -334,13 +221,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"bump-version: would record {version} (was {current}) in:")
         for site in versions(new_cargo, new_pixi):
             print(f"  {site.label} = {site.value}")
-        print("bump-version: would promote the changelog" if new_changelog else "bump-version: changelog untouched")
         return 0
 
     CARGO_MANIFEST.write_text(new_cargo, encoding="utf-8")
     PIXI_MANIFEST.write_text(new_pixi, encoding="utf-8")
-    if new_changelog is not None:
-        CHANGELOG.write_text(new_changelog, encoding="utf-8")
     print(f"bump-version: recorded {version} (was {current})")
     if arguments.relock:
         if relock() != 0:

@@ -7,9 +7,12 @@ sometimes only by a real publish. So the job keeps the plumbing (`environment`,
 `id-token`, the action pins) and every decision moves here:
 
 - **preflight** — the version the manifests record, the crates inherit it, and the
-  changelog has a dated section whose body is the release notes. All three are proved
-  before anything is packaged, because a publish cannot be undone and the notes step
-  used to run last.
+  commits since the last tag say something a release can be described by. All three are
+  proved before anything is packaged, because a publish cannot be undone and the notes
+  step used to run last.
+- **changelog** — after the tag exists, the committed `CHANGELOG.md` is regenerated from
+  the commits and pushed. It cannot be part of the release commit: a version section
+  names a tag, and the tag is created by the publish that precedes it.
 - **package** — one crate, `--locked`, so the tarball matches the committed lockfile.
 - **report** — the dry run's summary: for each crate, whether this version is already on
   the index and what a publish run would therefore do.
@@ -46,7 +49,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.bump_version import crate_pins, changelog_notes, inconsistencies, versions
+from scripts.bump_version import crate_pins, inconsistencies, versions
+from scripts.changelog import ChangelogError, commit as commit_changelog, convco, notes_for
 from scripts.github_actions import append_summary, set_error, set_output
 
 INDEX = "https://index.crates.io"
@@ -222,6 +226,7 @@ def preflight(
     ref: str = "",
     output: Path | str | None = None,
     notes_path: Path | str | None = None,
+    notes_from: Callable[[str], str] | None = None,
 ) -> Preflight:
     """Prove everything that must be true before the first irreversible step."""
     if ref and ref != MAIN_REF:
@@ -235,14 +240,13 @@ def preflight(
     if problems:
         raise ReleaseError("; ".join(problems))
 
-    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    provider = notes_from or (lambda candidate: notes_for(convco(root), candidate, root=root))
     try:
-        notes = changelog_notes(changelog, version)
-    except ValueError as error:
+        notes = provider(version)
+    except ChangelogError as error:
         raise ReleaseError(
-            f"this release has no readable changelog section ({error}). Promote it with "
-            "`pixi run --frozen --no-install bump-version --promote-current` for a first "
-            "release, or with a version bump for a later one, and merge that before releasing."
+            f"this release has no notes to attach ({error}). The notes are rendered from the "
+            "commits since the last tag, so a release needs commits that describe it."
         ) from error
 
     path = Path(notes_path) if notes_path else _default_notes_path()
@@ -263,13 +267,17 @@ def main(
     run: Runner | None = None,
     record: Record | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    notes_from: Callable[[str], str] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("action", choices=["preflight", "package", "report", "publish", "tag"])
+    parser.add_argument(
+        "action", choices=["preflight", "package", "report", "publish", "tag", "changelog"]
+    )
     parser.add_argument("crate", nargs="?", default=MACROS, help="the crate to package")
     parser.add_argument("--root", type=Path, default=root, help="the workspace to act on")
     parser.add_argument("--version", help="the version to act on; defaults to the recorded one")
     parser.add_argument("--notes", type=Path, help="the verified notes file, for `tag`")
+    parser.add_argument("--branch", default="main", help="the branch `changelog` pushes to")
     arguments = parser.parse_args(argv)
 
     execute = run or _run
@@ -278,7 +286,9 @@ def main(
 
     try:
         if arguments.action == "preflight":
-            result = preflight(root=arguments.root, ref=environment_ref, output=output)
+            result = preflight(
+                root=arguments.root, ref=environment_ref, output=output, notes_from=notes_from
+            )
             print(f"release version: {result.version}")
             print(f"release notes: {result.notes_path}")
             return 0
@@ -300,6 +310,16 @@ def main(
                 sleep=sleep,
                 head=os.environ.get("GITHUB_SHA", ""),
             )
+            return 0
+        if arguments.action == "changelog":
+            # The tag was created by the step above, on the remote; convco reads tags, so
+            # the one this run just made has to be here before anything is rendered.
+            _check(
+                execute,
+                ["git", "fetch", "--tags", "--force", "origin"],
+                "fetch the tag that was just created",
+            )
+            _summary(commit_changelog(arguments.root, arguments.branch))
             return 0
         version = arguments.version or _recorded_version(arguments.root)
         notes = arguments.notes or Path(os.environ.get("NOTES_PATH", ""))

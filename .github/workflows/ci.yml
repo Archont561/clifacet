@@ -18,8 +18,12 @@ jobs:
     name: Repository and Rust quality
     runs-on: ubuntu-latest
     steps:
+      # Full history: the changelog is rendered from the commits and tags, so a shallow
+      # clone cannot answer whether the committed copy is current.
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - name: Set up Pixi
         uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:
@@ -65,6 +69,8 @@ jobs:
         run: pixi run --frozen check-packages
       - name: Check the documentation guides
         run: pixi run --frozen check-docs
+      - name: Check the changelog matches the commits
+        run: pixi run --frozen changelog-check
       - name: Check generated sandbox files
         run: pixi run --frozen sandbox-check
       - name: Lint GitHub Actions

@@ -14,6 +14,7 @@ pixi run test-integration # external tests/ targets, including compile-fail case
 pixi run test           # both nextest groups
 pixi run test-doc       # doctests (not run by nextest)
 pixi run test-scripts   # repository script tests (pytest over scripts/tests)
+pixi run changelog      # regenerate CHANGELOG.md from the conventional commits
 pixi run coverage       # LCOV report plus a 90% source-line gate
 ```
 
@@ -154,8 +155,9 @@ Run `pixi install --locked` once after cloning, and the hooks work from then on.
 to land; CI remains the authoritative verdict.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), configured
-in `.versionrc` for convco. That file also maps each commit type to a Keep a Changelog section,
-so `convco changelog` and `scripts/bump_version.py` agree on headings. CI enforces it too: the
+in `.versionrc` for convco. That file also maps each commit type to a Keep a Changelog section
+and decides which of them are hidden, which is what `scripts/changelog.py` renders through. CI
+enforces it too: the
 `commit-messages` job runs `convco check` over the pull request's commits, so a contributor
 without hooks cannot merge a message the changelog cannot read.
 
@@ -268,17 +270,16 @@ required reviewers to `crates` to make the environment enforce it. Verified with
 gh api repos/Archont561/clifacet/environments/crates --jq '.protection_rules, .deployment_branch_policy'
 ```
 
-The notes are resolved before anything is packaged: if `CHANGELOG.md` has no dated
-section for the version being released, the run stops with nothing published, and a
-dry run reports it too. The tag step reuses that verified file rather than reading the
-changelog a second time, so a release that has already shipped cannot fail on notes.
+The notes are rendered before anything is packaged: they are the section `convco` builds
+from the commits since the last tag, so a release whose commits say nothing stops there,
+with nothing published and nothing to revert, and a dry run reports it too. The tag step
+reuses that verified file rather than rendering again, so a release that has already
+shipped cannot fail on notes.
 
 The same asymmetry means a tag step never *updates* notes: it leaves an existing release
-alone. When `0.1.0`'s notes were found to be missing entries that had been merged before
-the release commit, they were refreshed with `gh release edit v0.1.0 --notes-file <file>`
-— re-running the workflow would have reported the release as already present and changed
-nothing. Treat the published notes as an artifact to edit deliberately, and prefer fixing
-the changelog before dispatching.
+alone. Notes edited after the fact are edited deliberately, with
+`gh release edit v0.1.0 --notes-file <file>`; re-running the workflow would report the
+release as already present and change nothing.
 
 `release.yml` is plumbing — the `crates` environment, the OIDC token, five steps and the
 pinned actions. Every decision is in `scripts/release.py`, which is why it can be tested
@@ -287,11 +288,12 @@ release exercised the publish half.
 
 | Task | What it decides |
 | --- | --- |
-| `pixi run release preflight` | the ref is `main`, the three version sites agree, both crates inherit that version, and the changelog section for it is readable — then writes `version` and `notes_path` as step outputs |
+| `pixi run release preflight` | the ref is `main`, the three version sites agree, both crates inherit that version, and the commits since the last tag render notes — then writes `version` and `notes_path` as step outputs |
 | `pixi run release package` | packages the macro crate with `--locked` |
 | `pixi run release report` | the dry run's summary: for each crate, whether this version is on the index, and what a publish run would do |
 | `pixi run release publish` | macro first, then main, skipping any version already indexed |
 | `pixi run release tag` | the GitHub Release from the notes file preflight verified, left alone if it already exists |
+| `pixi run release changelog` | fetches the tag the step above created, regenerates `CHANGELOG.md`, and commits and pushes it — the one piece of a release that cannot precede its own tag |
 
 `release preflight` runs offline against this checkout, so the failure that used to need
 a dispatch is now one local command:
@@ -310,20 +312,22 @@ reverting anything.
 
 ### Cut a release
 
-1. Describe the change in `CHANGELOG.md` under `## [Unreleased]`. The bump step
-   refuses to promote an empty section, so notes cannot be skipped by accident.
-2. Date that section. From the second release on, the bump in step 3 does it: it
-   renames `Unreleased` to `## [<version>] - <date>` and reopens an empty one. The
-   first release had nothing to bump to — the manifests already recorded `0.1.0` — so
-   it promoted in place and left the version sites alone, which is why `0.1.0` shipped
-   from a commit whose changelog section predated several of its contents:
+Nothing here writes the changelog: it is rendered from the commits, so the only thing
+to get right before a release is that the commits describe it.
+
+1. Write the commits you want to read in the release notes. `feat`, `fix`, `perf`,
+   `refactor` and `revert` become sections; `docs`, `build`, `ci`, `test`, `chore` and
+   `style` are hidden in `.versionrc`, because a reader upgrading does not care which
+   workflow changed. A commit body that says `closes #12` links the issue.
+2. Regenerate the file, and commit it if anything changed:
 
    ```sh
-   pixi run --frozen --no-install bump-version --promote-current
+   pixi run --frozen --no-install changelog
    ```
 
-   `--dry-run` previews it. Without a dated section `release.yml` refuses to start,
-   because the tag step would have nothing to attach.
+   `changelog-check` is the same command in CI, so a stale copy fails the `quality` job
+   rather than reaching a reader. A shallow clone cannot render: the script says so
+   instead of writing a file with no history in it.
 3. Bump every recorded version and relock in one command:
 
    ```sh
@@ -332,9 +336,11 @@ reverting anything.
 
    That rewrites `Cargo.toml` `[workspace.package] version`, the
    `clifacet-macros` requirement in `[workspace.dependencies]`, and
-   `pixi.toml` `[workspace] version`; it promotes `Unreleased` to a dated
-   section; and it refreshes `Cargo.lock` offline. `--dry-run` previews the
-   change and `--check` verifies the three sites agree without writing.
+   `pixi.toml` `[workspace] version`, then refreshes `Cargo.lock` offline. It does not
+   touch `CHANGELOG.md`: a section for a version cannot exist before the tag that names
+   it, and a hand-edited one could disagree with the commits it claims to describe.
+   `--dry-run` previews the change and `--check` verifies the three sites agree without
+   writing.
 4. Open a PR with the bump; CI's `lock guard` proves the relock and the `msrv`
    job proves the floor.
 5. Merge, then dispatch the release. The tag `v<version>` and its GitHub Release
@@ -369,11 +375,10 @@ starts it (Actions → release → Run workflow, or `gh workflow run release.yml
 their own authentication) and the run can then be watched from anywhere with
 `gh run watch <id>`.
 
-A rehearsal is only meaningful once `CHANGELOG.md` has a dated section for the
-recorded version. Without one the notes step stops the run before anything is
-packaged — the run fails in under a minute with nothing to revert, which is how the
-first rehearsal on 2026-11-01 behaved, and it is the correct outcome rather than a
-fault to work around.
+A rehearsal is only meaningful once the commits since the last tag say something: the
+notes are rendered from them, so a tree whose history since the previous release is empty
+stops the run before anything is packaged. It fails in under a minute with nothing to
+revert, which is the correct outcome rather than a fault to work around.
 
 Both licence texts live at the repository root and inside each published crate,
 because a tarball that omits them is a distribution without the Apache text it
@@ -407,7 +412,7 @@ committed lockfile — with the OIDC exchange, the publish loop and the tag list
 `dry_run` unchecked, 36s. The same job ran the three steps a rehearsal skips: it exchanged
 the OIDC token, published `clifacet-macros` and then `clifacet`, and tagged the commit. The
 repository agrees: tag `v0.1.0` points at the merge of the release commit and the GitHub
-Release carries the changelog notes. That run is also the evidence for the two facts a
+Release carries the rendered notes. That run is also the evidence for the two facts a
 rehearsal cannot reach — registry availability (the publish loop polled the index and the
 main crate was packaged only after the macro crate appeared) and the OIDC exchange itself.
 Partial-failure recovery is still only proven by rule, in `scripts/tests/test_release.py`:
