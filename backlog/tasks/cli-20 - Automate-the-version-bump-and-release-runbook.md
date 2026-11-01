@@ -4,6 +4,7 @@ title: Automate the version bump and release runbook
 status: In Progress
 assignee: []
 created_date: '2026-10-30 16:30'
+updated_date: '2026-11-01 20:03'
 labels: []
 milestone: m-5
 dependencies:
@@ -25,6 +26,15 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 - [x] #3 `release.yml` tags the release and attaches the changelog notes only after both crates publish.
 - [ ] #4 A full release is rehearsed end to end on a real version bump.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+- 2026-11-01: the full release happened end to end (run [41344566334](https://github.com/Archont561/clifacet/actions/runs/41344566334), tag `v0.1.0`, GitHub Release `v0.1.0`). That proves everything AC#4 was written for — the bump sites agreeing, the notes resolving before anything was packaged, both publishes in order, and the tag and release created after them — except one clause: it was **not on a real version bump**. `0.1.0` was dated with `--promote-current`, which deliberately leaves the version sites alone.
+- AC#4 therefore stays open, narrowed to what it now means: the next release must exercise `bump-version 0.1.1 --relock` — manifest sites, changelog promotion, lock refresh — and a dispatch from the resulting `main`. That is one release away and needs no new tooling.
+- Consequence to know before that release: `CHANGELOG.md`'s `## [Unreleased]` section is now **empty**, because the entries merged between the promotion and the release shipped inside `0.1.0` and were moved into its section rather than left describing a version they were already part of. The bump refuses an empty section, which is the intended guard: the next release has to describe itself.
+- Also reconciled: the `v0.1.0` release notes on GitHub were generated from the promotion, so they do not list the entries that were moved afterwards. Refreshing them is `gh release edit v0.1.0 --notes-file <file>`, a one-line maintainer action; it was not done here because the notes are a published artifact.
+<!-- SECTION:NOTES:END -->
 
 ## Notes
 

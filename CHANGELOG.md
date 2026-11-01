@@ -9,53 +9,6 @@ prepared, so the headings below are managed by that script.
 
 ## [Unreleased]
 
-### Added
-
-- `#[clifacet::command(input = …)]`, which wraps `clap`'s parser and the input bridge in
-  one attribute instead of two that have to agree. It expands to the item exactly as
-  written, preceded by `#[derive(::clap::Parser, ::clifacet::Facet)]` and `#[facet(…)]`,
-  so the wrapper emits the derive rather than a second implementation and the two cannot
-  drift. `clap` still has to be a direct dependency, because `clap`'s own derive expands
-  to code naming `clap::…`. `#[derive(clap::Parser, clifacet::Facet)]` is unchanged and
-  still works.
-- `clifacet::prompt::Dialog`, the `interactive` feature's dialog frontend, built on
-  `inquire`. It implements the same two-method `Prompter` seam as the plain `Terminal`
-  and the test `Scripted`, so it draws on `stderr` and decides nothing: a plan that may
-  ask nothing never constructs it, a supplied value is never re-asked, and `--yes`
-  still answers confirmations without a dialog appearing. Escape and Ctrl-C become
-  `FailureKind::Cancelled`, and a dialog that cannot reach a terminal is an execution
-  failure that says so instead of waiting for an answer that cannot come. The example
-  asks through it (`dialog_frontend`) and keeps `terminal_frontend` beside it to show
-  the frontend is the application's choice.
-- `Policy::prefer(Mode)`, which separates what an application *permits* from what it
-  *wants*: the ceiling still bounds everything, and the preference decides the mode used
-  when the user asked for nothing, without ever falling back to the ceiling when one is
-  stated. `Policy::preference()` reports it and `Policy::default_mode()` resolves it, so
-  a run that asks nothing is explainable in one call. A preference above the ceiling
-  cannot be written: `prefer` checks it in a `const fn`, so a `const` policy asks for
-  too much at compile time instead of being silently clamped. Without a preference, a
-  policy behaves exactly as before — the ceiling is the default.
-
-### Changed
-
-- The reference application moved from `crates/clifacet-example` to
-  [`examples/simple`](examples/simple/README.md) and gained the README it was missing:
-  what to run, the flags, the four modes, the streams, the exit codes and which test
-  proves each promise. The package name is unchanged, so `cargo run -p clifacet-example`
-  and every documented path still work; the workspace member, the Alint rules, the
-  hook globs, the `check-docs` paths and the guides follow the new location.
-- The example's policy is now `Policy::up_to(Mode::Tui).prefer(Mode::Interactive)`: a
-  run with no flags asks for what the flags left out, and `--tui` is what opens the
-  form. Permissions are unchanged — every mode is still available to it.
-- The release and CI workflows are plumbing now. Every decision they used to make in shell
-  lives in a script with tests that need neither a registry nor a runner: `scripts/release.py`
-  (`preflight`, `package`, `report`, `publish`, `tag`), `scripts/commit_range.py`,
-  `scripts/advisory_cache.py`, and `scripts/github_actions.py` for the two Actions file
-  protocols. `release.yml` shrank from 216 lines to 90 and no longer names a crate, an index
-  URL or `cargo publish`; a test fails when a `run:` block grows a shell condition, a loop or
-  a command substitution. A crate whose index entry cannot be read is reported as
-  unreadable rather than as absent, which is the one thing it must not be mistaken for.
-
 ## [0.1.0] - 2026-11-01
 
 ### Added
@@ -104,6 +57,30 @@ prepared, so the headings below are managed by that script.
   application now names it `clifacet_example::EXIT`, so the constants and the policy cannot
   drift. The four outcomes a caller distinguishes are pairwise distinct; a usage error
   shares validation's code, which is asserted so the overlap is a decision.
+- `#[clifacet::command(input = …)]`, which wraps `clap`'s parser and the input bridge in
+  one attribute instead of two that have to agree. It expands to the item exactly as
+  written, preceded by `#[derive(::clap::Parser, ::clifacet::Facet)]` and `#[facet(…)]`,
+  so the wrapper emits the derive rather than a second implementation and the two cannot
+  drift. `clap` still has to be a direct dependency, because `clap`'s own derive expands
+  to code naming `clap::…`. `#[derive(clap::Parser, clifacet::Facet)]` is unchanged and
+  still works.
+- `clifacet::prompt::Dialog`, the `interactive` feature's dialog frontend, built on
+  `inquire`. It implements the same two-method `Prompter` seam as the plain `Terminal`
+  and the test `Scripted`, so it draws on `stderr` and decides nothing: a plan that may
+  ask nothing never constructs it, a supplied value is never re-asked, and `--yes`
+  still answers confirmations without a dialog appearing. Escape and Ctrl-C become
+  `FailureKind::Cancelled`, and a dialog that cannot reach a terminal is an execution
+  failure that says so instead of waiting for an answer that cannot come. The example
+  asks through it (`dialog_frontend`) and keeps `terminal_frontend` beside it to show
+  the frontend is the application's choice.
+- `Policy::prefer(Mode)`, which separates what an application *permits* from what it
+  *wants*: the ceiling still bounds everything, and the preference decides the mode used
+  when the user asked for nothing, without ever falling back to the ceiling when one is
+  stated. `Policy::preference()` reports it and `Policy::default_mode()` resolves it, so
+  a run that asks nothing is explainable in one call. A preference above the ceiling
+  cannot be written: `prefer` checks it in a `const fn`, so a `const` policy asks for
+  too much at compile time instead of being silently clamped. Without a preference, a
+  policy behaves exactly as before — the ceiling is the default.
 
 ### Removed
 
@@ -118,6 +95,23 @@ prepared, so the headings below are managed by that script.
 - `clifacet_example::POLICY` is `Policy::up_to(Mode::Tui)`. The example crate enables
   the `tui` frontend unconditionally, so a mode it documents is always a mode it can
   host; an application that enables fewer frontends still sets a lower ceiling.
+- The reference application moved from `crates/clifacet-example` to
+  [`examples/simple`](examples/simple/README.md) and gained the README it was missing:
+  what to run, the flags, the four modes, the streams, the exit codes and which test
+  proves each promise. The package name is unchanged, so `cargo run -p clifacet-example`
+  and every documented path still work; the workspace member, the Alint rules, the
+  hook globs, the `check-docs` paths and the guides follow the new location.
+- The example's policy is now `Policy::up_to(Mode::Tui).prefer(Mode::Interactive)`: a
+  run with no flags asks for what the flags left out, and `--tui` is what opens the
+  form. Permissions are unchanged — every mode is still available to it.
+- The release and CI workflows are plumbing now. Every decision they used to make in shell
+  lives in a script with tests that need neither a registry nor a runner: `scripts/release.py`
+  (`preflight`, `package`, `report`, `publish`, `tag`), `scripts/commit_range.py`,
+  `scripts/advisory_cache.py`, and `scripts/github_actions.py` for the two Actions file
+  protocols. `release.yml` shrank from 216 lines to 90 and no longer names a crate, an index
+  URL or `cargo publish`; a test fails when a `run:` block grows a shell condition, a loop or
+  a command substitution. A crate whose index entry cannot be read is reported as
+  unreadable rather than as absent, which is the one thing it must not be mistaken for.
 
 ### Fixed
 

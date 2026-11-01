@@ -1,7 +1,8 @@
 # Development
 
-The workspace is an early scaffold, not the released `0.1.0` library. The
-checked-in Pixi environment currently targets Linux x86-64.
+The workspace is the `0.1.0` library — published to crates.io on 2026-11-01 — plus the
+work merged since, which accumulates for the next version. The checked-in Pixi
+environment currently targets Linux x86-64.
 
 ```sh
 bash scripts/bootstrap.sh  # checkout at the remote head, environment, hooks, smoke check
@@ -274,8 +275,8 @@ changelog a second time, so a release that has already shipped cannot fail on no
 
 `release.yml` is plumbing — the `crates` environment, the OIDC token, five steps and the
 pinned actions. Every decision is in `scripts/release.py`, which is why it can be tested
-rather than only observed: the dry run below is the first time most of it was ever
-exercised, and a publish is the second.
+rather than only observed: the dry runs exercised the packaging half, and the `0.1.0`
+release exercised the publish half.
 
 | Task | What it decides |
 | --- | --- |
@@ -306,8 +307,9 @@ reverting anything.
    refuses to promote an empty section, so notes cannot be skipped by accident.
 2. Date that section. From the second release on, the bump in step 3 does it: it
    renames `Unreleased` to `## [<version>] - <date>` and reopens an empty one. The
-   first release has nothing to bump to — the manifests already record `0.1.0` — so
-   it promotes in place and leaves the version sites alone:
+   first release had nothing to bump to — the manifests already recorded `0.1.0` — so
+   it promoted in place and left the version sites alone, which is why `0.1.0` shipped
+   from a commit whose changelog section predated several of its contents:
 
    ```sh
    pixi run --frozen --no-install bump-version --promote-current
@@ -372,7 +374,8 @@ claims to be licensed under. `check-packages` compares the copies byte for byte,
 they cannot drift; edit the root files and copy them across.
 
 A rehearsal proves the ordering, the version sites, the notes, the metadata and the
-contents. Two things it cannot prove, because they need a registry to answer:
+contents. Two things it cannot prove, because they need a registry to answer — the
+first is now confirmed by the `0.1.0` release above, the second is not:
 
 - **registry availability** — that the macro crate is visible on the index by the
   time the main crate is packaged. `release publish` polls for up to five minutes and
@@ -386,11 +389,22 @@ Both of those are decisions now, not shell: `release publish` is exercised in th
 against a fake index and a fake runner, including the 404-means-publish,
 500-means-stop and never-indexed-means-fail paths.
 
-The rehearsal has been run once, successfully, on the `0.1.0` promotion (2026-11-01).
-It confirmed that the version sites agree, that the notes resolve before anything is
-packaged, and that the macro crate packages against the committed lockfile. Everything
-gated on a real release — the OIDC exchange, the publish loop, the tag — was skipped, so
-those remain unproven until a maintainer authorises one.
+The rehearsal has been run three times: on the `0.1.0` promotion and again after the
+workflow was split into scripts (runs 41317469386, 41322815442 and 41343654170, the last
+one on the released commit). Each confirmed that the version sites agree, that the notes
+resolve before anything is packaged, and that the macro crate packages against the
+committed lockfile — with the OIDC exchange, the publish loop and the tag listed as
+*skipped*, which is the evidence that nothing was published.
+
+**`0.1.0` was then released for real** — run 41344566334, dispatched by the maintainer with
+`dry_run` unchecked, 36s. The same job ran the three steps a rehearsal skips: it exchanged
+the OIDC token, published `clifacet-macros` and then `clifacet`, and tagged the commit. The
+repository agrees: tag `v0.1.0` points at the merge of the release commit and the GitHub
+Release carries the changelog notes. That run is also the evidence for the two facts a
+rehearsal cannot reach — registry availability (the publish loop polled the index and the
+main crate was packaged only after the macro crate appeared) and the OIDC exchange itself.
+Partial-failure recovery is still only proven by rule, in `scripts/tests/test_release.py`:
+the first release had no partial failure to recover from.
 
 When verifying a rehearsal, read the step list rather than trusting a summary: the
 irreversible steps are separate steps gated on `!inputs.dry_run`, so "skipped" there is
