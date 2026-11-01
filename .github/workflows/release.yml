@@ -4,6 +4,11 @@ name: release
 # this path, the `crates` environment and both crate names; the environment is
 # the authorization gate, so nothing here publishes on a push (decision-7).
 #
+# This file is plumbing: the environment gate, the OIDC token, the action pins and five
+# steps. Every decision it used to make inline — which version, whether the notes are
+# readable, whether a crate is already on the index, whether to tag — lives in
+# `scripts/release.py`, so it can be tested instead of only being observed on a dispatch.
+#
 # Resumability: each crate is published only when its version is absent from the
 # registry index, and the main crate is published only after the macro version
 # is visible there. A run that published the macro crate and then failed can be
@@ -26,12 +31,6 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-env:
-  MACROS: clifacet-macros
-  MAIN: clifacet
-  # Sparse-index path for both crate names: two characters, then two more.
-  INDEX_PREFIX: cl/if
-
 jobs:
   publish:
     name: Publish to crates.io
@@ -45,9 +44,6 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - name: Refuse a release from outside main
-        if: github.ref != 'refs/heads/main'
-        run: echo "::error::release runs from main only; this is ${{ github.ref }}" && exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -56,161 +52,40 @@ jobs:
           pixi-version: v0.83.0
           cache: true
           frozen: true
-      # Both manifests inherit `version.workspace = true`; this reads that value
-      # and fails the run if the three recorded sites disagree.
-      - name: Resolve the release version
-        id: version
-        shell: bash
-        run: |
-          set -euo pipefail
-          version=$(python3 scripts/bump_version.py --print-version)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "release version: $version"
-      # The crates inherit the workspace version, so the ways this release can be
-      # inconsistent are: a crate manifest overriding it, or the workspace
-      # dependency on the macro crate pinning a different version.
-      - name: Check the release version is used consistently
-        shell: bash
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          python3 scripts/bump_version.py --check
-          for crate in "$MACROS" "$MAIN"; do
-            declared=$(sed -n 's/^version = "\(.*\)"/\1/p' "crates/$crate/Cargo.toml" | head -1)
-            if [[ -n "$declared" ]]; then
-              echo "::error::$crate pins version $declared instead of inheriting the workspace version"
-              exit 1
-            fi
-          done
-          echo "both crates inherit $VERSION"
-      # The notes are resolved here, before anything is packaged or published. A
-      # missing changelog section used to surface only at the tag step — after both
-      # crates were on the registry, which cannot be undone. Resolving them up front
-      # makes that a failure with nothing to revert, and the dry run catches it too.
-      - name: Resolve the release notes
-        id: notes
-        shell: bash
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          notes="$RUNNER_TEMP/notes.md"
-          if ! python3 scripts/bump_version.py --notes "$VERSION" > "$notes"; then
-            echo "::error::this release has no readable changelog section. Promote it with" \
-                 "\`pixi run --frozen --no-install bump-version --promote-current\` for a first" \
-                 "release, or with a version bump for a later one, and merge that before releasing."
-            exit 1
-          fi
-          echo "notes_path=$notes" >> "$GITHUB_OUTPUT"
-          echo "release notes for \`$VERSION\` resolved ($(wc -l < "$notes") lines)" >> "$GITHUB_STEP_SUMMARY"
-      # Only the macro crate can be packaged before anything is published: the
-      # main crate's `clifacet-macros = "<version>"` requirement cannot resolve
-      # against the registry until that exact version exists there (cargo
-      # package fails with "no matching package named clifacet-macros"). The
-      # main crate is therefore packaged inside the publish loop, after the
-      # macro version is indexed.
+      # Everything this job decides lives in `scripts/release.py`, so it can be tested
+      # without a dispatch: the ref this run came from, the version the manifests record,
+      # the crates inheriting it, and the changelog section that becomes the notes. A
+      # missing section fails here, with nothing packaged and nothing to revert.
+      - name: Preflight
+        id: preflight
+        run: pixi run --frozen release preflight
+      # Only the macro crate can be packaged before anything is published: the main
+      # crate's registry requirement on the macro crate cannot resolve until that exact
+      # version exists there. The script knows which crate that is; naming it here would
+      # be a second source of truth.
       - name: Package the macro crate
-        shell: bash
-        run: |
-          set -euo pipefail
-          pixi run --frozen -x cargo package --locked -p "$MACROS"
+        run: pixi run --frozen release package
       - name: Report the dry run
         if: inputs.dry_run
-        shell: bash
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          {
-            echo "### Dry run: nothing was published"
-            echo ""
-            echo "Packaged and verified \`$MACROS\` at \`$VERSION\`."
-            echo ""
-            echo "\`$MAIN\` is not packaged here: it requires \`$MACROS\` \`$VERSION\` from the"
-            echo "registry, which cannot exist before the first publish. The publish run"
-            echo "packages it immediately after that version is indexed."
-            echo ""
-            echo "| crate | $VERSION on the index | next action in a publish run |"
-            echo "| --- | --- | --- |"
-            for crate in "$MACROS" "$MAIN"; do
-              if curl -sf "https://index.crates.io/$INDEX_PREFIX/$crate" | grep -q "\"vers\":\"$VERSION\""; then
-                echo "| \`$crate\` | already published | skipped |"
-              else
-                echo "| \`$crate\` | absent | packaged, then published |"
-              fi
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: pixi run --frozen release report
       - name: Exchange the OIDC token for a short-lived crates.io token
         if: ${{ !inputs.dry_run }}
         id: auth
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
-      # Both crates go out in one ordered loop: publish, then wait for the index
-      # before the next crate, skipping any version that is already indexed. A
-      # failed index lookup aborts instead of publishing blind.
+      # Both crates go out in dependency order: publish, wait for the index, skip any
+      # version already there. A failed index read aborts instead of publishing blind,
+      # and a run that died between the two publishes is finished by re-running it.
       - name: Publish both crates in dependency order
         if: ${{ !inputs.dry_run }}
-        shell: bash
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          body=$(mktemp)
-          for crate in "$MACROS" "$MAIN"; do
-            index="https://index.crates.io/$INDEX_PREFIX/$crate"
-            code=$(curl -s -o "$body" -w '%{http_code}' "$index")
-            case "$code" in
-              200)
-                if grep -q "\"vers\":\"$VERSION\"" "$body"; then
-                  echo "$crate $VERSION is already indexed; skipping it" >> "$GITHUB_STEP_SUMMARY"
-                  continue
-                fi
-                ;;
-              404) : ;;
-              *)
-                echo "::error::cannot read $index (HTTP $code); refusing to publish blind"
-                exit 1
-                ;;
-            esac
-            # Packaging is verified here rather than up front: this is the first
-            # moment the crate's registry dependencies are resolvable.
-            pixi run --frozen -x cargo package --locked -p "$crate"
-            cargo publish --locked -p "$crate"
-            indexed=false
-            for attempt in $(seq 1 30); do
-              if curl -sf "$index" | grep -q "\"vers\":\"$VERSION\""; then
-                echo "$crate $VERSION indexed after $attempt attempt(s)" >> "$GITHUB_STEP_SUMMARY"
-                indexed=true
-                break
-              fi
-              sleep 10
-            done
-            if [ "$indexed" != true ]; then
-              echo "::error::$crate $VERSION did not appear in the index within 5 minutes"
-              exit 1
-            fi
-          done
-          echo "published from $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
-      # The tag and the release notes land only after both crates are published,
-      # so a tag never claims a version that is not on the registry. An existing
-      # release is left alone, which keeps a re-run idempotent.
+        run: pixi run --frozen release publish
+      # The tag and the release notes land only after both crates are published, so a tag
+      # never claims a version that is not on the registry. The notes file is the one
+      # preflight verified, not a second reading of the changelog.
       - name: Tag the release and attach the changelog notes
         if: ${{ !inputs.dry_run }}
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          tag="v$VERSION"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "$tag already has a release; leaving it untouched" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          # The file resolved before the first publish, not a second reading of the
-          # changelog: a release that already shipped must not fail on its notes.
-          notes="${{ steps.notes.outputs.notes_path }}"
-          test -s "$notes"
-          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file "$notes"
-          echo "created $tag with the changelog notes" >> "$GITHUB_STEP_SUMMARY"
+          NOTES_PATH: ${{ steps.preflight.outputs.notes_path }}
+        run: pixi run --frozen release tag

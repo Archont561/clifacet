@@ -76,6 +76,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="print the declared toolchain and exit, so CI can install exactly that",
     )
     parser.add_argument(
+        "--github-output",
+        metavar="NAME",
+        help="also write the declared toolchain as a step output called NAME, then exit",
+    )
+    parser.add_argument(
         "--print-plan",
         action="store_true",
         help="print the planned commands and exit without running them",
@@ -86,8 +91,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         workspace = load_manifest(WORKSPACE_MANIFEST)
         crate = load_manifest(CRATE_MANIFEST)
         toolchain = declared_msrv(workspace) if arguments.toolchain is None else arguments.toolchain
-        if arguments.print_toolchain:
+        if arguments.print_toolchain or arguments.github_output:
             print(toolchain)
+            if arguments.github_output:
+                from scripts.github_actions import set_output
+
+                set_output(arguments.github_output, toolchain)
             return 0
         plan = build_plan(toolchain, package_name(crate), combinations(crate))
     except ValueError as error:

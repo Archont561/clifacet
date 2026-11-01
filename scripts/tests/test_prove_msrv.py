@@ -82,6 +82,17 @@ def test_main_prints_the_declared_toolchain_for_ci(capsys):
     assert capsys.readouterr().out.strip() == "1.88"
 
 
+def test_main_can_publish_the_toolchain_as_a_step_output(tmp_path, monkeypatch, capsys):
+    """The MSRV job hands the toolchain to `rustup toolchain install` as an output."""
+    output = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+
+    assert main(["--github-output", "version"]) == 0
+
+    assert output.read_text(encoding="utf-8") == "version=1.88\n"
+    assert capsys.readouterr().out.strip() == "1.88", "the step log should still show the value"
+
+
 def test_main_prints_the_plan_without_executing_it(capsys):
     assert main(["--print-plan"]) == 0
     out = capsys.readouterr().out.splitlines()

@@ -143,6 +143,32 @@ rules:
     level: error
     message: "The advisory-exception check is missing; the RustSec exception would never expire."
 
+  # The workflows call these by task name; a missing script would break a release run
+  # rather than a gate, which is the worst place to find out.
+  - id: require-release-script
+    kind: file_exists
+    paths: "scripts/release.py"
+    level: error
+    message: "The release script is missing; release.yml has nothing to call."
+
+  - id: require-commit-range-script
+    kind: file_exists
+    paths: "scripts/commit_range.py"
+    level: error
+    message: "The commit-range script is missing; the commit-messages job would not run."
+
+  - id: require-advisory-cache-script
+    kind: file_exists
+    paths: "scripts/advisory_cache.py"
+    level: error
+    message: "The advisory-cache script is missing; the audit job's cache would not be reset."
+
+  - id: require-github-actions-helper
+    kind: file_exists
+    paths: "scripts/github_actions.py"
+    level: error
+    message: "The GitHub Actions helper is missing; the scripts that report to a run would fail."
+
   - id: require-check-packages
     kind: file_exists
     paths: "scripts/check_packages.py"
