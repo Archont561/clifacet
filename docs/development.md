@@ -481,11 +481,39 @@ contain no Cargo credentials. Pixi caches the development environment separately
 
 ## Dependency advisory exception
 
-`rstest-bdd` 0.6.0 brings in `basic-toml` through test-only dependencies.
-RustSec flags that crate as unmaintained under
-[RUSTSEC-2026-0374](https://rustsec.org/advisories/RUSTSEC-2026-0374).
-The maintainer chose to keep rstest-bdd and allow this specific advisory in both
-`deny.toml` and `.cargo/audit.toml`; other warnings still fail the audit. This
-is an exception by advisory ID across the dependency graph, not a guarantee
-that future uses of the crate are test-only. Review and remove the exception
-when the dependency can be replaced or upgraded.
+`basic-toml` is unmaintained. RustSec flags it under
+[RUSTSEC-2026-0374](https://rustsec.org/advisories/RUSTSEC-2026-0374), and it reaches
+this workspace through `rstest-bdd`, a test dependency. The maintainer keeps
+`rstest-bdd` and allows that one advisory in both `deny.toml` and `.cargo/audit.toml`;
+other warnings still fail the audit.
+
+The path, rendered from `Cargo.lock` by `scripts/check_advisory_exception.py`:
+
+```
+rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config 0.4.8 → basic-toml 0.1.10
+```
+
+**Review outcome (2026-10-31): the exception stays, and its expiry is now a check.**
+
+- *Can it be avoided on `rstest-bdd` 0.6.0?* No. `i18n-embed` is a plain, non-optional
+  dependency in that crate's manifest — its features are `diagnostics`,
+  `mutable_world_macro` and `test-support`, and none of them gate the localisation
+  stack. `i18n-config` (which parses TOML with `basic-toml`) is reached through
+  `i18n-embed-impl`. There is no feature to switch off, and a `[patch.crates-io]` fork of
+  a test dependency would be a larger liability than the advisory it removes.
+- *What is actually exposed?* The crate is reachable only from `rstest-bdd`, which is a
+  dev-dependency, so nothing `basic-toml` parses ships in a published crate. The
+  exception is still recorded by advisory ID across the graph, because "test-only
+  today" is not a property the exception can enforce.
+- *When does it go?* `scripts/check_advisory_exception.py` fails the build with
+  `stale-exception` the moment `basic-toml` stops being reachable from `rstest-bdd`,
+  and with `documented-path` if this section quotes a path the lockfile no longer
+  agrees with. The removal is then mechanical: delete both exceptions, delete the
+  script, delete this section.
+
+```sh
+pixi run check-advisory   # verify the exception is still warranted and still documented
+python scripts/check_advisory_exception.py --print-path   # the chain, from the lockfile
+```
+
+Review and remove the exception when the dependency can be replaced or upgraded.

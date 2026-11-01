@@ -23,6 +23,13 @@ prepared, so the headings below are managed by that script.
   by the suite (a `rust,ignore` fence is an illustration), every documented
   `clifacet::…` path is checked segment by segment against what the crate declares, and
   the reference application is held to staying domain-neutral.
+- `scripts/check_advisory_exception.py` and the `check-advisory` task, which give the
+  RUSTSEC-2026-0374 exception an expiry. It renders the dependency path from
+  `Cargo.lock` — currently `rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl
+  0.8.4 → i18n-config 0.4.8 → basic-toml 0.1.10` — and fails the build when the
+  unmaintained crate is gone (so both ID-wide exceptions must be deleted), when either
+  `deny.toml` or `.cargo/audit.toml` no longer carries the exception, or when
+  `docs/development.md` quotes a path the lockfile no longer agrees with.
 - A qualified compatibility matrix instead of a claimed one. `scripts/check_features.py`
   derives the supported feature combinations from the crate manifest — the empty set, the
   `default` set, each frontend alone and all of them together — and CI checks each on
