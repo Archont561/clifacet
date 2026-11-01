@@ -27,14 +27,63 @@ impl Command for Greet {
 }
 ```
 
-The application keeps what it should: parsing with `clap`, validation, which stream
-the data goes to, and which exit code a failure costs.
+`clap` stays the grammar authority. `#[clifacet::command(..)]` wraps its parser and
+the input bridge in one attribute, so the flags, the typed input and the command
+cannot drift apart:
+
+```rust
+use clifacet::Facet;
+
+#[clifacet::command(input = Greeting)]
+#[command(name = "greet", about = "Say hello")]
+struct Cli {
+    /// Who to greet.
+    #[arg(long, alias = "nickname")]
+    name: Option<String>,
+}
+
+/// Validated input. Every value of it is runnable.
+struct Greeting {
+    name: Option<String>,
+}
+```
+
+That expands to `#[derive(::clap::Parser, ::clifacet::Facet)]` plus
+`#[facet(input = Greeting)]` in front of the item, so `#[derive(clap::Parser,
+clifacet::Facet)]` on its own keeps working. `clap` remains a direct dependency,
+because clap's derive emits code naming `clap::…`; this crate re-exports `clap` so the
+version is the one the macro was built against.
+
+The application keeps what it owns: which stream the data goes to, and which exit
+code a failure costs.
+
+## What is in the box
+
+| Module | Answers |
+| --- | --- |
+| `clifacet::command` | what a command is: validated input in, data or a failure out |
+| `clifacet::facet` | how a `clap` command becomes typed, validated input |
+| `clifacet::policy` | which mode a run may use, resolved from a request, a policy and what the environment offers |
+| `clifacet::prompt` | how a question is asked — and how to script the answers in a test |
+| `clifacet::tui` | the full-screen form, its fields, and the two escape hatches for drawing your own |
+| `clifacet::contract` | what a run may write where, and what each outcome costs |
+| `clifacet::harness` | proof that a different frontend changed nothing else |
+| `clifacet::secret` | a credential that cannot be printed by accident |
+| `clifacet::provenance` | where a value came from, recorded without recording the value |
+
+Frontends are features, so an application pays only for what it uses: `interactive`
+(prompts), `tui` (full screen), and a reserved `json` boundary with no flag behind it
+yet.
 
 ## Status
 
-Experimental, working toward `0.1.0`. The command core, prompts, the `Facet` derive
-and the TUI are implemented and covered; the JSON frontend is reserved and does not
-exist yet.
+Experimental. The command core, the interaction policy, prompts, the derive, the
+`command` wrapper and the TUI are implemented and covered; the JSON frontend is
+reserved and does not exist yet.
+
+The manifests record `0.1.0` and the changelog is dated for it, but **nothing has been
+published to crates.io**: releasing is a manual, authorized workflow dispatch, not a
+side effect of a merge.
 
 ```sh
 cargo run -p clifacet-example -- --name ada --repeat 2   # flags
@@ -47,7 +96,7 @@ cargo run -p clifacet-example -- --tui                   # the full-screen form
 | Crate | What it is |
 | --- | --- |
 | `clifacet` | the library: the command seam, the frontends, the interaction policy, the result contract |
-| `clifacet-macros` | the `Facet` derive, re-exported as `clifacet::Facet` |
+| `clifacet-macros` | the `Facet` derive, the `#[clifacet::command]` wrapper and `version!`, re-exported through `clifacet` |
 | `clifacet-example` | the reference application, its tests and runnable demos — a consumer of the published API, not published itself |
 
 ## Documentation
@@ -56,7 +105,7 @@ cargo run -p clifacet-example -- --tui                   # the full-screen form
 | --- | --- |
 | [Getting started](docs/getting-started.md) | adding the crate and writing a first command |
 | [Modes and the interaction policy](docs/modes.md) | deciding which mode runs, and what a run costs |
-| [The companion derive](docs/derive.md) | giving an existing `clap` command validated input |
+| [The companion derive](docs/derive.md) | giving an existing `clap` command validated input, or wrapping both in one attribute |
 | [TUI composition](docs/tui-composition.md) | drawing your own field or screen |
 | [Testing](docs/testing.md) | proving a promise without a terminal |
 | [Contributing](docs/contributing.md) | the checks, hooks and layout of this repository |
@@ -69,10 +118,11 @@ links resolve, ```` ```rust ```` fences are compiled as tests, and every documen
 ## Develop
 
 ```sh
-bash scripts/bootstrap.sh   # checkout at the remote head, environment, hooks, smoke check
-pixi run --frozen quality   # repository, feature, platform, Rust and advisory checks
-pixi run --frozen test      # both nextest groups
-pixi run --frozen check-docs  # links, anchors, compiled snippets
+bash scripts/bootstrap.sh          # checkout at the remote head, environment, hooks, smoke check
+pixi run --frozen --no-install test-local   # the offline gate: format, lint, docs, tests, advisories
+pixi run --frozen quality         # adds the checks that need the network: deny, audit, backlog, skills
+pixi run --frozen check-docs      # links, anchors, compiled snippets
+pixi run --frozen check-packages  # what `cargo publish` would upload, without publishing it
 ```
 
 Supported: the empty, `default`, `interactive`, `tui` and `json` configurations plus
