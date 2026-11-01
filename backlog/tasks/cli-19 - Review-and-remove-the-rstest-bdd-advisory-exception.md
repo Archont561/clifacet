@@ -56,3 +56,14 @@ Track the temporary RUSTSEC-2026-0374 exception in cargo-deny and cargo-audit.
   path constants reused instead of literal filenames repeated, findings that name both
   the problem and the action, and no TOML dependency added for a three-key file that a
   line reader handles.
+- 2026-11-01: the checker caught the agent. Adding "Actions → release → Run workflow" to
+  `docs/development.md` made `documented-path` fire: `documented_path()` returned the first
+  line anywhere in the file that contained the separator, so a prose arrow passed for a
+  dependency chain and the check reported its own documentation. Fixed by scoping the
+  search to the `## Dependency advisory exception` section and requiring every hop to be a
+  `name version` pair, which is what distinguishes a path from a sentence. Three tests
+  added first (red): a prose arrow before the real chain, a chain that lives in the
+  section while another section also uses arrows, and a document without the section.
+  The test fixture's own lock was stale in the same way the guide had been — it lacked
+  `i18n-embed-impl` — so the fixture now mirrors the real graph and would have failed on
+  the original omission.

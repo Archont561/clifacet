@@ -37,7 +37,8 @@ LOCK = {
             "dependencies": ["fluent", "i18n-embed"],
         },
         {"name": "fluent", "version": "0.17.0", "dependencies": []},
-        {"name": "i18n-embed", "version": "0.16.0", "dependencies": ["i18n-config"]},
+        {"name": "i18n-embed", "version": "0.16.0", "dependencies": ["i18n-embed-impl"]},
+        {"name": "i18n-embed-impl", "version": "0.8.4", "dependencies": ["i18n-config"]},
         {"name": "i18n-config", "version": "0.4.8", "dependencies": ["basic-toml"]},
         {"name": "basic-toml", "version": "0.1.10", "dependencies": []},
     ]
@@ -57,11 +58,11 @@ DOCS = """
 ## Dependency advisory exception
 
 ```
-rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-config 0.4.8 → basic-toml 0.1.10
+rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config 0.4.8 → basic-toml 0.1.10
 ```
 """
 
-PATH = "rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-config 0.4.8 → basic-toml 0.1.10"
+PATH = "rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config 0.4.8 → basic-toml 0.1.10"
 
 
 @pytest.fixture
@@ -96,7 +97,13 @@ def test_the_path_is_found_through_the_intermediate_crates(tree):
     path = dependency_path(load_lock(tree / "Cargo.lock"), CRATE, "basic-toml")
 
     assert path is not None
-    assert [name for name, _ in path] == ["rstest-bdd", "i18n-embed", "i18n-config", "basic-toml"]
+    assert [name for name, _ in path] == [
+        "rstest-bdd",
+        "i18n-embed",
+        "i18n-embed-impl",
+        "i18n-config",
+        "basic-toml",
+    ]
 
 
 def test_the_shortest_path_wins_when_there_are_several():
@@ -222,6 +229,43 @@ def test_print_path_on_the_committed_tree_names_the_unmaintained_crate(capsys):
     assert main(["--print-path"]) == 0
 
     assert "basic-toml" in capsys.readouterr().out
+
+
+def test_a_prose_arrow_is_not_a_dependency_path():
+    """The guide uses arrows in prose; only versioned chains are paths.
+
+    This is not hypothetical: adding "Actions → release → Run workflow" to
+    docs/development.md made the tree-consistency test report its own documentation.
+    """
+    prose = "# Development\n\nStart it from Actions → release → Run workflow.\n\n"
+    text = prose + DOCS
+
+    assert documented_path(text) == PATH, (
+        "a prose arrow that appears first must not be mistaken for the dependency chain"
+    )
+
+
+def test_the_path_is_read_from_the_advisory_section_not_from_elsewhere():
+    text = """# Development
+
+## Release
+
+gh workflow run release.yml  # a → b → c
+
+## Dependency advisory exception
+
+The chain is:
+
+```
+rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config 0.4.8 → basic-toml 0.1.10
+```
+"""
+
+    assert documented_path(text) == PATH
+
+
+def test_a_document_without_the_section_documents_nothing():
+    assert documented_path("# Development\n\nNo advisory here.\n") == ""
 
 
 def test_a_finding_says_what_to_do():

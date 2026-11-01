@@ -327,6 +327,18 @@ pixi run check-packages --list              # the same, plus a file count per cr
 gh workflow run release.yml                 # the rehearsal: packages the macro crate, publishes nothing
 ```
 
+The dispatch needs `actions: write`, which an agent session does not have — the
+command returns `403 Resource not accessible by integration` there. A maintainer
+starts it (Actions → release → Run workflow, or `gh workflow run release.yml` from
+their own authentication) and the run can then be watched from anywhere with
+`gh run watch <id>`.
+
+A rehearsal is only meaningful once `CHANGELOG.md` has a dated section for the
+recorded version. Without one the notes step stops the run before anything is
+packaged — the run fails in under a minute with nothing to revert, which is how the
+first rehearsal on 2026-11-01 behaved, and it is the correct outcome rather than a
+fault to work around.
+
 Both licence texts live at the repository root and inside each published crate,
 because a tarball that omits them is a distribution without the Apache text it
 claims to be licensed under. `check-packages` compares the copies byte for byte, so

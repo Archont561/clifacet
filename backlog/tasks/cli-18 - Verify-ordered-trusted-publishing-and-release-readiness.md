@@ -66,3 +66,14 @@ Rehearse the authored two-crate publication contract end to end.
   are tested without a build.
 - Still open here: AC#2's registry availability and partial-failure recovery, and AC#3,
   which needs explicit maintainer authorization for the first real dispatch.
+- 2026-11-01: the rehearsal was dispatched (run 41309561174) and failed in 24s at
+  `Resolve the release notes`, with nothing packaged or published. Cause: `CHANGELOG.md` had no
+  `## [0.1.0]` section. That is the guard behaving correctly — the missing section used to fail at
+  the tag step, after both crates were live. The change was made (PR #29: `bump-version
+  --promote-current`), and `bump_version.py --notes 0.1.0` now yields 196 lines.
+- 2026-11-01: re-dispatch from the agent session returned `HTTP 403: Resource not accessible by
+  integration` — `gh workflow run` is a third command the app token cannot perform, now recorded in
+  the `AGENTS.md` operations table and in `docs/development.md`. Reading is unaffected
+  (`gh run list`/`view`/`watch`, `gh pr checks`), so once a maintainer dispatches, the run can be
+  watched from here to completion. AC#1's static checks and AC#2's package-contents half are done;
+  the dry run itself and both registry facts are waiting on that dispatch.
