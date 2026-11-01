@@ -3,11 +3,13 @@ id: doc-1
 title: Project scope and evidence
 type: other
 created_date: '2026-10-29 15:27'
-updated_date: '2026-10-29 15:28'
+updated_date: '2026-11-01 20:30'
 ---
 # Purpose and status
 
 Clifacet is a proposed Rust library for clap-based commands with non-interactive, interactive and TUI presentation. One command core and a shared validation/execution path are the central boundary (decision-1). `clifacet` and `clifacet-macros` exist at 0.0.0; no library behavior is implemented in this planning scaffold.
+
+> **Status, 2026-11-01:** this page records what was scoped on 2026-10-29, and the paragraph above is that moment, not the current state. The library is implemented and `0.1.0` is published on crates.io — the scope listed below was delivered, with milestones and per-item evidence in `backlog/tasks/`. Read it as the plan that was executed, not as a status report.
 
 # In scope for 0.1.0
 

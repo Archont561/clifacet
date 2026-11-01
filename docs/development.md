@@ -273,6 +273,13 @@ section for the version being released, the run stops with nothing published, an
 dry run reports it too. The tag step reuses that verified file rather than reading the
 changelog a second time, so a release that has already shipped cannot fail on notes.
 
+The same asymmetry means a tag step never *updates* notes: it leaves an existing release
+alone. When `0.1.0`'s notes were found to be missing entries that had been merged before
+the release commit, they were refreshed with `gh release edit v0.1.0 --notes-file <file>`
+— re-running the workflow would have reported the release as already present and changed
+nothing. Treat the published notes as an artifact to edit deliberately, and prefer fixing
+the changelog before dispatching.
+
 `release.yml` is plumbing — the `crates` environment, the OIDC token, five steps and the
 pinned actions. Every decision is in `scripts/release.py`, which is why it can be tested
 rather than only observed: the dry runs exercised the packaging half, and the `0.1.0`
