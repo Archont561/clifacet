@@ -98,3 +98,14 @@ Rehearse the authored two-crate publication contract end to end.
   outside the sandbox allowlist), so a run is verified from `gh run view --job=<id>`, which reports
   each step as run or skipped, plus repository-side checks such as tags and releases. Step-level
   evidence is sufficient here precisely because the irreversible steps are separate steps.
+- 2026-11-01: **the rehearsal passed again, on the refactored workflow** — run
+  [41322815442](https://github.com/Archont561/clifacet/actions/runs/41322815442), 22s, success.
+  This is the run that proves CLI-22's split did not change behaviour: `Preflight`, `Package the
+  macro crate` and `Report the dry run` each succeeded as one `pixi run release <action>` call,
+  and the three irreversible steps — token exchange, publish loop, tag — are listed as skipped.
+  Corroborated from the repository side: `gh release list` is empty and `git ls-remote --tags`
+  reports no tags, so nothing was published.
+- 2026-11-01: with two green dry runs on record (before and after the refactor), the rehearsal
+  half of AC#2 is as complete as a dry run can make it. What remains needs a real dispatch with
+  `dry_run` unchecked: registry availability after a publish, partial-failure recovery, and the
+  OIDC exchange. That is AC#3's authorization decision, not a tooling gap.
