@@ -110,8 +110,12 @@ rather than silently broadening scope.
 | `gh run cancel` | 403 from the app token | push a fix on the same branch: the `ci` concurrency group cancels the superseded run |
 | `gh workflow run` | 403 from the app token (`Resource not accessible by integration`) | a maintainer dispatches from the Actions tab, or from their own authenticated `gh`; record the run URL in the task afterwards |
 
-Reading is unrestricted: `gh run list`, `gh run view`, `gh run watch` and `gh pr checks`
-all work, so a run can be watched to completion even when it had to be started by hand.
+Reading is mostly unrestricted: `gh run list`, `gh run view`, `gh run watch`, `gh run view
+--job=<id>` and `gh pr checks` all work, so a run can be watched to completion even when it
+had to be started by hand. `gh run view --log` does not: raw logs are served from
+`results-receiver.actions.githubusercontent.com`, which the sandbox cannot reach, so it
+fails with `EOF`. Verify a run from its per-step run/skipped list and from repository state
+(tags, releases) instead of from its raw log.
 
 `gh run watch`, `gh pr checks --watch`, `gh pr merge` and `gh api` all work, including
 reading an environment's protection rules:

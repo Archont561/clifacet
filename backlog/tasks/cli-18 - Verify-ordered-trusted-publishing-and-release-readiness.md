@@ -77,3 +77,24 @@ Rehearse the authored two-crate publication contract end to end.
   (`gh run list`/`view`/`watch`, `gh pr checks`), so once a maintainer dispatches, the run can be
   watched from here to completion. AC#1's static checks and AC#2's package-contents half are done;
   the dry run itself and both registry facts are waiting on that dispatch.
+- 2026-11-01: **the dry-run rehearsal passed** — run
+  [41317469386](https://github.com/Archont561/clifacet/actions/runs/41317469386), 21s, success,
+  dispatched from `main` by the maintainer. What ran: `Resolve the release version`,
+  `Check the release version is used consistently`, `Resolve the release notes`,
+  `Package the macro crate`, `Report the dry run`. What was skipped: `Exchange the OIDC token`,
+  `Publish both crates in dependency order`, `Tag the release and attach the changelog notes` —
+  all three are gated on `!inputs.dry_run`, so the skip is the proof that nothing was published,
+  independent of anything the summary says. Corroborated from the repository side: `gh release
+  list` is empty and `git ls-remote --tags` reports no tags, so the tag step did not run.
+- 2026-11-01: **what that proves, stated narrowly.** The version sites agree and `--check` passes
+  inside the runner; the changelog notes for `0.1.0` are readable before anything is packaged
+  (196 lines); the macro crate packages successfully with `--locked` against the committed
+  lockfile; and the dry-run report reads the sparse index for both crate names, which exercises
+  the same `curl` + `grep` path the publish loop depends on. It does **not** prove registry
+  availability after a publish, partial-failure recovery, or the OIDC exchange — those need a real
+  release, and AC#3 still needs explicit authorization for one.
+- 2026-11-01: verification limitation worth knowing: `gh run view --log` fails in this environment
+  with `EOF` from `results-receiver.actions.githubusercontent.com` (raw logs are served from a host
+  outside the sandbox allowlist), so a run is verified from `gh run view --job=<id>`, which reports
+  each step as run or skipped, plus repository-side checks such as tags and releases. Step-level
+  evidence is sufficient here precisely because the irreversible steps are separate steps.
