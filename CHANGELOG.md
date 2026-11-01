@@ -9,6 +9,8 @@ prepared, so the headings below are managed by that script.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-01
+
 ### Added
 
 - Guides for the implemented API: [getting started](docs/getting-started.md),
@@ -206,4 +208,5 @@ prepared, so the headings below are managed by that script.
   has no required reviewers, so nothing asks a person before a run publishes. Release
   authorization rests on the manual dispatch and the maintainer who made it.
 
-[Unreleased]: https://github.com/Archont561/clifacet/commits/main
+[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Archont561/clifacet/releases/tag/v0.1.0

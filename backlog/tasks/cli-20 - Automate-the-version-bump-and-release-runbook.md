@@ -53,3 +53,27 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 - Still open: #4 (a full rehearsal on a real version bump). With `--promote-current` in place that
   rehearsal is now `--promote-current` → dry-run dispatch → `cargo publish --dry-run`-equivalent
   checks, and it stays blocked on maintainer authorization rather than on tooling.
+- 2026-11-01: the first dry-run dispatch was attempted and **failed where it was designed
+  to fail** (run 41309561174, 24s, nothing packaged or published): `Resolve the release notes`
+  stopped the job because `CHANGELOG.md` had no `## [0.1.0]` section. That is the guard from
+  2026-10-30 doing its job — the failure arrived before the first publish instead of at the tag
+  step — and it confirms the rehearsal cannot pass until the changelog is promoted.
+  `pixi run bump-version --promote-current` was then run: `Unreleased` became
+  `## [0.1.0] - 2026-11-01`, an empty `Unreleased` section was reopened above it,
+  `bump_version.py --notes 0.1.0` now emits 196 lines of notes, and `--check` still reports
+  that all three version sites record `0.1.0`. The manifests were not touched, as designed.
+- 2026-11-01: promoting the changelog broke five tests in `scripts/tests/test_bump_version.py`,
+  which had encoded "the repository is in pre-release state" by reading the committed changelog.
+  Fixed by making the fixtures a function (`_install_fixtures`) that writes the module's own
+  `CARGO`/`PIXI`/`CHANGELOG` texts into `tmp_path`, so `main()` is exercised against a known
+  changelog rather than against whatever the calendar made the real one. Exactly one test still
+  reads the committed tree — `test_main_check_passes_on_the_committed_manifests` — because
+  "the three version sites agree" is true both before and after a release. One test was added
+  (`test_main_lists_the_sections_it_did_find`) so the `found:` message is covered by a fixture
+  rather than by a real changelog that happened to lack a version. 190 Python tests pass.
+- TDD evidence for that fix: the red state was produced by a real change (the promotion), not by
+  a contrived assertion — five failures, all `AssertionError` on exit codes, and the fix was
+  applied to the tests because the *product* behavior was correct and desirable.
+- #4 remains open: the rehearsal is re-dispatched after this merges, and it proves ordering,
+  version sites, notes and package contents. A full release — the publish itself — is AC#3 of
+  CLI-18 and still needs explicit maintainer authorization.

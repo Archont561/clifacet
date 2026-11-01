@@ -5,9 +5,6 @@ from __future__ import annotations
 import pytest
 
 from scripts.bump_version import (
-    CARGO_MANIFEST as CARGO_PATH,
-    CHANGELOG as CHANGELOG_PATH,
-    PIXI_MANIFEST as PIXI_PATH,
     bump,
     changelog_notes,
     inconsistencies,
@@ -169,7 +166,9 @@ def test_changelog_notes_names_the_versions_it_found():
         changelog_notes(CHANGELOG, "9.9.9")
 
 
-def test_main_prints_the_current_version(capsys):
+def test_main_prints_the_current_version(tmp_path, monkeypatch, capsys):
+    _install_fixtures(tmp_path, monkeypatch)
+
     assert main(["--print-version"]) == 0
     assert capsys.readouterr().out.strip() == "0.1.0"
 
@@ -179,12 +178,13 @@ def test_main_check_passes_on_the_committed_manifests(capsys):
     assert "all three version sites record 0.1.0" in capsys.readouterr().out
 
 
-def test_main_dry_run_reports_the_change_without_writing(capsys):
-    manifests = [_read(path) for path in (CARGO_PATH, PIXI_PATH, CHANGELOG_PATH)]
+def test_main_dry_run_reports_the_change_without_writing(tmp_path, monkeypatch, capsys):
+    files = _install_fixtures(tmp_path, monkeypatch)
+    before = [_read(path) for path in files]
 
     assert main(["0.2.0", "--dry-run"]) == 0
     assert "would record 0.2.0" in capsys.readouterr().out
-    assert [_read(path) for path in (CARGO_PATH, PIXI_PATH, CHANGELOG_PATH)] == manifests
+    assert [_read(path) for path in files] == before
 
 
 def test_main_rejects_bumping_to_the_current_version(capsys):
@@ -197,30 +197,49 @@ def test_main_requires_a_version_when_not_asking_a_question():
         main([])
 
 
-def test_main_reports_a_missing_notes_section(capsys):
-    # 0.1.0 has not been released yet, so it exists only as Unreleased.
+def test_main_reports_a_missing_notes_section(tmp_path, monkeypatch, capsys):
+    # The fixture changelog records 0.0.1 and an unreleased section, so 0.1.0 has no
+    # section yet — the same shape as the repository just before its first release.
+    _install_fixtures(tmp_path, monkeypatch)
+
     assert main(["--notes", "0.1.0"]) == 1
     assert "no '## [0.1.0]' section" in capsys.readouterr().err
 
 
-def test_main_prints_notes_for_a_released_version(capsys):
-    assert main(["--notes", "0.0.1"]) == 1  # the committed changelog has no such section
-    assert "found:" in capsys.readouterr().err
+def test_main_prints_notes_for_a_released_version(tmp_path, monkeypatch, capsys):
+    _install_fixtures(tmp_path, monkeypatch)
+
+    assert main(["--notes", "0.0.1"]) == 0
+    assert "Something older." in capsys.readouterr().out
 
 
-# --- the first release: the recorded version has no dated section yet -------
+def test_main_lists_the_sections_it_did_find(tmp_path, monkeypatch, capsys):
+    _install_fixtures(tmp_path, monkeypatch)
+
+    assert main(["--notes", "9.9.9"]) == 1
+    assert "found: Unreleased, 0.0.1" in capsys.readouterr().err
 
 
-def _copy_release_files(tmp_path, monkeypatch):
-    """Point `main()` at copies of the three files it writes."""
+# --- driving `main()` off fixtures, not off the state of the repository ------
+
+
+def _install_fixtures(tmp_path, monkeypatch, changelog_text=CHANGELOG):
+    """Point `main()` at fixture copies of the three files it reads and writes.
+
+    The committed changelog is either pre-release or post-release depending on the
+    calendar, so a test that reads it is a test that breaks on release day. Only
+    `test_main_check_passes_on_the_committed_manifests` is about the real tree, and it
+    asks the one question the real tree can answer at any moment: do the version sites
+    agree with each other?
+    """
     import scripts.bump_version as bump_version
 
     cargo = tmp_path / "Cargo.toml"
     pixi = tmp_path / "pixi.toml"
     changelog = tmp_path / "CHANGELOG.md"
-    cargo.write_text(_read(CARGO_PATH), encoding="utf-8")
-    pixi.write_text(_read(PIXI_PATH), encoding="utf-8")
-    changelog.write_text(_read(CHANGELOG_PATH), encoding="utf-8")
+    cargo.write_text(CARGO, encoding="utf-8")
+    pixi.write_text(PIXI, encoding="utf-8")
+    changelog.write_text(changelog_text, encoding="utf-8")
     monkeypatch.setattr(bump_version, "CARGO_MANIFEST", cargo)
     monkeypatch.setattr(bump_version, "PIXI_MANIFEST", pixi)
     monkeypatch.setattr(bump_version, "CHANGELOG", changelog)
@@ -228,7 +247,7 @@ def _copy_release_files(tmp_path, monkeypatch):
 
 
 def test_promote_current_dates_the_unreleased_section(tmp_path, monkeypatch):
-    cargo, pixi, changelog = _copy_release_files(tmp_path, monkeypatch)
+    cargo, pixi, changelog = _install_fixtures(tmp_path, monkeypatch)
     manifests = (cargo.read_text(encoding="utf-8"), pixi.read_text(encoding="utf-8"))
 
     assert main(["--promote-current"]) == 0
@@ -243,7 +262,7 @@ def test_promote_current_dates_the_unreleased_section(tmp_path, monkeypatch):
 
 
 def test_promote_current_makes_the_notes_readable(tmp_path, monkeypatch, capsys):
-    _, _, _ = _copy_release_files(tmp_path, monkeypatch)
+    _, _, _ = _install_fixtures(tmp_path, monkeypatch)
 
     assert main(["--promote-current"]) == 0
     capsys.readouterr()
@@ -254,7 +273,7 @@ def test_promote_current_makes_the_notes_readable(tmp_path, monkeypatch, capsys)
 
 
 def test_promote_current_dry_run_reports_without_writing(tmp_path, monkeypatch, capsys):
-    _, _, changelog = _copy_release_files(tmp_path, monkeypatch)
+    _, _, changelog = _install_fixtures(tmp_path, monkeypatch)
     before = changelog.read_text(encoding="utf-8")
 
     assert main(["--promote-current", "--dry-run"]) == 0
@@ -264,7 +283,7 @@ def test_promote_current_dry_run_reports_without_writing(tmp_path, monkeypatch, 
 
 
 def test_promote_current_refuses_a_version_that_is_already_released(tmp_path, monkeypatch, capsys):
-    _, _, changelog = _copy_release_files(tmp_path, monkeypatch)
+    _, _, changelog = _install_fixtures(tmp_path, monkeypatch)
     # The state just after a release: Unreleased was reopened, and it is empty.
     changelog.write_text("# Changelog\n\n## [Unreleased]\n", encoding="utf-8")
 
@@ -273,7 +292,7 @@ def test_promote_current_refuses_a_version_that_is_already_released(tmp_path, mo
 
 
 def test_promote_current_refuses_when_the_section_already_exists(tmp_path, monkeypatch, capsys):
-    _, _, changelog = _copy_release_files(tmp_path, monkeypatch)
+    _, _, changelog = _install_fixtures(tmp_path, monkeypatch)
     main(["--promote-current"])
     capsys.readouterr()
 
