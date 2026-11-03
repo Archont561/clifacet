@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **macros:** ask for and normalise a field from its one declaration
+([1db9ff8](https://github.com/Archont561/clifacet/commit/1db9ff8f4bf4d9155f7250cb72f25c0b00e31889))
 * declare an argument once with a field attribute, and guard every feature's cfg site
 ([5b700dc](https://github.com/Archont561/clifacet/commit/5b700dc2bc559a950a2156794099a9a440f6a41a))
 * **examples:** wrap the backlog.md CLI and record the authoring gaps
