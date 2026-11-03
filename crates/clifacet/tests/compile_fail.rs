@@ -21,3 +21,11 @@ fn the_facet_derive_reports_what_it_cannot_bridge() {
     cases.compile_fail("tests/ui/facet_on_enum.rs");
     cases.compile_fail("tests/ui/facet_missing_field.rs");
 }
+
+#[test]
+fn a_field_attribute_declares_an_argument_and_reports_what_it_cannot_declare() {
+    let cases = trybuild::TestCases::new();
+    cases.pass("tests/ui/field_attribute_valid.rs");
+    cases.compile_fail("tests/ui/field_attribute_unknown_key.rs");
+    cases.compile_fail("tests/ui/field_attribute_repeated_key.rs");
+}

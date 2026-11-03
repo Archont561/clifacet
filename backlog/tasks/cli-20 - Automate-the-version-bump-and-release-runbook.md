@@ -4,7 +4,7 @@ title: Automate the version bump and release runbook
 status: In Progress
 assignee: []
 created_date: '2026-10-30 16:30'
-updated_date: '2026-11-01 22:46'
+updated_date: '2026-11-03 07:49'
 labels: []
 milestone: m-10
 dependencies:
@@ -39,6 +39,9 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 
 - 2026-11-01: AC#2 rewritten, with the ACs re-set rather than silently re-worded: it used to require that "the changelog is promoted by the same command, and an empty `Unreleased` section blocks the bump". Both halves are gone because the changelog is no longer written by hand or promoted by the bump — `convco` renders it from the commits and the release refuses a tree whose commits since the last tag say nothing, which is the same protection sourced from the commits instead of the file. The evidence for the new wording is the test pair that now guards the absence: `test_main_does_not_touch_the_changelog` in `scripts/tests/test_bump_version.py`, and `test_preflight_ignores_a_committed_changelog` in `scripts/tests/test_release.py`. `--promote-current` and `--skip-changelog` are deleted, not deprecated, so a stale runbook step fails loudly.
 - AC#4 is untouched and still open for the same reason: the next release has to be cut on a real `bump-version 0.1.1 --relock`, and now also has to prove the post-tag changelog commit lands.
+
+- 2026-11-03: the note above from 2026-11-01 is now factually wrong and is corrected here rather than deleted, because it explains why AC\#4 stayed open. It said the `[Unreleased]` section was empty and that the bump refuses an empty section. Neither is true of the committed tree: `CHANGELOG.md` has one `### Added` entry under `## [Unreleased]` (the `examples: wrap the backlog.md CLI` commit, b753b84), and since the 2026-11-01 rewrite the changelog is rendered from the commits by `convco` — `--promote-current` and `--skip-changelog` were deleted, and the release refuses a tree whose commits since the last tag say nothing, which is a property of the commits and not of the file. The commit that closed the gap is b753b84 itself, which landed after that note was written.
+- Consequence, checked against the tree today: `scripts/bump_version.py --check` still reports the three version sites agreeing at 0.1.0, and there is one unreleased entry describing the next version, so the 'the next release has to describe itself' guard will not fire on an empty section. AC\#4 itself is unchanged and still open for the original reason: it needs `bump-version 0.1.1 --relock` to run through a `main` dispatch, which is CLI-38's first criterion.
 <!-- SECTION:NOTES:END -->
 
 ## Notes

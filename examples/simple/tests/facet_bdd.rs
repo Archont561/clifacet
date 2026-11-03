@@ -15,6 +15,7 @@ use rstest_bdd_macros::{given, scenario, then, when};
 struct AppWorld {
     alias: String,
     input: Option<ExampleInput>,
+    help: String,
 }
 
 #[fixture]
@@ -83,5 +84,105 @@ fn the_command_runs_without_a_terminal(world: &mut AppWorld) {
 )]
 #[test]
 fn an_alias_resolves_to_the_same_typed_input(world: AppWorld) {
+    let _ = world;
+}
+
+/// A command declared with one attribute per field, as decision-13 describes it.
+///
+/// Its fields are read by clap's derive, not by hand, which is why the module allows the
+/// dead-code lint a struct with no reader of its own would otherwise earn.
+///
+/// It lives here rather than in the reference application on purpose: CLI-28's first
+/// criterion is the grammar half, and the example moves over once the interaction and
+/// normalization halves exist. Declaring it in an application-shaped test is the point —
+/// this is a consumer of the public macro, not a second implementation of it.
+#[allow(
+    dead_code,
+    reason = "clap's derive is the reader, and the test drives the API"
+)]
+mod declared {
+    use clifacet::clap::CommandFactory as _;
+
+    #[clifacet::command(input = DeclaredInput)]
+    #[command(name = "declare", about = "One attribute per field")]
+    pub struct Declared {
+        /// Who to greet. Defaults to `world`.
+        #[clifacet(long, short = 'n', alias = "nickname", value_name = "NAME")]
+        pub name: Option<String>,
+
+        /// How many times to greet.
+        #[clifacet(long, value_name = "COUNT")]
+        pub repeat: u8,
+
+        /// Anything the key table does not cover stays clap's, untouched.
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=8))]
+        pub level: u8,
+    }
+
+    /// The typed input the derive builds field by field.
+    pub struct DeclaredInput {
+        pub name: Option<String>,
+        pub repeat: u8,
+        pub level: u8,
+    }
+
+    /// The rendered help, which is clap's because the keys were forwarded into `#[arg]`.
+    pub fn help() -> String {
+        Declared::command().render_help().to_string()
+    }
+}
+
+#[given("a command whose arguments are declared with one attribute per field")]
+fn a_command_declares_its_arguments_once(world: &mut AppWorld) {
+    // Placeholder: the given step establishes the declaration, the when step asks.
+    // The declaration is the fixture: it either compiles into a clap command or the
+    // scenario does not run.
+    world.help = declared::help();
+}
+
+#[when("the user asks for help")]
+fn the_user_asks_for_help(world: &mut AppWorld) {
+    world.help = declared::help();
+}
+
+#[then("the help shows the short flag, the value name and the field's doc comment")]
+fn the_help_is_built_from_the_declaration(world: &AppWorld) {
+    assert!(
+        world.help.contains("-n, --name <NAME>"),
+        "the short flag and value name reached clap:\n{}",
+        world.help
+    );
+    assert!(
+        world.help.contains("Who to greet"),
+        "the doc comment is the help text:\n{}",
+        world.help
+    );
+}
+
+#[then("the same declaration parses a value through its alias")]
+fn the_declaration_parses_through_the_alias(_world: &mut AppWorld) {
+    use clifacet::clap::Parser as _;
+
+    let cli = declared::Declared::try_parse_from([
+        "declare",
+        "--nickname",
+        "ada",
+        "--repeat",
+        "3",
+        "--level",
+        "2",
+    ])
+    .expect("the forwarded grammar parses");
+    assert_eq!(cli.name.as_deref(), Some("ada"));
+    assert_eq!(cli.repeat, 3);
+    assert_eq!(cli.level, 2);
+}
+
+#[scenario(
+    path = "tests/features/facet_bridge.feature",
+    name = "A field declared once carries its own grammar"
+)]
+#[test]
+fn a_field_declared_once_carries_its_own_grammar(world: AppWorld) {
     let _ = world;
 }

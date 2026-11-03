@@ -96,8 +96,17 @@ from `crates/clifacet/Cargo.toml` and checks each one against the committed lock
 | `default` | the manifest's `default` set | what a consumer gets with a bare `clifacet` dependency |
 | `interactive` | `--no-default-features --features interactive` | the prompt frontend compiles by itself |
 | `tui` | `--no-default-features --features tui` | the full-screen frontend compiles by itself |
-| `json` | `--no-default-features --features json` | the reserved serialization feature compiles by itself |
+| `json` | `--no-default-features --features json` | the reserved serialization feature compiles by itself (and gates nothing yet: see below) |
 | `all-features` | `--all-features` (workspace-wide) | every frontend together, which is what the tests build |
+
+A row that compiles proves a feature *can* be enabled, not that enabling it does
+anything, so the same task also checks the other half: every declared feature has a
+`cfg(feature = "…")` site in the crate's source. A feature with no site fails the
+check, and the only way past it is a written reason in the script's `UNUSED_FEATURES`
+table. That table currently holds one entry — `json`, which selects `serde_json` and
+gates no code until CLI-36 either builds machine-readable failures on it or retires it.
+An entry that outlives its reason fails a test, so the excuse cannot quietly become
+permanent.
 
 `default` is empty today, so it resolves to the same configuration as
 `no-default-features`; the script runs that configuration once and reports both rows, so
@@ -434,7 +443,9 @@ also reserves three **optional dependency boundaries**, disabled by default:
 - `json`: serde_json.
 
 `interactive`, `tui` and the derive are implemented and covered; `json` still only
-selects its dependency, and no flag produces JSON yet. Everything is checked every
+selects its dependency, and no flag produces JSON yet. That gap is now checked rather
+than remembered: `check-features` fails on a declared feature that no `cfg` mentions,
+so `json` is the one feature named in its allowlist, with the card that will settle it. Everything is checked every
 way — `--no-default-features`, the empty `default` set, each boundary on its own and
 all of them together — by the `check-features` task described in
 [Supported platforms and feature combinations](#supported-platforms-and-feature-combinations).

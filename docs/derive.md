@@ -79,6 +79,66 @@ contribute impls — which is why this one is an attribute rather than a third d
 name lives in the macro namespace, so it does not collide with the `clifacet::command`
 module.
 
+## Declaring one field once
+
+`#[clifacet(..)]` on a field is the same command declared more compactly: one attribute
+carries the argument's grammar, so the `#[arg(..)]` it would otherwise need is written
+for you. The macro forwards each key into a single `#[arg(..)]` on that field, so `clap`
+parses exactly as before and the help, aliases and value parsers stay its.
+
+```rust
+use clifacet::clap::{CommandFactory as _, Parser as _};
+
+#[clifacet::command(input = Greeting)]
+#[command(name = "greet", about = "Say hello")]
+struct Cli {
+    /// Who to greet.
+    #[clifacet(long, short = 'n', alias = "nickname", value_name = "NAME")]
+    name: Option<String>,
+
+    /// How many times to greet.
+    #[clifacet(long, value_name = "COUNT")]
+    repeat: u8,
+}
+
+/// The typed input, built field by field.
+struct Greeting {
+    name: Option<String>,
+    repeat: u8,
+}
+
+let cli = Cli::try_parse_from(["greet", "--nickname", "ada", "--repeat", "3"])
+    .expect("the forwarded grammar parses");
+assert_eq!(cli.name.as_deref(), Some("ada"));
+assert_eq!(cli.repeat, 3);
+assert!(Cli::command().render_help().to_string().contains("-n, --name <NAME>"));
+```
+
+The keys are split by what they mean to clap, and the split is the whole documented
+surface — anything outside it is a compile error rather than an argument that quietly
+means nothing:
+
+| Kind | Keys | Forwarded as |
+| --- | --- | --- |
+| value | `action`, `alias`, `conflicts_with`, `conflicts_with_all`, `default_value`, `default_value_t`, `env`, `group`, `help`, `id`, `ignore_case`, `num_args`, `range`, `requires`, `value_delimiter`, `value_name`, `value_parser` | `key = …` |
+| flag | `hide`, `long_alias`, `required`, `short_alias`, `value_enum` | `key` |
+| either | `long`, `short` | `key` (derive the name from the field) or `key = …` |
+
+Two rules keep it honest:
+
+- **One key, one meaning.** Declaring a key twice on a field is an error, not a
+  last-one-wins resolution, because the pair would silently mean whichever came second.
+- **The escape hatch is the field next door.** A raw `#[arg(..)]` on the same field
+  passes through untouched, so a clap key this table has not grown yet stays available
+  without waiting for a release; the test that proves the two compose lives in
+  `crates/clifacet/tests/ui/field_attribute_valid.rs`.
+
+`#[derive(clap::Parser)]` with plain `#[arg(..)]` keeps working exactly as it did — this
+is additive. What the interaction keys (`ask`, `fill`, `confirm`) and the normalization
+keys (`trim`, `non_empty`, `secret`) will do with the same declaration is decision-13;
+they are not implemented yet, and naming one today is a compile error rather than a
+silent no-op.
+
 ## Two ways to build the input
 
 | Attribute | Effect |

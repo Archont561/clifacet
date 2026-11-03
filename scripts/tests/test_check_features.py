@@ -17,13 +17,16 @@ from scripts.check_features import (
     Failure,
     Plan,
     build_plan,
+    cfg_sites,
     combinations,
     declared_features,
     default_features,
     describe_failure,
+    expect_unused_features,
     main,
     package_name,
     run_plan,
+    unused_features,
 )
 
 CRATE = {
@@ -181,3 +184,102 @@ def test_the_committed_manifest_produces_the_documented_matrix():
 
     assert names == {"no-default-features", "default", "all-features", *declared_features(crate)}
     assert package_name(crate) == "clifacet"
+
+
+# --- a declared feature has to reach the code it claims to describe -----------------
+
+FEATURE_SITES = """
+fn nothing() {}
+#[cfg(feature = "tui")]
+mod tui {}
+#[cfg(all(feature = "interactive", feature = "tui"))]
+fn both() {}
+"""
+
+# `feature = "tui"` inside a doc comment is prose about the code, not a site in it.
+DOCUMENTED = """
+//! Enable the `tui` feature to draw a form.
+// # ![cfg(feature = "tui")]
+fn prose() {}
+"""
+
+
+def test_cfg_sites_are_read_from_the_source():
+    assert cfg_sites(FEATURE_SITES) == {"tui", "interactive"}
+
+
+def test_a_documented_cfg_is_not_a_site():
+    """A guide that says `cfg(feature = "tui")` has not gated anything."""
+    assert cfg_sites(DOCUMENTED) == set()
+
+
+def test_a_feature_with_a_cfg_site_is_not_reported():
+    assert unused_features(CRATE, {"tui"}) == ["interactive", "json"]
+
+
+def test_a_feature_with_no_cfg_site_is_reported():
+    """The claim is `cfg(feature = "json")` somewhere, not a dependency spec."""
+    assert unused_features(CRATE, {"interactive", "tui"}) == ["json"]
+
+
+def test_the_report_names_every_offending_feature_in_order():
+    assert unused_features(CRATE, set()) == ["interactive", "json", "tui"]
+
+
+def test_an_exception_needs_a_written_reason():
+    assert expect_unused_features({"json": "no JSON output is implemented yet"}) == ["json"]
+
+
+def test_an_exception_without_a_reason_is_a_mistake():
+    """Silence is the thing the guard exists to prevent, so it cannot be allowlisted."""
+    with pytest.raises(ValueError, match="json"):
+        expect_unused_features({"json": "   "})
+
+
+def test_main_fails_when_a_declared_feature_has_no_cfg_site(tmp_path, capsys):
+    """The guard, through the command's own seam, on a fixture crate."""
+    crate = tmp_path / "crates" / "clifacet"
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        '[package]\nname = "clifacet"\n\n[features]\ndefault = []\njson = ["dep:serde_json"]\n',
+        encoding="utf-8",
+    )
+    (crate / "src" / "lib.rs").write_text("pub fn nothing() {}\n", encoding="utf-8")
+
+    assert main(["--check-cfg-sites"], crate_manifest=crate / "Cargo.toml") == 1
+    captured = capsys.readouterr()
+    assert "json" in captured.err
+    assert "cfg(feature" in captured.err
+
+
+def test_main_passes_when_every_feature_has_a_site(tmp_path):
+    crate = tmp_path / "crates" / "clifacet"
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        '[package]\nname = "clifacet"\n\n[features]\ndefault = []\njson = ["dep:serde_json"]\n',
+        encoding="utf-8",
+    )
+    (crate / "src" / "lib.rs").write_text(
+        '#[cfg(feature = "json")]\npub fn failures() {}\n', encoding="utf-8"
+    )
+
+    assert main(["--check-cfg-sites"], crate_manifest=crate / "Cargo.toml") == 0
+
+
+def test_the_declared_exceptions_still_describe_the_crate():
+    """An exception that is no longer needed is a stale note, so it has to be removed."""
+    from scripts.check_features import CRATE_MANIFEST, UNUSED_FEATURES, load_manifest
+
+    crate = load_manifest(CRATE_MANIFEST)
+    sites = cfg_sites(
+        "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((CRATE_MANIFEST.parent / "src").rglob("*.rs"))
+        )
+    )
+
+    assert sorted(unused_features(crate, sites)) == sorted(UNUSED_FEATURES), (
+        "the documented exceptions and the features the crate really leaves ungated "
+        "are the same set: an exception that outlives its feature is stale, and an "
+        "ungated feature without one is the failure this guard exists for"
+    )
