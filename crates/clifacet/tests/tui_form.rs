@@ -291,3 +291,44 @@ fn a_screen_too_short_draws_only_what_fits() {
     assert_eq!(rows.len(), 1, "one row was asked for: {text}");
     assert!(rows[0].contains("Who to greet"), "{text}");
 }
+
+/// A command whose flags are not spelled like their ids.
+#[derive(Debug, Parser)]
+#[command(name = "spelled")]
+struct Spelled {
+    /// Derived from the field: `--dry-run`, id `dry_run`.
+    #[arg(long, default_value = "yes")]
+    dry_run: String,
+
+    /// Renamed outright.
+    #[arg(long = "greet-name", default_value = "ada")]
+    name: String,
+
+    /// Short only.
+    #[arg(short = 'l', default_value = "high")]
+    level: String,
+}
+
+#[test]
+fn a_generated_field_is_submitted_under_the_flag_clap_knows_it_by() {
+    let form = FormState::generated(&Spelled::command(), &["dry_run", "name", "level"])
+        .expect("these fields exist on the command");
+
+    let arguments = form.arguments();
+
+    assert_eq!(
+        arguments,
+        ["--dry-run", "yes", "--greet-name", "ada", "-l", "high"],
+        "a field's id is not its flag"
+    );
+    let parsed = Spelled::try_parse_from(std::iter::once(String::from("spelled")).chain(arguments))
+        .expect("what the form submits, clap parses");
+    assert_eq!(
+        (
+            parsed.dry_run.as_str(),
+            parsed.name.as_str(),
+            parsed.level.as_str()
+        ),
+        ("yes", "ada", "high")
+    );
+}

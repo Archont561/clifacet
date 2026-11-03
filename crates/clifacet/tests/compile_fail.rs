@@ -39,4 +39,7 @@ fn a_field_rule_on_the_wrong_field_fails_to_compile_and_says_why() {
     cases.compile_fail("tests/ui/field_ask_positional.rs");
     cases.compile_fail("tests/ui/field_rule_wrong_type.rs");
     cases.compile_fail("tests/ui/field_rule_beside_bridge.rs");
+    cases.compile_fail("tests/ui/field_form_positional.rs");
+    cases.compile_fail("tests/ui/field_skip_with_rule.rs");
+    cases.compile_fail("tests/ui/facet_check_beside_bridge.rs");
 }

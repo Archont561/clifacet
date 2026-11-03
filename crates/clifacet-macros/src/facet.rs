@@ -10,9 +10,11 @@
 //! There are two ways to produce the input, and only two:
 //!
 //! - the default, a field-by-field mirror of the command struct, which makes a
-//!   renamed or missing field a compile error instead of a silent default;
-//! - `#[facet(bridge = path)]`, for an input that normalizes — `Option<String>`
-//!   to a trimmed `String`, say — and so cannot be built by copying fields.
+//!   renamed or missing field a compile error instead of a silent default. Field
+//!   rules (`fill`, `trim`, `non_empty`, `secret`) normalise on the way, `skip` leaves
+//!   a field out, and `#[facet(check = path)]` runs a rule across the built input;
+//! - `#[facet(bridge = path)]`, for an input the declarations cannot describe, which
+//!   receives the parsed command and builds the whole input itself.
 
 use quote::{quote, quote_spanned};
 use syn::punctuated::Punctuated;
@@ -25,13 +27,15 @@ use crate::rules::{self, Rules};
 use crate::rules::ATTRIBUTE;
 
 /// The keys the attribute accepts.
-const SUPPORTED_KEYS: &str = "`input`, `bridge`";
+const SUPPORTED_KEYS: &str = "`input`, `bridge`, `check`";
 
 /// What the `#[facet(...)]` attribute declared.
 #[derive(Default)]
 struct Declared {
     input: Option<Path>,
     bridge: Option<Path>,
+    /// A rule across the built input, run by the generated bridge after the field rules.
+    check: Option<Path>,
 }
 
 pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
@@ -51,12 +55,32 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
     // its own normalization, which is why a field rule beside it is an error rather
     // than a rule that silently does nothing.
     let (validate, bridge_impl) = if let Some(bridge) = declared.bridge {
+        if let Some(check) = &declared.check {
+            return Err(syn::Error::new_spanned(
+                check,
+                "`check` runs inside the generated bridge, and this struct declares its own \
+                 `bridge = …`, which builds the whole input: call the check from the bridge, \
+                 or drop `bridge` and let the declarations build the input",
+            ));
+        }
         for field in &fields {
             field.rules.check_bridge()?;
         }
         (quote!(#bridge(self)), quote!())
     } else {
-        let assignments = fields.iter().map(|field| field.assignment(name));
+        let assignments = fields
+            .iter()
+            .filter(|field| field.rules.skip.is_none())
+            .map(|field| field.assignment(name));
+        // The check sees the input the field rules built, never the raw flags: by the
+        // time it runs, every value is filled, trimmed and known not to be blank.
+        let check = declared.check.as_ref().map(|check| {
+            quote_spanned! {check.span()=>
+                let checked: fn(&#input_type) -> ::core::result::Result<(), ::clifacet::Failure> =
+                    #check;
+                checked(&input)?;
+            }
+        });
         let bridge_impl = quote! {
             impl ::core::convert::TryFrom<#name> for #input_type {
                 type Error = ::clifacet::Failure;
@@ -64,7 +88,9 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
                 fn try_from(
                     cli: #name,
                 ) -> ::core::result::Result<Self, ::clifacet::Failure> {
-                    ::core::result::Result::Ok(#input_type { #(#assignments),* })
+                    let input = #input_type { #(#assignments),* };
+                    #check
+                    ::core::result::Result::Ok(input)
                 }
             }
         };
@@ -74,10 +100,13 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
         )
     };
     let collect = collect_impl(name, &fields);
+    let form_fields = form_fields(&fields);
 
     Ok(quote! {
         impl ::clifacet::Facet for #name {
             type Input = #input_type;
+
+            #form_fields
 
             fn validate(
                 self,
@@ -192,6 +221,25 @@ fn collect_impl(name: &Ident, fields: &[Declaration]) -> proc_macro2::TokenStrea
     }
 }
 
+/// `Facet::form_fields` for the command: every `form` field, in declaration order.
+///
+/// Nothing is generated without one, so the trait's empty default stays in charge.
+fn form_fields(fields: &[Declaration]) -> proc_macro2::TokenStream {
+    let ids: Vec<_> = fields
+        .iter()
+        .filter(|field| field.rules.form.is_some())
+        .map(|field| &field.id)
+        .collect();
+    if ids.is_empty() {
+        return quote!();
+    }
+    quote! {
+        fn form_fields() -> &'static [&'static str] {
+            &[#(#ids),*]
+        }
+    }
+}
+
 /// Collects the fields the bridge copies, rejecting shapes it cannot bridge.
 fn named_fields(input: &DeriveInput) -> syn::Result<Vec<Declaration>> {
     let Data::Struct(data) = &input.data else {
@@ -254,6 +302,7 @@ fn parse_attribute(input: &DeriveInput) -> syn::Result<Declared> {
             let slot = match key.to_string().as_str() {
                 "input" => &mut declared.input,
                 "bridge" => &mut declared.bridge,
+                "check" => &mut declared.check,
                 unknown => {
                     return Err(syn::Error::new_spanned(
                         key,
@@ -274,7 +323,8 @@ fn parse_attribute(input: &DeriveInput) -> syn::Result<Declared> {
                 return Err(syn::Error::new_spanned(
                     &entry.value,
                     format!(
-                        "`{key}` takes a path, for example                          `#[{ATTRIBUTE}({key} = my_module::item)]`"
+                        "`{key}` takes a path, for example \
+                         `#[{ATTRIBUTE}({key} = my_module::item)]`"
                     ),
                 ));
             };

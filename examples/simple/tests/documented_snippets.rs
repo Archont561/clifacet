@@ -51,7 +51,7 @@ fn readme_snippet_2() {
     }
 }
 
-/// `command-core.md`, line 177.
+/// `command-core.md`, line 182.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {
@@ -173,6 +173,44 @@ fn derive_snippet_3() {
         .and_then(Facet::validate)
         .expect("valid");
     assert_eq!(input.name, "grace");
+}
+
+/// `derive.md`, line 201.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_4() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::clap::Parser as _;
+    use clifacet::{Facet, Failure};
+    #[clifacet::command(input = Booking, check = check_booking)]
+    #[command(name = "book")]
+    struct Cli {
+        /// Who the booking is for.
+        #[clifacet(long, fill = "guest", trim, non_empty, form)]
+        name: Option<String>,
+        /// How many seats: a `u8` parses 255, so the bound is the check's.
+        #[clifacet(long, default_value_t = 1, form)]
+        seats: u8,
+        /// Presentation, parsed by clap and kept out of the booking.
+        #[clifacet(long, skip)]
+        loud: bool,
+    }
+    struct Booking {
+        name: String,
+        seats: u8,
+    }
+    fn check_booking(booking: &Booking) -> Result<(), Failure> {
+        if booking.seats > 8 {
+            return Err(Failure::validation(format!("--seats must be at most 8, got {}", booking.seats)));
+        }
+        Ok(())
+    }
+    let refused = Cli::try_parse_from(["book", "--seats", "9"]).expect("9 is a u8").validate();
+    assert_eq!(refused.err().map(|failure| failure.message().to_owned()).as_deref(), Some("--seats must be at most 8, got 9"));
+    let booking = Cli::try_parse_from(["book", "--name", " ada ", "--loud"]).expect("parses").validate().expect("valid");
+    assert_eq!((booking.name.as_str(), booking.seats), ("ada", 1));
+    // The form's field list, from the same declarations: `FormState::generated` takes it.
+    assert_eq!(Cli::form_fields(), ["name", "seats"]);
 }
 
 /// `getting-started.md`, line 26.

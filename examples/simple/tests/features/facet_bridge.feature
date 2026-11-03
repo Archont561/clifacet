@@ -26,3 +26,14 @@ Feature: Prove an existing clap command through Clifacet
     When the user runs it without a terminal and without --name
     Then the declared input carries the name "world"
     And the user was asked nothing
+
+  Scenario: The reference application checks its input after each field's own rule
+    Given the reference application, declared one attribute per field
+    When the user runs it with a blank name and too many repeats
+    Then validation fails with "--name must not be blank"
+    And a name that is only padded still meets the repeat check "--repeat must be between 1 and 8, got 9"
+
+  Scenario: The reference application's form is generated from its declarations
+    Given the reference application, declared one attribute per field
+    When its form is built
+    Then the form asks for "name", "repeat" and "level", in that order

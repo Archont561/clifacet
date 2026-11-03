@@ -25,7 +25,7 @@ use proc_macro::{Literal, TokenStream, TokenTree};
 ///
 /// Expands to the item exactly as written, preceded by
 /// `#[derive(::clap::Parser, ::clifacet::Facet)]` and `#[facet(…)]`. It takes the same
-/// keys as `#[facet(…)]` — `input`, `bridge` — and exists because a derive cannot add
+/// keys as `#[facet(…)]` — `input`, `bridge`, `check` — and exists because a derive cannot add
 /// another derive to the same item.
 ///
 /// `clap` still has to be a direct dependency of the calling crate: `clap`'s derive
@@ -47,8 +47,12 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 /// # Attributes
 ///
 /// - `#[facet(input = Type)]` — required. The typed input the bridge builds.
+/// - `#[facet(check = path)]` — optional. Called as `path(&input) -> Result<(),
+///   Failure>` at the end of the generated `TryFrom`, after every field rule, for a
+///   rule across fields.
 /// - `#[facet(bridge = path)]` — optional. Called as `path(cli) -> Result<Type,
-///   Failure>` instead of the generated `TryFrom`, for input whose rules span fields.
+///   Failure>` instead of the generated `TryFrom`, for input the declarations cannot
+///   describe. `check` beside it is a compile error: the bridge runs its own checks.
 ///
 /// On a field, `#[facet(..)]` says how that one value is asked for and normalised:
 ///
@@ -58,6 +62,10 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 /// - `fill = expr`, `trim`, `non_empty`, `secret` — generated into
 ///   `TryFrom<Self> for Type`, applied in that order. A declared `bridge` owns
 ///   normalization instead, so these beside it are a compile error.
+/// - `skip` — the generated `TryFrom` leaves the field out of the input; clap still
+///   parses it. It takes no rule, and a declared `bridge` makes it a compile error.
+/// - `form` — the field is listed in `Facet::form_fields`, in declaration order, for a
+///   generated TUI form. Like `ask`, it needs a `long` or `short` option.
 ///
 /// Without a `bridge`, the derive implements `TryFrom<Self> for Type` and
 /// `validate` delegates to it; fields with no rule are copied by name.

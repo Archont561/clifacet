@@ -169,3 +169,29 @@ so the two can be read side by side.
   `value_parser = clap::value_parser!(T).range(R)` for the field's type with
   `Option`/`Vec` peeled. The shipped key table is the one in `docs/derive.md`.
 
+## Addendum (2026-11-03, on finishing CLI-28)
+
+Migrating the reference application exposed one gap, and the maintainer chose how to close
+it: field rules run first, and the application's own rule runs on what they produced. The
+build differs from that wording in one way, recorded here.
+
+- **`check = path`, not a bridge that receives normalised values.** The reference
+  application's `--repeat` range cannot be a `range` key: its parity tests require that
+  `--repeat 255` parses and that `ExampleInput::try_from` rejects it in the command's
+  words. A bridge cannot receive the command with the rules applied, because `fill`
+  changes a field's type (`Option<String>` to `String`). So the struct-level
+  `#[facet(check = path)]` names a `fn(&Input) -> Result<(), Failure>` that the generated
+  `TryFrom` calls last, on the built input. The rules come first, so a blank `--name` beside
+  `--repeat 9` reports the name, where the hand-written bridge reported the range. A
+  declared `bridge` still builds the whole input: a field rule beside it stays a compile
+  error, as CLI-28 AC#4 says, and so does `check` beside it.
+- **`skip`**: a field clap parses but the generated bridge does not copy. The application
+  keeps its interaction flags in `Cli` and out of `ExampleInput`, which the field-by-field
+  copy could not express. A rule on a `skip` field is a compile error.
+- **`form`** is implemented as proposed: `Facet::form_fields()` lists the `form` fields in
+  declaration order, with an empty default on the trait. Like `ask`, it needs a named
+  option. A generated form now submits each answer under the flag clap knows the argument
+  by (`--dry-run`, `-l`) rather than `--{id}`, which was wrong for any id that is not its
+  own long flag.
+- **The decline message** changed as the implementation note above foretold:
+  `the user declined "Fail on purpose?" (--explode)`. No parity test pinned the old text.

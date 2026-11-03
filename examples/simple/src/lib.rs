@@ -5,10 +5,13 @@
 //! the published API and nothing else — which is what makes it a proof of that API
 //! rather than a part of it. It holds the three layers apart on purpose:
 //!
-//! 1. [`Cli`] is the `clap` surface: flags, help and usage errors.
-//! 2. [`ExampleInput`] is validated input, built by [`TryFrom<Cli>`] — the
-//!    documented bridge the derived [`Facet`] calls. Everything that can be wrong
-//!    with a value is rejected there, so [`Input`] is total.
+//! 1. [`Cli`] is the `clap` surface: flags, help and usage errors. Each argument is
+//!    declared once, with `#[clifacet(..)]`: its grammar, its question, its
+//!    normalisation and its place on the form sit on the one field (decision-13).
+//! 2. [`ExampleInput`] is validated input, built by the [`TryFrom<Cli>`] those
+//!    declarations generate, which ends in [`check_input`] for the one rule that is
+//!    the application's own. Everything that can be wrong with a value is rejected
+//!    there, so [`Input`] is total.
 //! 3. [`Example`] is the command: it implements [`Command`], touches no stream and
 //!    knows nothing about `clap`.
 //!
@@ -30,7 +33,7 @@ use clifacet::Facet;
 use clifacet::Failure;
 use clifacet::contract::ExitPolicy;
 use clifacet::policy::{Capabilities, Mode, Policy, Request};
-use clifacet::prompt::{Dialog, Prompter, Session, Terminal};
+use clifacet::prompt::{Collect, Dialog, Prompter, Session, Terminal};
 use clifacet::secret::Secret;
 
 /// The exit codes this application gives its outcomes.
@@ -106,13 +109,15 @@ fn parse_level(value: &str) -> Result<Level, String> {
     value.parse()
 }
 
-/// The `clap` surface of the example command.
+/// The `clap` surface of the example command, each argument declared once.
 ///
-/// The derived [`Facet`] points at [`ExampleInput`] and at [`build_input`], so the
-/// only route to typed input is the bridge below; aliases, the `--repeat` default
-/// and the [`Level`] parser all stay `clap`'s.
-#[derive(Debug, Clone, PartialEq, Eq, Parser, clifacet::Facet)]
-#[facet(input = ExampleInput, bridge = build_input)]
+/// `#[clifacet::command]` derives `clap`'s parser and [`Facet`] together. Every field's
+/// `#[clifacet(..)]` carries the whole argument: the grammar keys reach `clap`
+/// untouched — aliases, the `--repeat` default and the [`Level`] parser stay `clap`'s
+/// — and the rest generate the [`TryFrom<Cli>`] bridge to [`ExampleInput`], the
+/// questions [`Collect`] asks, and the form's field list ([`Facet::form_fields`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[clifacet::command(input = ExampleInput, check = check_input)]
 #[command(
     name = "example",
     version = clifacet::VERSION,
@@ -126,20 +131,42 @@ pub struct Cli {
     /// Who to greet. Defaults to `world`.
     ///
     /// `--nickname` is an alias and `-n` a short flag: three spellings, one field,
-    /// one validation rule.
-    #[arg(long, short = 'n', alias = "nickname", value_name = "NAME")]
+    /// one validation rule. Asked for when no flag supplied it, then filled, trimmed
+    /// and refused if blank — whether it came from a flag, an answer or neither.
+    #[clifacet(
+        long,
+        short = 'n',
+        alias = "nickname",
+        value_name = "NAME",
+        ask = "Who should I greet?",
+        fill = "world",
+        trim,
+        non_empty,
+        form
+    )]
     pub name: Option<String>,
 
     /// How many times to greet, from 1 to 8.
-    #[arg(long, value_name = "COUNT", default_value_t = 1)]
+    ///
+    /// A `u8`, so `255` parses: the bound is [`check_input`]'s, in the command's words.
+    #[clifacet(long, value_name = "COUNT", default_value_t = 1, form)]
     pub repeat: u8,
 
     /// How much detail to report.
-    #[arg(long, value_name = "LEVEL", default_value_t = Level::Basic, value_parser = parse_level)]
+    #[clifacet(
+        long,
+        value_name = "LEVEL",
+        default_value_t = Level::Basic,
+        value_parser = parse_level,
+        form
+    )]
     pub level: Level,
 
     /// Fail on purpose, to demonstrate the execution-failure seam.
-    #[arg(long)]
+    ///
+    /// Confirmed before anything runs when someone can answer; a non-interactive
+    /// `--explode` is a deliberate request, not something to confirm.
+    #[clifacet(long, confirm = "Fail on purpose?")]
     pub explode: bool,
 
     /// An API credential, never echoed back.
@@ -148,15 +175,17 @@ pub struct Cli {
     /// both of this type's implementations are `[redacted]`. A credential beginning
     /// with `revoked` is refused, to demonstrate that even a diagnostic which names
     /// the credential does not print it. Passing a credential as a flag is visible to
-    /// other processes on many systems; see `docs/command-core.md`.
-    #[arg(long, value_name = "TOKEN")]
+    /// other processes on many systems; see `docs/command-core.md`. Blank is not a
+    /// credential: whitespace is trimmed, and nothing left means none was supplied.
+    #[clifacet(long, value_name = "TOKEN", secret, trim, non_empty)]
     pub token: Option<Secret<String>>,
 
     /// How the user wants to be asked, if at all.
     ///
-    /// Presentation, not command input: [`ExampleInput`] does not carry any of it,
-    /// and the application refuses what it cannot honor instead of ignoring it.
+    /// Presentation, not command input: `skip` keeps it out of [`ExampleInput`], and
+    /// the application refuses what it cannot honor instead of ignoring it.
     #[command(flatten)]
+    #[clifacet(skip)]
     pub interaction: InteractionFlags,
 }
 
@@ -228,59 +257,24 @@ pub struct ExampleInput {
     pub token: Option<Secret<String>>,
 }
 
-impl TryFrom<Cli> for ExampleInput {
-    type Error = Failure;
-
-    /// Validates the parsed flags.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Failure::validation`] when `--repeat` is outside `1..=MAX_REPEAT`
-    /// or `--name` is blank.
-    fn try_from(cli: Cli) -> Result<Self, Self::Error> {
-        if cli.repeat == 0 || cli.repeat > MAX_REPEAT {
-            return Err(Failure::validation(format!(
-                "--repeat must be between 1 and {MAX_REPEAT}, got {}",
-                cli.repeat
-            )));
-        }
-        let name = cli.name.unwrap_or_else(|| String::from("world"));
-        let name = name.trim();
-        if name.is_empty() {
-            return Err(Failure::validation("--name must not be blank"));
-        }
-        // A blank credential is not a credential: whitespace would otherwise reach the
-        // command as a value that looks supplied.
-        let token = cli
-            .token
-            .map(Secret::into_inner)
-            .map(|token| token.trim().to_owned())
-            .filter(|token| !token.is_empty())
-            .map(Secret::new);
-        Ok(Self {
-            name: name.to_owned(),
-            repeat: cli.repeat,
-            explode: cli.explode,
-            level: cli.level,
-            token,
-        })
-    }
-}
-
-/// The documented bridge from the parsed command to validated input.
+/// The one rule the declarations cannot state: `--repeat` within `1..=MAX_REPEAT`.
 ///
-/// `#[derive(Facet)]` names this function, so there is exactly one path from
-/// `clap`'s struct to [`ExampleInput`] — reachable through [`Facet::validate`] and
-/// nowhere else. It is a free function because that is what the derive calls; the
-/// rules themselves stay in [`TryFrom<Cli>`], which has no `clap` dependency of
-/// its own beyond the struct.
+/// The generated [`TryFrom<Cli>`] calls it last, on the input the field rules
+/// already built — the name filled, trimmed and known not to be blank, the
+/// credential trimmed — so it is the only validation this crate writes by hand, and
+/// it reads the value the command will run with rather than the raw flag.
 ///
 /// # Errors
 ///
-/// Returns whatever [`TryFrom<Cli>`] rejects: a `--repeat` outside `1..=MAX_REPEAT`
-/// or a blank `--name`.
-pub fn build_input(cli: Cli) -> Result<ExampleInput, Failure> {
-    ExampleInput::try_from(cli)
+/// Returns [`Failure::validation`] when `repeat` is outside `1..=MAX_REPEAT`.
+pub fn check_input(input: &ExampleInput) -> Result<(), Failure> {
+    if input.repeat == 0 || input.repeat > MAX_REPEAT {
+        return Err(Failure::validation(format!(
+            "--repeat must be between 1 and {MAX_REPEAT}, got {}",
+            input.repeat
+        )));
+    }
+    Ok(())
 }
 
 /// What the command produces for the application to render.
@@ -460,24 +454,15 @@ where
     }
 }
 
-/// Fills the draft, then validates it through the same bridge the flags use.
+/// Asks what the declarations ask, then validates through the same bridge the flags use.
 ///
-/// A value the user supplied is never re-asked, and a missing one is asked for
-/// only when the plan permits — which is what makes a prompted run and a flag run
-/// the same command rather than two behaviours.
-fn collect(session: &mut Session, mut cli: Cli) -> Result<ExampleInput, Failure> {
-    let name = session.value(cli.name.take(), "Who should I greet?")?;
-    cli.name = name;
-
-    // Only ask when something can answer: a non-interactive `--explode` is a
-    // deliberate request, not something to confirm.
-    if cli.explode && session.plan().asks_the_user() && !session.confirm("Fail on purpose?")? {
-        return Err(Failure::cancelled(
-            "the user declined to fail on purpose (--explode)",
-        ));
-    }
-
-    Facet::validate(cli)
+/// Both halves are generated from [`Cli`]'s fields: [`Collect`] asks for a value no
+/// flag supplied and confirms `--explode`, each only when the plan permits, and
+/// [`Facet::validate`] is the [`TryFrom<Cli>`] bridge. A value the user supplied is
+/// never re-asked — which is what makes a prompted run and a flag run the same
+/// command rather than two behaviours.
+fn collect(session: &mut Session, cli: Cli) -> Result<ExampleInput, Failure> {
+    cli.collect(session).and_then(Facet::validate)
 }
 
 /// The exit code a failure costs this application.
@@ -643,21 +628,22 @@ fn finish_tui(
     }
 }
 
-/// The form this command asks, generated from the command itself.
+/// The form this command asks, generated from the command's own declarations.
 ///
-/// Only the value arguments appear: the flags that chose the mode are not questions
-/// for a user who already chose one.
+/// The fields are the ones [`Cli`] declares with `form`, in declaration order
+/// ([`Facet::form_fields`]): only the value arguments, because the flags that chose
+/// the mode are not questions for a user who already chose one.
 ///
 /// # Panics
 ///
-/// Panics if the command no longer has one of these arguments. The names are a
-/// constant beside the command they name, so a mismatch is a bug in this crate, not
-/// something a user can cause; [`clifacet::tui::FormState::generated`] still reports it
-/// as a failure for anyone generating a form from someone else's command.
+/// Panics if the command has none of its form fields. The list is generated from the
+/// same fields the command is, so that cannot happen short of a bug in the derive;
+/// [`clifacet::tui::FormState::generated`] still reports it as a failure for anyone
+/// generating a form from someone else's command.
 #[must_use]
 pub fn tui_form() -> clifacet::tui::FormState {
-    clifacet::tui::FormState::generated(&<Cli as Facet>::command(), &["name", "repeat", "level"])
-        .expect("the example form names arguments its own command has")
+    clifacet::tui::FormState::generated(&<Cli as Facet>::command(), Cli::form_fields())
+        .expect("the form fields are generated from the command's own arguments")
 }
 
 /// Turns the answers into a run, through the same validation and handler as the flags.
