@@ -90,8 +90,8 @@ fn forward_field_attributes(parsed: &mut DeriveInput) -> syn::Result<()> {
         let mut forwarded = Vec::new();
         for attribute in field.attrs.drain(..) {
             if attribute.path().is_ident(crate::field::ATTRIBUTE) {
-                let declared = crate::field::parse(&attribute)?;
-                forwarded.push(declared.attribute());
+                let declared = crate::field::parse(&attribute, &field.ty)?;
+                forwarded.extend(declared.attributes());
             } else {
                 forwarded.push(attribute);
             }

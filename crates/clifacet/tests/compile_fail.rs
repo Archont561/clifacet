@@ -29,3 +29,14 @@ fn a_field_attribute_declares_an_argument_and_reports_what_it_cannot_declare() {
     cases.compile_fail("tests/ui/field_attribute_unknown_key.rs");
     cases.compile_fail("tests/ui/field_attribute_repeated_key.rs");
 }
+
+#[test]
+fn a_field_rule_on_the_wrong_field_fails_to_compile_and_says_why() {
+    let cases = trybuild::TestCases::new();
+    cases.compile_fail("tests/ui/field_confirm_not_bool.rs");
+    cases.compile_fail("tests/ui/field_ask_not_option.rs");
+    cases.compile_fail("tests/ui/field_ask_secret.rs");
+    cases.compile_fail("tests/ui/field_ask_positional.rs");
+    cases.compile_fail("tests/ui/field_rule_wrong_type.rs");
+    cases.compile_fail("tests/ui/field_rule_beside_bridge.rs");
+}

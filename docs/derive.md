@@ -81,83 +81,130 @@ module.
 
 ## Declaring one field once
 
-`#[clifacet(..)]` on a field is the same command declared more compactly: one attribute
-carries the argument's grammar, so the `#[arg(..)]` it would otherwise need is written
-for you. The macro forwards each key into a single `#[arg(..)]` on that field, so `clap`
-parses exactly as before and the help, aliases and value parsers stay its.
+`#[clifacet(..)]` on a field is the whole argument in one attribute: its grammar, the
+question that supplies it when no flag did, and the rules that turn it into input. The
+macro splits the keys. Grammar goes into one `#[arg(..)]`, so `clap` parses exactly as
+it would have and the help, aliases and value parsers stay its; everything else goes
+into a field-level `#[facet(..)]`, which the `Facet` derive turns into a generated
+`TryFrom` bridge and a generated `Collect::collect`.
 
 ```rust
-use clifacet::clap::{CommandFactory as _, Parser as _};
+use clifacet::clap::Parser as _;
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Answer, Collect as _, Scripted, Session};
+use clifacet::Facet;
 
 #[clifacet::command(input = Greeting)]
 #[command(name = "greet", about = "Say hello")]
 struct Cli {
     /// Who to greet.
-    #[clifacet(long, short = 'n', alias = "nickname", value_name = "NAME")]
+    #[clifacet(
+        long, short = 'n', alias = "nickname", value_name = "NAME",
+        ask = "Who should I greet?", fill = "world", trim, non_empty,
+    )]
     name: Option<String>,
 
-    /// How many times to greet.
-    #[clifacet(long, value_name = "COUNT")]
+    /// How many times to greet, from 1 to 8.
+    #[clifacet(long, value_name = "COUNT", range = 1..=8, default_value_t = 1)]
     repeat: u8,
 }
 
-/// The typed input, built field by field.
+/// The typed input: never missing a name, never a blank one.
 struct Greeting {
-    name: Option<String>,
+    name: String,
     repeat: u8,
 }
 
-let cli = Cli::try_parse_from(["greet", "--nickname", "ada", "--repeat", "3"])
+// The flags: clap parses, the generated bridge normalises.
+let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
     .expect("the forwarded grammar parses");
-assert_eq!(cli.name.as_deref(), Some("ada"));
-assert_eq!(cli.repeat, 3);
-assert!(Cli::command().render_help().to_string().contains("-n, --name <NAME>"));
+let input = cli.validate().expect("valid");
+assert_eq!((input.name.as_str(), input.repeat), ("ada", 3));
+// `Facet::command()` is clap's command: the help is built from the forwarded keys.
+assert!(<Cli as Facet>::command().render_help().to_string().contains("-n, --name <NAME>"));
+
+// No flag at a terminal: the declaration asks, and the answer meets the same rules.
+let plan = Policy::up_to(Mode::Interactive)
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("prompts are permitted");
+let mut session = Session::start(plan, || {
+    Box::new(Scripted::new([Answer::Text(String::from(" grace "))]))
+});
+let input = Cli::try_parse_from(["greet"])
+    .expect("parses")
+    .collect(&mut session)
+    .and_then(Facet::validate)
+    .expect("valid");
+assert_eq!(input.name, "grace");
 ```
 
-The keys are split by what they mean to clap, and the split is the whole documented
-surface — anything outside it is a compile error rather than an argument that quietly
-means nothing:
+The keys are the whole documented surface. Anything outside them is a compile error
+naming the supported keys, rather than an argument that quietly means nothing:
 
-| Kind | Keys | Forwarded as |
+| Kind | Keys | Becomes |
 | --- | --- | --- |
-| value | `action`, `alias`, `conflicts_with`, `conflicts_with_all`, `default_value`, `default_value_t`, `env`, `group`, `help`, `id`, `ignore_case`, `num_args`, `range`, `requires`, `value_delimiter`, `value_name`, `value_parser` | `key = …` |
-| flag | `hide`, `long_alias`, `required`, `short_alias`, `value_enum` | `key` |
-| either | `long`, `short` | `key` (derive the name from the field) or `key = …` |
+| grammar, with a value | `alias`, `conflicts_with`, `conflicts_with_all`, `default_value`, `group`, `help`, `hide`, `id`, `ignore_case`, `num_args`, `required`, `requires`, `short_alias`, `value_delimiter`, `value_name`, `visible_alias` | `#[arg(key = …)]` — clap's builder methods, so `required = true`, as in clap |
+| grammar, bare | `value_enum` | `#[arg(value_enum)]` |
+| grammar, either | `action`, `default_value_t`, `env`, `long`, `short`, `value_parser` | bare (clap derives the value from the field) or `key = …` |
+| grammar, translated | `range = 1..=8` | `value_parser = clap::value_parser!(T).range(1..=8)`, `T` the field type with `Option`/`Vec` peeled |
+| asking | `ask = "…"` | `collect` asks when no flag supplied the value; the answer is parsed by the argument's own clap parser |
+| asking | `confirm = "…"` | `collect` puts the set flag to the user; declining cancels the run |
+| normalising | `fill = expr` | the bridge's value when neither a flag nor an answer supplied one |
+| normalising | `trim`, `non_empty` | the bridge trims, then rejects blank text — or, on an `Option`, makes it absent |
+| normalising | `secret` | the field must be a `Secret<_>`, so the credential cannot be printed |
 
-Two rules keep it honest:
+The bridge applies its rules in one order — `fill`, `trim`, `non_empty`, `secret` —
+whatever order they were written in, because trimming after the blank check would let
+`"  "` through. `ask` and `confirm` run in `collect`, which only fills the parsed
+command in; `Facet::validate` still produces the input, so an answer and a flag meet
+exactly the same rules.
 
-- **One key, one meaning.** Declaring a key twice on a field is an error, not a
-  last-one-wins resolution, because the pair would silently mean whichever came second.
-- **The escape hatch is the field next door.** A raw `#[arg(..)]` on the same field
-  passes through untouched, so a clap key this table has not grown yet stays available
-  without waiting for a release; the test that proves the two compose lives in
-  `crates/clifacet/tests/ui/field_attribute_valid.rs`.
+Rules that cannot hold are compile errors at the key, each with a golden `trybuild`
+file:
 
-`#[derive(clap::Parser)]` with plain `#[arg(..)]` keeps working exactly as it did — this
-is additive. What the interaction keys (`ask`, `fill`, `confirm`) and the normalization
-keys (`trim`, `non_empty`, `secret`) will do with the same declaration is decision-13;
-they are not implemented yet, and naming one today is a compile error rather than a
-silent no-op.
+- **One key, one meaning.** A key declared twice is an error, not last-one-wins.
+- **`confirm` is for a `bool`, `ask` for an `Option`.** A value that cannot be missing
+  cannot be asked for, and only a flag that is set can be confirmed.
+- **`ask` needs a named option.** The answer is parsed as the flag's value; a positional
+  argument cannot be asked for.
+- **No `ask` on a `secret`.** No frontend hides an answer yet, so the credential would be
+  echoed as it is typed.
+- **A rule names the types it fits.** `trim` on a number or `secret` on a `String` says
+  so, in those words.
+- **A declared `bridge = …` owns normalization.** A `fill`/`trim`/`non_empty`/`secret`
+  beside it is an error, because it would do nothing; `ask` and `confirm` still work.
 
-## Two ways to build the input
+The escape hatch is the field next door: a raw `#[arg(..)]` on the same field passes
+through untouched, so a clap key this table has not grown yet stays available without
+waiting for a release. `crates/clifacet/tests/ui/field_attribute_valid.rs` proves the two
+compose.
+
+`#[derive(clap::Parser)]` with plain `#[arg(..)]` keeps working exactly as it did, and
+the same field rules are available there as `#[facet(ask = …, trim)]` on the field —
+`#[clifacet(..)]` forwards to that attribute rather than generating anything itself, so
+the two spellings cannot drift.
+
+## Three ways to build the input
 
 | Attribute | Effect |
 | --- | --- |
 | `#[facet(input = Type)]` | required; the type `validate` returns |
-| no `bridge` | copies fields by name, so a renamed or missing field is a compile error |
-| `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input that normalizes |
+| no `bridge`, no field rules | the generated `TryFrom` copies fields by name, so a renamed or missing field is a compile error |
+| no `bridge`, field rules | the same `TryFrom`, with each field's `fill`/`trim`/`non_empty`/`secret` applied on the way |
+| `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input whose rules span fields |
 
-Use the bridge when the input is not a renamed copy of the struct: the reference
-application uses it because `--name` normalizes from `Option<String>` to a trimmed
-`String`, and a blank value has to be rejected. Both rules then live next to the data
-they constrain, in one `fn`.
+Reach for the bridge when a rule is about more than one field — the reference
+application's `--repeat` range check and its blank-credential rule both predate the
+field rules and still live in one `fn` there. A rule about one field belongs on that
+field.
 
 ## What the derive does not do
 
 - **It does not parse.** `Facet::command()` *is* `<Cli as CommandFactory>::command()`,
   so aliases, defaults and value parsers are `clap`'s, unchanged.
 - **It does not re-run the parser.** Input is built from the value that was already
-  parsed; constructs `clap` cannot re-validate stay out of scope.
+  parsed. An answer to `ask` is the one value parsed later, and it goes through the
+  argument's own `clap` parser rather than a second one.
 - **It does not guess.** Unsupported shapes — a missing `#[facet(input = …)]`, an
   unknown key, an enum, an input missing a field the mirror would copy — are compile
   errors with a golden `trybuild` file, so the message says what to write instead.

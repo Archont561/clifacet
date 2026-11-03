@@ -14,12 +14,15 @@
 //! - `#[facet(bridge = path)]`, for an input that normalizes — `Option<String>`
 //!   to a trimmed `String`, say — and so cannot be built by copying fields.
 
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::punctuated::Punctuated;
-use syn::{Data, DeriveInput, Expr, Fields, Meta, Path, Token};
+use syn::spanned::Spanned as _;
+use syn::{Data, DeriveInput, Expr, Fields, Ident, Meta, Path, Token};
 
-/// The attribute this derive reads.
-const ATTRIBUTE: &str = "facet";
+use crate::rules::{self, Rules};
+
+// The attribute this derive reads, on the struct and on its fields.
+use crate::rules::ATTRIBUTE;
 
 /// The keys the attribute accepts.
 const SUPPORTED_KEYS: &str = "`input`, `bridge`";
@@ -41,18 +44,37 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
              add `#[facet(input = YourInputType)]`",
         )
     })?;
-
-    // Either copy the fields across, or hand over to the declared bridge. The
-    // bridge receives the parsed command by value and does its own validation,
-    // which is what keeps the normalization rules next to the input type.
-    let build = if let Some(bridge) = declared.bridge {
-        quote!(#bridge(self))
-    } else {
-        let assignments = fields.iter().map(|field| quote!(#field: self.#field));
-        quote!(::core::result::Result::Ok(#input_type { #(#assignments),* }))
-    };
-
     let name = &input.ident;
+
+    // Either generate the bridge from the field declarations, or hand over to the
+    // declared one. A declared bridge receives the parsed command by value and owns
+    // its own normalization, which is why a field rule beside it is an error rather
+    // than a rule that silently does nothing.
+    let (validate, bridge_impl) = if let Some(bridge) = declared.bridge {
+        for field in &fields {
+            field.rules.check_bridge()?;
+        }
+        (quote!(#bridge(self)), quote!())
+    } else {
+        let assignments = fields.iter().map(|field| field.assignment(name));
+        let bridge_impl = quote! {
+            impl ::core::convert::TryFrom<#name> for #input_type {
+                type Error = ::clifacet::Failure;
+
+                fn try_from(
+                    cli: #name,
+                ) -> ::core::result::Result<Self, ::clifacet::Failure> {
+                    ::core::result::Result::Ok(#input_type { #(#assignments),* })
+                }
+            }
+        };
+        (
+            quote!(<#input_type as ::core::convert::TryFrom<Self>>::try_from(self)),
+            bridge_impl,
+        )
+    };
+    let collect = collect_impl(name, &fields);
+
     Ok(quote! {
         impl ::clifacet::Facet for #name {
             type Input = #input_type;
@@ -60,14 +82,118 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
             fn validate(
                 self,
             ) -> ::core::result::Result<#input_type, ::clifacet::Failure> {
-                #build
+                #validate
             }
         }
+
+        #bridge_impl
+
+        #collect
     })
 }
 
-/// Collects the field names the bridge copies, rejecting shapes it cannot bridge.
-fn named_fields(input: &DeriveInput) -> syn::Result<Vec<syn::Ident>> {
+/// One field of the command struct, with what it declared.
+struct Declaration {
+    name: Ident,
+    /// The id clap knows the field by, for asking and for naming it in a message.
+    id: String,
+    rules: Rules,
+}
+
+impl Declaration {
+    /// The field's entry in the generated struct literal: copied by name, with the
+    /// declared rules applied in their one fixed order.
+    fn assignment(&self, command: &Ident) -> proc_macro2::TokenStream {
+        let name = &self.name;
+        if !self.rules.normalises() {
+            return quote!(#name: cli.#name);
+        }
+        let id = &self.id;
+        let mut steps = Vec::new();
+        if let Some(fallback) = &self.rules.fill {
+            steps.push(quote_spanned! {fallback.span()=>
+                let value = ::clifacet::facet::__derive::fill(
+                    value,
+                    || ::core::convert::Into::into(#fallback),
+                );
+            });
+        }
+        if let Some(span) = self.rules.trim {
+            steps.push(quote_spanned! {span=>
+                let value = ::clifacet::facet::__derive::Text::trim(value);
+            });
+        }
+        if let Some(span) = self.rules.non_empty {
+            steps.push(quote_spanned! {span=>
+                let value = ::clifacet::facet::__derive::Text::non_empty(
+                    value,
+                    || ::clifacet::facet::__derive::flag::<#command>(#id),
+                )?;
+            });
+        }
+        if let Some(span) = self.rules.secret {
+            steps.push(quote_spanned! {span=>
+                let value = ::clifacet::facet::__derive::credential(value);
+            });
+        }
+        quote!(#name: { let value = cli.#name; #(#steps)* value })
+    }
+}
+
+/// `Collect` for the command: ask what no flag supplied, confirm what was set.
+///
+/// Generated for every derived command, with nothing to do when no field declares a
+/// question, so collection is one call whatever the command declares.
+fn collect_impl(name: &Ident, fields: &[Declaration]) -> proc_macro2::TokenStream {
+    let questions: Vec<_> = fields
+        .iter()
+        .filter_map(|field| {
+            let (field_name, id) = (&field.name, &field.id);
+            if let Some(ask) = &field.rules.ask {
+                let text = &ask.text;
+                // Spanned at the key: an `ask` on a field that is not an `Option` is a
+                // type error, and that is where the user has to look.
+                return Some(quote_spanned! {ask.span=>
+                    session.ask_for(&mut self.#field_name, &command, #id, #text)?;
+                });
+            }
+            field.rules.confirm.as_ref().map(|confirm| {
+                let text = &confirm.text;
+                quote_spanned! {confirm.span=>
+                    session.confirm_flag(self.#field_name, &command, #id, #text)?;
+                }
+            })
+        })
+        .collect();
+
+    if questions.is_empty() {
+        return quote! {
+            impl ::clifacet::prompt::Collect for #name {
+                fn collect(
+                    self,
+                    _session: &mut ::clifacet::prompt::Session,
+                ) -> ::core::result::Result<Self, ::clifacet::Failure> {
+                    ::core::result::Result::Ok(self)
+                }
+            }
+        };
+    }
+    quote! {
+        impl ::clifacet::prompt::Collect for #name {
+            fn collect(
+                mut self,
+                session: &mut ::clifacet::prompt::Session,
+            ) -> ::core::result::Result<Self, ::clifacet::Failure> {
+                let command = <Self as ::clifacet::clap::CommandFactory>::command();
+                #(#questions)*
+                ::core::result::Result::Ok(self)
+            }
+        }
+    }
+}
+
+/// Collects the fields the bridge copies, rejecting shapes it cannot bridge.
+fn named_fields(input: &DeriveInput) -> syn::Result<Vec<Declaration>> {
     let Data::Struct(data) = &input.data else {
         return Err(syn::Error::new_spanned(
             input,
@@ -84,11 +210,18 @@ fn named_fields(input: &DeriveInput) -> syn::Result<Vec<syn::Ident>> {
         ));
     };
 
-    Ok(named
+    named
         .named
         .iter()
-        .filter_map(|field| field.ident.clone())
-        .collect())
+        .filter_map(|field| field.ident.clone().map(|name| (field, name)))
+        .map(|(field, name)| {
+            Ok(Declaration {
+                id: rules::argument_id(field, &name),
+                rules: rules::parse(field)?,
+                name,
+            })
+        })
+        .collect()
 }
 
 /// Reads the `#[facet(...)]` attribute, rejecting anything it cannot honor.

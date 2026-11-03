@@ -11,6 +11,7 @@
 mod command;
 mod facet;
 mod field;
+mod rules;
 
 use proc_macro::{Literal, TokenStream, TokenTree};
 
@@ -47,7 +48,19 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// - `#[facet(input = Type)]` — required. The typed input the bridge builds.
 /// - `#[facet(bridge = path)]` — optional. Called as `path(cli) -> Result<Type,
-///   Failure>` instead of copying fields, for input that normalizes on the way in.
+///   Failure>` instead of the generated `TryFrom`, for input whose rules span fields.
+///
+/// On a field, `#[facet(..)]` says how that one value is asked for and normalised:
+///
+/// - `ask = "…"` / `confirm = "…"` — generated into `clifacet::prompt::Collect`: ask
+///   for an `Option` no flag supplied, parsed by the argument's own clap parser; put a
+///   set `bool` flag to the user.
+/// - `fill = expr`, `trim`, `non_empty`, `secret` — generated into
+///   `TryFrom<Self> for Type`, applied in that order. A declared `bridge` owns
+///   normalization instead, so these beside it are a compile error.
+///
+/// Without a `bridge`, the derive implements `TryFrom<Self> for Type` and
+/// `validate` delegates to it; fields with no rule are copied by name.
 ///
 /// # Panics
 ///

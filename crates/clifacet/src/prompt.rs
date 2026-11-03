@@ -44,6 +44,7 @@ use std::rc::Rc;
 pub use dialog::Dialog;
 
 use crate::command::Command;
+use crate::facet::describe_argument;
 use crate::failure::Failure;
 use crate::policy::Plan;
 
@@ -241,6 +242,54 @@ fn read_failed(error: &std::io::Error) -> Failure {
     Failure::execution(format!("cannot read the answer: {error}"))
 }
 
+/// A parsed command that fills in what its flags left out.
+///
+/// `#[derive(Facet)]` implements it from the field declarations — `ask` for a value no
+/// flag supplied, `confirm` for a flag that was set — so a prompted run and a flag run
+/// go through the same rule: a supplied value is never re-asked. Collection hands back
+/// the same parsed command, now filled in; it is still [`Facet::validate`] that turns it
+/// into input, so an answer is checked by exactly the rules a flag is.
+///
+/// ```
+/// use clifacet::policy::{Capabilities, Mode, Policy, Request};
+/// use clifacet::prompt::{Answer, Collect, Scripted, Session};
+/// use clifacet::Facet;
+///
+/// #[clifacet::command(input = Greeting)]
+/// struct Cli {
+///     #[clifacet(long, ask = "Who should I greet?", fill = "world", trim, non_empty)]
+///     name: Option<String>,
+/// }
+///
+/// struct Greeting {
+///     name: String,
+/// }
+///
+/// let plan = Policy::up_to(Mode::Interactive)
+///     .resolve(Request::none(), Capabilities::terminal())
+///     .expect("prompts are permitted here");
+/// let mut session = Session::start(plan, || {
+///     Box::new(Scripted::new([Answer::Text(String::from(" ada "))]))
+/// });
+///
+/// let cli = <Cli as clifacet::clap::Parser>::parse_from(["greet"]);
+/// let input = cli.collect(&mut session).and_then(Facet::validate).expect("valid");
+/// assert_eq!(input.name, "ada");
+/// ```
+///
+/// [`Facet::validate`]: crate::Facet::validate
+pub trait Collect: Sized {
+    /// Asks for what is missing and confirms what needs confirming, as the plan permits.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::cancelled`](crate::Failure::cancelled) when the user stops a
+    /// question or declines a confirmation, [`Failure::validation`](crate::Failure::validation)
+    /// when an answer is not a value the argument's own parser accepts, and the
+    /// frontend's failure when it breaks.
+    fn collect(self, session: &mut Session) -> Result<Self, Failure>;
+}
+
 /// One run's questions, and the rule for whether they may be asked.
 ///
 /// A session is built from a [`Plan`], so "may we prompt?" has already been
@@ -312,6 +361,68 @@ impl Session {
         }
     }
 
+    /// Fills an optional argument by asking, when no flag supplied it.
+    ///
+    /// The answer is parsed by the argument's own `clap` parser — its value parser,
+    /// its range, its possible values and its case rule — so an answer and a flag can
+    /// never disagree about what is valid, and an inline
+    /// `value_parser = clap::value_parser!(u8).range(1..=8)` needs nothing extra.
+    /// When nothing may ask, `slot` stays empty and the caller's default decides.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::validation`](crate::Failure::validation) with `clap`'s own
+    /// wording when the parser rejects the answer, the frontend's failure (including
+    /// cancellation) when the question is not answered, and
+    /// [`Failure::execution`](crate::Failure::execution) when `id` names no argument
+    /// of `command` that takes a value of type `T` — a declaration mistake, not
+    /// something the user did.
+    pub fn ask_for<T>(
+        &mut self,
+        slot: &mut Option<T>,
+        command: &clap::Command,
+        id: &str,
+        question: &str,
+    ) -> Result<(), Failure>
+    where
+        T: Clone + Send + Sync + 'static,
+    {
+        if slot.is_some() {
+            return Ok(());
+        }
+        let Some(answer) = self.value(None, question)? else {
+            return Ok(());
+        };
+        *slot = Some(parse_answer(command, id, &answer)?);
+        Ok(())
+    }
+
+    /// Puts a flag that was set to the user before anything runs.
+    ///
+    /// Asks only when the flag is set and the plan asks the user something: an
+    /// unattended `--explode` is a deliberate request, not something to confirm, and
+    /// `--yes` answers it without asking. A declined confirmation cancels the run.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::cancelled`](crate::Failure::cancelled), naming the flag,
+    /// when the user declines, and the frontend's failure when it breaks.
+    pub fn confirm_flag(
+        &mut self,
+        set: bool,
+        command: &clap::Command,
+        id: &str,
+        question: &str,
+    ) -> Result<(), Failure> {
+        if !set || !self.plan.asks_the_user() || self.confirm(question)? {
+            return Ok(());
+        }
+        Err(Failure::cancelled(format!(
+            "the user declined {question:?} ({})",
+            describe_argument(command, id)
+        )))
+    }
+
     /// Collects the input, then executes — never the other way round.
     ///
     /// Keeping the two in one place is what makes "nothing runs unless collection
@@ -329,6 +440,83 @@ impl Session {
         let input = collect(self)?;
         command.execute(input)
     }
+}
+
+/// The subcommand that switches off `clap`'s required-argument pass for an answer.
+///
+/// An answer is one value, parsed in the command it belongs to so every relation it
+/// names still resolves; `subcommand_negates_reqs` is how `clap` itself says "the rest
+/// is not being supplied here". The name cannot collide with a user's flag, because
+/// a subcommand is only ever matched in a position no answer token reaches.
+const ANSWERED: &str = "clifacet-answered";
+
+/// Parses one answer with the argument's own `clap` parser.
+///
+/// Only public `clap` API is used: the real command is cloned, nothing but the answer
+/// may supply a value (environment fallbacks are cleared), and the required-argument
+/// pass is negated. `clap` raises a value-parser error while parsing — before any
+/// relation is validated — so a rejected answer is reported in `clap`'s words.
+fn parse_answer<T>(command: &clap::Command, id: &str, answer: &str) -> Result<T, Failure>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    let Some(argument) = command
+        .get_arguments()
+        .find(|argument| argument.get_id() == id)
+    else {
+        return Err(Failure::execution(format!(
+            "`{id}` is not an argument of `{}`, so its answer cannot be parsed",
+            command.get_name()
+        )));
+    };
+    let tokens: Vec<String> = match (argument.get_long(), argument.get_short()) {
+        (Some(long), _) => vec![format!("--{long}={answer}")],
+        (None, Some(short)) => vec![format!("-{short}"), answer.to_owned()],
+        (None, None) => {
+            return Err(Failure::execution(format!(
+                "`{id}` is positional, and only a named option can be asked for"
+            )));
+        }
+    };
+
+    let probe = command
+        .clone()
+        .mut_args(|argument| argument.env(None))
+        .mut_arg(id, |argument| argument.allow_hyphen_values(true))
+        .subcommand(clap::Command::new(ANSWERED))
+        .subcommand_negates_reqs(true)
+        .subcommand_required(false)
+        .arg_required_else_help(false);
+    let argv = std::iter::once(command.get_name().to_owned())
+        .chain(tokens)
+        .chain(std::iter::once(ANSWERED.to_owned()));
+
+    let mut matches = probe
+        .try_get_matches_from(argv)
+        .map_err(|error| Failure::validation(clap_wording(&error)))?;
+    match matches.try_remove_one::<T>(id) {
+        Ok(Some(value)) => Ok(value),
+        Ok(None) => Err(Failure::validation(format!(
+            "{} needs a value",
+            describe_argument(command, id)
+        ))),
+        Err(mismatch) => Err(Failure::execution(format!(
+            "the answer for {} parsed to a different type than its field: {mismatch}",
+            describe_argument(command, id)
+        ))),
+    }
+}
+
+/// `clap`'s message for a rejected value, without the `error:` heading or the help tip.
+fn clap_wording(error: &clap::Error) -> String {
+    let rendered = error.to_string();
+    let message = rendered.strip_prefix("error: ").unwrap_or(&rendered);
+    message
+        .split("\n\n")
+        .next()
+        .unwrap_or(message)
+        .trim()
+        .to_owned()
 }
 
 impl std::fmt::Debug for Session {

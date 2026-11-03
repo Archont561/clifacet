@@ -5,6 +5,8 @@
 //! derive ever needs a private clap API or a second grammar to work.
 
 use clifacet::clap::Parser as _;
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Answer, Scripted, Session};
 use clifacet::{Command, Facet};
 use clifacet_example::{Cli, Example, ExampleInput};
 use rstest::fixture;
@@ -16,6 +18,8 @@ struct AppWorld {
     alias: String,
     input: Option<ExampleInput>,
     help: String,
+    declared: Option<declared::DeclaredInput>,
+    asked: Vec<String>,
 }
 
 #[fixture]
@@ -107,7 +111,16 @@ mod declared {
     #[command(name = "declare", about = "One attribute per field")]
     pub struct Declared {
         /// Who to greet. Defaults to `world`.
-        #[clifacet(long, short = 'n', alias = "nickname", value_name = "NAME")]
+        #[clifacet(
+            long,
+            short = 'n',
+            alias = "nickname",
+            value_name = "NAME",
+            ask = "Who should I greet?",
+            fill = "world",
+            trim,
+            non_empty
+        )]
         pub name: Option<String>,
 
         /// How many times to greet.
@@ -119,9 +132,10 @@ mod declared {
         pub level: u8,
     }
 
-    /// The typed input the derive builds field by field.
+    /// The typed input the derive builds field by field: the name is never missing and
+    /// never blank, because the declaration says so.
     pub struct DeclaredInput {
-        pub name: Option<String>,
+        pub name: String,
         pub repeat: u8,
         pub level: u8,
     }
@@ -184,5 +198,81 @@ fn the_declaration_parses_through_the_alias(_world: &mut AppWorld) {
 )]
 #[test]
 fn a_field_declared_once_carries_its_own_grammar(world: AppWorld) {
+    let _ = world;
+}
+
+#[given("a command whose name is declared with a question, a default and trimming")]
+fn a_command_declares_how_its_name_is_asked_for(_world: &mut AppWorld) {
+    // The declaration in `mod declared` is the fixture: `ask`, `fill`, `trim` and
+    // `non_empty` sit on the one field, beside its grammar, or the scenario does not compile.
+}
+
+/// Runs the declared command through the seams an application uses: clap parses, the
+/// generated `collect` asks on a session, and the generated bridge validates.
+fn run_declared(world: &mut AppWorld, capabilities: Capabilities, answers: Vec<Answer>) {
+    use clifacet::clap::Parser as _;
+    use clifacet::prompt::Collect as _;
+
+    let script = Scripted::new(answers);
+    let probe = script.clone();
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(Request::none(), capabilities)
+        .expect("this plan resolves");
+    let mut session = Session::start(plan, move || Box::new(probe));
+    let cli = declared::Declared::try_parse_from(["declare", "--repeat", "1", "--level", "1"])
+        .expect("the declared grammar parses");
+
+    world.declared = Some(
+        cli.collect(&mut session)
+            .and_then(Facet::validate)
+            .expect("the declared command collects and validates"),
+    );
+    world.asked = script.asked();
+}
+
+#[when("the user runs it at a terminal without --name and answers {answer:string}")]
+fn the_user_answers_at_a_terminal(world: &mut AppWorld, answer: String) {
+    run_declared(world, Capabilities::terminal(), vec![Answer::Text(answer)]);
+}
+
+#[when("the user runs it without a terminal and without --name")]
+fn the_user_runs_without_a_terminal(world: &mut AppWorld) {
+    run_declared(world, Capabilities::headless(), vec![]);
+}
+
+#[then("the declared input carries the name {name:string}")]
+fn the_declared_input_carries_the_name(world: &mut AppWorld, name: String) {
+    let input = world
+        .declared
+        .as_ref()
+        .expect("a previous step validated input");
+    assert_eq!(input.name, name);
+}
+
+#[then("the user was asked {question:string} once")]
+fn the_user_was_asked_once(world: &mut AppWorld, question: String) {
+    assert_eq!(world.asked, [question]);
+}
+
+#[then("the user was asked nothing")]
+fn the_user_was_asked_nothing(world: &mut AppWorld) {
+    assert!(world.asked.is_empty(), "asked: {:?}", world.asked);
+}
+
+#[scenario(
+    path = "tests/features/facet_bridge.feature",
+    name = "A field declared once is asked for and normalised by the same declaration"
+)]
+#[test]
+fn a_field_declared_once_is_asked_for_and_normalised(world: AppWorld) {
+    let _ = world;
+}
+
+#[scenario(
+    path = "tests/features/facet_bridge.feature",
+    name = "Without a terminal the declared default fills in and nothing is asked"
+)]
+#[test]
+fn without_a_terminal_the_declared_default_fills_in(world: AppWorld) {
     let _ = world;
 }
