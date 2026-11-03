@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* declare an argument once with a field attribute, and guard every feature's cfg site
+([5b700dc](https://github.com/Archont561/clifacet/commit/5b700dc2bc559a950a2156794099a9a440f6a41a))
 * **examples:** wrap the backlog.md CLI and record the authoring gaps
 ([b753b84](https://github.com/Archont561/clifacet/commit/b753b84db784ac647960f619c96e2f29a139fa32))
 
