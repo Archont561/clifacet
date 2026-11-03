@@ -4,7 +4,7 @@ title: Declarative field attribute for commands
 status: In Progress
 assignee: []
 created_date: '2026-11-01 21:18'
-updated_date: '2026-11-03 07:49'
+updated_date: '2026-11-03 07:58'
 labels: []
 milestone: m-7
 dependencies: []
@@ -39,4 +39,6 @@ One `#[clifacet(...)]` per field, carrying grammar, interaction and normalizatio
 - Docs: `docs/derive.md` gained a 'Declaring one field once' section with the full three-way key table and the escape-hatch rule; its snippet is compiled by `check-docs` (13 snippets, 10 pages). `docs/development.md` states the new cfg-site guard and the single `json` exception.
 - Evidence: `trybuild` 3 cases pass; workspace 302 Rust tests; 315 Python tests; `check-features` 5 configurations compile; clippy `-D warnings` clean; `cargo fmt --check` clean; `check-docs` clean.
 - Still open on this card: AC#2 to AC#6 — the interaction/normalization keys, the generated collection, the form field list, and the reference application migration.
+
+- 2026-11-03: CI is green on AC#1 — PR #42, run [41599242677](https://github.com/Archont561/clifacet/actions/runs/41599242677): all seven checks pass, including the three platform jobs, so the new trybuild fixtures compile where they are compiled and the forwarded `#[arg(..)]` keys behave the same on Windows and macOS.
 <!-- SECTION:NOTES:END -->

@@ -4,7 +4,7 @@ title: Prove every declared Cargo feature has a cfg site
 status: Done
 assignee: []
 created_date: '2026-11-01 22:46'
-updated_date: '2026-11-03 07:49'
+updated_date: '2026-11-03 07:58'
 labels: []
 milestone: m-9
 dependencies: []
@@ -34,4 +34,6 @@ A declared feature that no cfg mentions is a promise the crate does not keep. Ex
 - Evidence the guard bites: with the `json` entry temporarily removed, `check_features.py --check-cfg-sites` exits 1 naming `json`; restored, it reports 'every declared feature gates some code (3 checked)'. `--print-matrix` is unchanged (`no-default-features`, `default`, `interactive`, `json`, `tui`, `all-features`), and the full matrix passes: 5 distinct configurations, 'every supported combination compiles'.
 - AC#4 needed no workflow change: the guard rides the existing `check-features` step, which `ci.yml` already runs in the repository-quality job (and `prove_msrv.py` reuses the same module, so the MSRV matrix is guarded too).
 - TDD: the ten new tests were written first and collected red — `ImportError: cannot import name 'cfg_sites'` — before the implementation existed. Three test-side mistakes were fixed on the evidence rather than by weakening the product: `unused_features` was wrongly given fixture dicts instead of manifests, an exception default inside the predicate confused 'fact' with 'policy' (split into `unused_features` and `expect_unused_features`), and the allowlist was being granted to a temporary fixture crate by filename. 26 tests in this module, 315 Python tests overall, 302 Rust tests.
+
+- 2026-11-03: CI is green on the change — PR #42, run [41599242677](https://github.com/Archont561/clifacet/actions/runs/41599242677) passes all seven checks: Repository and Rust quality (which hosts `check-features`, so AC#4 is proved in CI and not only locally), Tests and source coverage, Minimum supported Rust version (the same `check_features` matrix at 1.88), Supported platforms on ubuntu, macos and windows, and Conventional commit messages.
 <!-- SECTION:NOTES:END -->
