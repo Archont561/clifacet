@@ -19,15 +19,24 @@ The claimed matrix is data, not a hand-written list of commands:
 Deriving the rows from the manifest is what keeps the matrix from rotting: adding
 a feature adds a row, and `prove_msrv.py` reuses this module, so the stable and
 MSRV matrices cannot disagree about what is supported.
+
+A row that compiles proves the feature *can* be enabled, not that enabling it does
+anything. So the same pass also checks the other half of the claim: every declared
+feature has a `cfg(feature = "…")` site in the crate's source. A feature with no
+site is a promise the crate does not keep, and the matrix row it owns is theatre.
+The unbuilt ones are named in `UNUSED_FEATURES` with the reason and the card that
+will settle them; silencing a feature there is the only way past the guard, and it
+costs a sentence.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,6 +50,29 @@ DEFAULT_FEATURE = "default"
 
 NO_DEFAULT = "no-default-features"
 ALL_FEATURES = "all-features"
+
+# A declared feature that no `cfg` mentions is a promise the crate does not keep: it
+# compiles in the matrix and changes nothing. The few that are genuinely unbuilt yet are
+# named here with the reason, and nothing else may be: a silently allowlisted feature is
+# exactly the rot this guard exists to catch.
+#
+# CLI-36 decides `json`'s fate — either it gets a `cfg(feature = "json")` site that
+# serialises failures, or it is retired from the manifest. When that lands, delete the
+# entry; `test_the_declared_exceptions_still_describe_the_crate` fails if it outlives it.
+UNUSED_FEATURES: dict[str, str] = {
+    "json": (
+        "reserves `serde_json` for machine-readable output that is not implemented yet, "
+        "so no code is gated on it; CLI-36 either builds it on a real cfg site or retires "
+        "the feature"
+    ),
+}
+
+# `cfg(feature = "x")`, `cfg!(feature = "x")` and `cfg_attr(…, feature = "x")` are all
+# sites where a feature changes the code. Comments are stripped first, because a guide
+# that *documents* a gate is not one.
+CFG_INVOCATION = re.compile(r"\bcfg(?:_attr)?!?\s*\(")
+FEATURE_PREDICATE = re.compile(r'feature\s*=\s*"([^"]+)"')
+
 
 
 @dataclass(frozen=True)
@@ -135,6 +167,114 @@ def combinations(manifest: dict) -> list[Combination]:
     ]
 
 
+def cfg_sites(source: str) -> set[str]:
+    """Every feature named by a `cfg` in Rust source, ignoring comments.
+
+    A bare `cfg(feature = "…")` token in a doc comment is prose about the code, not a
+    gate on it, so comments are removed before scanning. The parens are matched by hand
+    rather than with a regex because `cfg(all(unix, feature = "tui"))` nests.
+    """
+    code = strip_comments(source)
+    sites: set[str] = set()
+    for invocation in CFG_INVOCATION.finditer(code):
+        start = invocation.end() - 1
+        depth = 0
+        for position in range(start, len(code)):
+            if code[position] == "(":
+                depth += 1
+            elif code[position] == ")":
+                depth -= 1
+                if depth == 0:
+                    sites.update(FEATURE_PREDICATE.findall(code[start : position + 1]))
+                    break
+    return sites
+
+
+def strip_comments(source: str) -> str:
+    """Remove `//` and `/* */` comments, leaving strings and code alone.
+
+    Not a Rust parser: it tracks string and char literals only far enough that a `//`
+    inside one is not mistaken for a comment. That is the narrow job this needs — the
+    constructor to be gated is always in the crate's own source, which `cargo fmt` and
+    clippy have already put in ordinary shapes.
+    """
+    result: list[str] = []
+    index = 0
+    while index < len(source):
+        character = source[index]
+        if character == '"':
+            end = index + 1
+            while end < len(source) and source[end] != '"':
+                end += 2 if source[end] == "\\" else 1
+            result.append(source[index : end + 1])
+            index = end + 1
+        elif source.startswith("//", index):
+            end = source.find("\n", index)
+            index = len(source) if end == -1 else end
+        elif source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            index = len(source) if end == -1 else end + 2
+        else:
+            result.append(character)
+            index += 1
+    return "".join(result)
+
+
+def unused_features(manifest: dict, sites: set[str]) -> list[str]:
+    """Declared features that no cfg site mentions, in manifest order.
+
+    Deliberately knows nothing about exceptions: this is the fact the guard acts on, and
+    keeping the policy out of it is what lets a test compare the fact against the
+    documented allowlist.
+    """
+    return [name for name in declared_features(manifest) if name not in sites]
+
+
+def expect_unused_features(exceptions: Mapping[str, str]) -> list[str]:
+    """The allowlist, refusing an entry that has no written reason."""
+    for name, reason in exceptions.items():
+        if not reason.strip():
+            raise ValueError(
+                f"feature `{name}` is allowlisted without a reason; an exception has to say "
+                f"why the feature is declared but not gated, or the guard means nothing"
+            )
+    return sorted(exceptions)
+
+
+def crate_sources(crate_manifest: Path = CRATE_MANIFEST) -> list[Path]:
+    """The crate's own Rust files, which are the only place a site can be."""
+    return sorted((crate_manifest.parent / "src").rglob("*.rs"))
+
+
+def check_cfg_sites(crate_manifest: Path = CRATE_MANIFEST) -> list[str]:
+    """Every declared feature with no cfg site and no written exception.
+
+    `UNUSED_FEATURES` records promises about *this* repository's crate, so it is granted
+    to that crate and no other: a copy of the source elsewhere has not earned the excuse.
+    """
+    crate = load_manifest(crate_manifest)
+    sites = cfg_sites(
+        "\n".join(path.read_text(encoding="utf-8") for path in crate_sources(crate_manifest))
+    )
+    allowed = expect_unused_features(UNUSED_FEATURES if crate_manifest == CRATE_MANIFEST else {})
+    return [name for name in unused_features(crate, sites) if name not in allowed]
+
+
+def describe_unused(names: Sequence[str], exceptions: Mapping[str, str]) -> str:
+    """Name the ungated features the guard is failing on, and what to do about each."""
+    lines = [
+        "a declared feature has to gate something: no `cfg(feature = \"…\")` site mentions "
+        "these, so enabling them changes nothing and their matrix row proves nothing."
+    ]
+    for name in names:
+        lines.append(f"  {name}: add a `cfg(feature = \"{name}\")` site, or retire the feature")
+    lines.append(
+        f"an unbuilt feature may be allowlisted in UNUSED_FEATURES with a written reason; "
+        f"currently allowlisted: {', '.join(sorted(exceptions)) or 'none'}"
+    )
+    return "\n".join(lines)
+
+
 def build_plan(toolchain: str, package: str, matrix: Sequence[Combination]) -> list[Plan]:
     """One `cargo check` per distinct configuration, naming every row it covers.
 
@@ -198,7 +338,7 @@ def describe_failure(failure: Failure) -> str:
     )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, crate_manifest: Path = CRATE_MANIFEST) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--toolchain",
@@ -215,12 +355,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="print the commands the matrix resolves to and exit without running them",
     )
+    parser.add_argument(
+        "--check-cfg-sites",
+        action="store_true",
+        help="only check that every declared feature gates some code, and exit",
+    )
     arguments = parser.parse_args(argv)
 
     try:
-        crate = load_manifest(CRATE_MANIFEST)
+        crate = load_manifest(crate_manifest)
         matrix = combinations(crate)
-        plan = build_plan(arguments.toolchain, package_name(crate), matrix)
+        plan = build_plan(arguments.toolchain, package_name(crate, crate_manifest), matrix)
+        ungated = check_cfg_sites(crate_manifest)
     except ValueError as error:
         print(f"check-features: {error}", file=sys.stderr)
         return 1
@@ -234,6 +380,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.print_plan:
         for step in plan:
             print(" ".join(step.command()))
+        return 0
+
+    # Checked before anything is compiled: a feature that gates nothing is a manifest
+    # mistake, and finding it after four `cargo check` runs wastes the slowest part.
+    if ungated:
+        print(f"check-features: {describe_unused(ungated, UNUSED_FEATURES)}", file=sys.stderr)
+        return 1
+
+    if arguments.check_cfg_sites:
+        print(f"check-features: every declared feature gates some code ({len(declared_features(crate))} checked)")
         return 0
 
     print(

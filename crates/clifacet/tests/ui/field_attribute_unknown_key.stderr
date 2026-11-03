@@ -1,0 +1,5 @@
+error: `logn` is not a `#[clifacet(..)]` key this attribute forwards, so it would be an argument that means nothing. Supported keys: values — action, alias, conflicts_with, conflicts_with_all, default_value, default_value_t, env, group, help, id, ignore_case, num_args, range, requires, value_delimiter, value_name, value_parser; flags — hide, long_alias, required, short_alias, value_enum; either — long, short. Anything else stays available as a raw `#[arg(logn …)]` on the same field, which this attribute passes through untouched.
+ --> tests/ui/field_attribute_unknown_key.rs:6:16
+  |
+6 |     #[clifacet(logn, value_name = "NAME")]
+  |                ^^^^

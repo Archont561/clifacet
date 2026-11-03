@@ -24,7 +24,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::Parser as _;
 use syn::punctuated::Punctuated;
-use syn::{Attribute, Data, DeriveInput, Meta, Token};
+use syn::{Attribute, Data, DeriveInput, Fields, Meta, Token};
 
 /// The derives this attribute stands for, in the order they are emitted.
 const PARSER: &str = "Parser";
@@ -51,6 +51,10 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
         ));
     }
 
+    // Fields first: a bad `#[clifacet(..)]` should be reported as this attribute's
+    // mistake, before the item is emitted and clap starts complaining about the result.
+    forward_field_attributes(&mut parsed)?;
+
     let mut attributes = parsed.attrs.clone();
     reject_duplicates(&attributes)?;
 
@@ -65,6 +69,36 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
     parsed.attrs = attributes;
 
     Ok(quote!(#parsed))
+}
+
+/// Replaces every field's `#[clifacet(..)]` with the `#[arg(..)]` it stands for.
+///
+/// The replacement is the whole mechanism of decision-13: the interaction and
+/// normalization keys are validated here and consumed, the grammar keys are forwarded to
+/// clap as written, and a raw `#[arg(..)]` on the same field is left exactly where it is
+/// so the two compose — one declaration, one parser.
+fn forward_field_attributes(parsed: &mut DeriveInput) -> syn::Result<()> {
+    let Data::Struct(data) = &mut parsed.data else {
+        // The struct check above already rejected everything else with a better message.
+        return Ok(());
+    };
+    let Fields::Named(fields) = &mut data.fields else {
+        return Ok(());
+    };
+
+    for field in &mut fields.named {
+        let mut forwarded = Vec::new();
+        for attribute in field.attrs.drain(..) {
+            if attribute.path().is_ident(crate::field::ATTRIBUTE) {
+                let declared = crate::field::parse(&attribute)?;
+                forwarded.push(declared.attribute());
+            } else {
+                forwarded.push(attribute);
+            }
+        }
+        field.attrs = forwarded;
+    }
+    Ok(())
 }
 
 /// Rejects the shapes that would make the emitted derives collide with something already

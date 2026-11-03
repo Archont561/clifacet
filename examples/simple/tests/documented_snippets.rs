@@ -126,6 +126,34 @@ fn derive_snippet_2() {
     assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
 }
 
+/// `derive.md`, line 89.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_3() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::clap::{CommandFactory as _, Parser as _};
+    #[clifacet::command(input = Greeting)]
+    #[command(name = "greet", about = "Say hello")]
+    struct Cli {
+        /// Who to greet.
+        #[clifacet(long, short = 'n', alias = "nickname", value_name = "NAME")]
+        name: Option<String>,
+        /// How many times to greet.
+        #[clifacet(long, value_name = "COUNT")]
+        repeat: u8,
+    }
+    /// The typed input, built field by field.
+    struct Greeting {
+        name: Option<String>,
+        repeat: u8,
+    }
+    let cli = Cli::try_parse_from(["greet", "--nickname", "ada", "--repeat", "3"])
+        .expect("the forwarded grammar parses");
+    assert_eq!(cli.name.as_deref(), Some("ada"));
+    assert_eq!(cli.repeat, 3);
+    assert!(Cli::command().render_help().to_string().contains("-n, --name <NAME>"));
+}
+
 /// `getting-started.md`, line 26.
 #[rustfmt::skip]
 #[test]

@@ -10,6 +10,7 @@
 
 mod command;
 mod facet;
+mod field;
 
 use proc_macro::{Literal, TokenStream, TokenTree};
 
