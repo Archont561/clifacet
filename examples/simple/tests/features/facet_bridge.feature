@@ -14,3 +14,15 @@ Feature: Prove an existing clap command through Clifacet
     When the user asks for help
     Then the help shows the short flag, the value name and the field's doc comment
     And the same declaration parses a value through its alias
+
+  Scenario: A field declared once is asked for and normalised by the same declaration
+    Given a command whose name is declared with a question, a default and trimming
+    When the user runs it at a terminal without --name and answers "  grace "
+    Then the declared input carries the name "grace"
+    And the user was asked "Who should I greet?" once
+
+  Scenario: Without a terminal the declared default fills in and nothing is asked
+    Given a command whose name is declared with a question, a default and trimming
+    When the user runs it without a terminal and without --name
+    Then the declared input carries the name "world"
+    And the user was asked nothing

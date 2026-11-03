@@ -2,7 +2,7 @@
 id: decision-13
 title: One declarative attribute per field
 date: '2026-11-01 21:30'
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -126,3 +126,46 @@ through untouched for anything the key table does not cover, and an unknown
   trusts.
 - Migration is additive. `#[derive(clap::Parser, clifacet::Facet)]` with `#[arg(…)]` keeps
   compiling exactly as it does now, so the example can move first and the guides follow.
+
+## Implementation note (2026-11-03, on acceptance)
+
+Accepted by the maintainer on 2026-11-03, after the grammar half shipped in PR #42 and
+the interaction and normalization halves were built on CLI-28. The Decision above is
+left as it was proposed; where the implementation differs, this note says how and why,
+so the two can be read side by side.
+
+- **`ask` does not need a named parser path.** The proposal made `ask` beside an
+  inline `value_parser` a compile error, so that collection could name the parser.
+  Instead, `Session::ask_for` parses an answer with the argument's own clap parser:
+  the real `clap::Command` is cloned, environment fallbacks are cleared, and a sentinel
+  subcommand switches off the required-argument pass, so the answer is the one value
+  parsed. clap raises value-parser errors before it validates relations, so a rejected
+  answer is reported in clap's words. Only public clap API is used; `ValueParser::parse_ref`
+  is crate-private. The consequence is strictly better: `range`, possible values and
+  inline parsers all apply to answers with no extra rule. What remains a compile error
+  is an `ask` on a **positional** argument, since the answer is parsed as a flag's value.
+- **One generator, two attributes.** `#[clifacet(..)]` generates nothing itself: it
+  forwards grammar keys to `#[arg(..)]` and every other key to a field-level
+  `#[facet(..)]`, which the `Facet` derive reads. The bridge (`TryFrom<Cli> for Input`)
+  and `prompt::Collect` are both generated there, so `#[derive(Parser, Facet)]` users
+  get the same rules with `#[facet(ask = …, trim)]` and the two spellings cannot drift.
+- **`fill` is applied by the bridge, not by `collect`.** Then the flag-only path gets the
+  same default as an unanswered prompt, from one place. The table above lists `fill`
+  under interaction; it behaves as normalization.
+- **`non_empty` on an `Option` makes blank text absent** instead of failing, which is
+  what the reference application already does for its credential. On a required value
+  it fails with `--flag must not be blank`.
+- **`secret` is a compile-time proof**: the field has to be `Secret<_>` or
+  `Option<Secret<_>>`, and `ask` beside it is rejected, because no frontend hides an
+  answer yet.
+- **A declined `confirm` names the question and the flag** (`the user declined "Fail on
+  purpose?" (--explode)`) rather than a bespoke sentence. When CLI-28 AC#6 migrates the
+  reference application, the documented message in `docs/command-core.md` changes with it.
+- **`form` is not implemented yet.** It belongs to CLI-28 AC#5 (the generated form
+  field list) and is an unknown key until then.
+- **The grammar table follows clap's derive spelling.** The table above lists
+  `required` as a bare key. clap's derive only accepts `required = true` (it is a builder
+  method), and has no `range` attribute at all, so `range = R` is translated to
+  `value_parser = clap::value_parser!(T).range(R)` for the field's type with
+  `Option`/`Vec` peeled. The shipped key table is the one in `docs/derive.md`.
+

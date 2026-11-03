@@ -43,8 +43,13 @@ fn a_declared_input_is_built_field_by_field() {
         "{tokens}"
     );
     assert!(tokens.contains("type Input = Greeting"), "{tokens}");
-    assert!(tokens.contains("name : self . name"), "{tokens}");
-    assert!(tokens.contains("repeat : self . repeat"), "{tokens}");
+    // The copy lives in the generated `TryFrom`, which `validate` delegates to.
+    assert!(
+        tokens.contains("impl :: core :: convert :: TryFrom < Cli > for Greeting"),
+        "{tokens}"
+    );
+    assert!(tokens.contains("name : cli . name"), "{tokens}");
+    assert!(tokens.contains("repeat : cli . repeat"), "{tokens}");
     assert!(
         !tokens.contains("Greeting ::"),
         "no conversion is invented: {tokens}"
@@ -404,4 +409,276 @@ fn the_command_attribute_leaves_the_derive_available_on_its_own() {
         derived.contains("impl :: clifacet :: Facet for Cli"),
         "{derived}"
     );
+}
+
+// --- Field rules: `#[facet(..)]` on a field, and what `#[clifacet(..)]` forwards ---
+
+#[test]
+fn field_rules_are_applied_in_one_fixed_order_whatever_order_they_were_written_in() {
+    let tokens = expanded(
+        r#"
+        #[facet(input = Greeting)]
+        struct Cli {
+            #[arg(long)]
+            #[facet(non_empty, trim, fill = "world")]
+            name: Option<String>,
+        }
+        "#,
+    )
+    .expect("the rules apply to text");
+
+    let fill = tokens.find("__derive :: fill").expect("fill is generated");
+    let trim = tokens.find("Text :: trim").expect("trim is generated");
+    let non_empty = tokens
+        .find("Text :: non_empty")
+        .expect("non_empty is generated");
+    assert!(
+        fill < trim && trim < non_empty,
+        "fill, trim, non_empty: {tokens}"
+    );
+    assert!(
+        tokens.contains("flag :: < Cli > (\"name\")"),
+        "names the flag lazily: {tokens}"
+    );
+}
+
+#[test]
+fn a_command_without_questions_collects_by_returning_itself() {
+    let tokens =
+        expanded("#[facet(input = Greeting)] struct Cli { name: Option<String> }").expect("valid");
+    assert!(
+        tokens.contains("impl :: clifacet :: prompt :: Collect for Cli"),
+        "{tokens}"
+    );
+    assert!(tokens.contains("_session"), "nothing to ask: {tokens}");
+    assert!(
+        !tokens.contains("CommandFactory"),
+        "no command is built: {tokens}"
+    );
+}
+
+#[test]
+fn questions_are_asked_by_the_id_clap_knows_the_field_by() {
+    let tokens = expanded(
+        r#"
+        #[facet(input = Greeting)]
+        struct Cli {
+            #[arg(long, id = "who")]
+            #[facet(ask = "Who?")]
+            name: Option<String>,
+            #[arg(long)]
+            #[facet(confirm = "Sure?")]
+            explode: bool,
+        }
+        "#,
+    )
+    .expect("valid");
+    assert!(
+        tokens.contains("ask_for (& mut self . name , & command , \"who\" , \"Who?\")"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("confirm_flag (self . explode , & command , \"explode\" , \"Sure?\")"),
+        "{tokens}"
+    );
+}
+
+#[test]
+fn a_field_rule_is_checked_for_shape_and_combination() {
+    let cases = [
+        ("#[facet(trimm)]", "`trimm` is not a field key"),
+        ("#[facet(a::b)]", "this key is not a field key"),
+        ("#[facet(ask)]", "`ask` takes a value"),
+        ("#[facet(trim = true)]", "`trim` takes no value"),
+        ("#[facet(trim, trim)]", "`trim` is declared twice"),
+        ("#[facet(ask = who)]", "a question is a string literal"),
+        ("#[facet(confirm = 1)]", "a question is a string literal"),
+        (r#"#[facet(ask = "a", confirm = "b")]"#, "either asked for"),
+        (
+            r#"#[facet(ask = "a", secret)]"#,
+            "would echo the credential",
+        ),
+    ];
+    for (rules, expected) in cases {
+        let message = rejected(&format!(
+            "#[facet(input = Greeting)] struct Cli {{ #[arg(long)] {rules} name: Option<String> }}"
+        ));
+        assert!(
+            message.contains(expected),
+            "{rules}: expected {expected:?} in: {message}"
+        );
+    }
+}
+
+#[test]
+fn an_asked_field_has_to_be_a_named_option() {
+    let message = rejected(
+        r#"#[facet(input = Greeting)] struct Cli { #[arg(value_name = "N")] #[facet(ask = "Who?")] name: Option<String> }"#,
+    );
+    assert!(message.contains("needs a named option"), "{message}");
+}
+
+#[test]
+fn a_rule_beside_a_declared_bridge_is_rejected_but_a_question_is_not() {
+    let message = rejected(
+        "#[facet(input = Greeting, bridge = build)] struct Cli { #[arg(long)] #[facet(fill = 1)] n: Option<u8> }",
+    );
+    assert!(
+        message.contains("`fill` is a rule for the generated bridge"),
+        "{message}"
+    );
+
+    let tokens = expanded(
+        r#"#[facet(input = Greeting, bridge = build)] struct Cli { #[arg(long)] #[facet(ask = "N?")] n: Option<u8> }"#,
+    )
+    .expect("collection is independent of the bridge");
+    assert!(tokens.contains("build (self)"), "{tokens}");
+    assert!(
+        !tokens.contains("TryFrom"),
+        "the declared bridge replaces the generated one: {tokens}"
+    );
+}
+
+#[test]
+fn range_becomes_claps_ranged_parser_for_the_parsed_type() {
+    let cases = [
+        ("u8", "value_parser ! (u8)"),
+        ("Option<u8>", "value_parser ! (u8)"),
+        ("Vec<u16>", "value_parser ! (u16)"),
+        ("Option<Vec<i64>>", "value_parser ! (i64)"),
+        (
+            "std::num::NonZeroU8",
+            "value_parser ! (std :: num :: NonZeroU8)",
+        ),
+    ];
+    for (ty, parser) in cases {
+        let tokens = command(
+            "input = Greeting",
+            // Spaced: proc_macro2's string lexer reads `1..=8` as the float `1.`; rustc does
+            // not, which `tests/ui/field_attribute_valid.rs` proves with the tight spelling.
+            &format!("struct Cli {{ #[clifacet(long, range = 1 ..= 8)] n: {ty} }}"),
+        )
+        .expect("range is supported");
+        assert!(tokens.contains(parser), "{ty}: {tokens}");
+        assert!(tokens.contains(". range (1 ..= 8)"), "{ty}: {tokens}");
+        assert!(
+            !tokens.contains("range ="),
+            "{ty}: no `range` key reaches clap: {tokens}"
+        );
+    }
+}
+
+#[test]
+fn range_beside_a_value_parser_is_two_parsers_for_one_argument() {
+    let message = rejected_command(
+        "input = Greeting",
+        "struct Cli { #[clifacet(long, range = 1 ..= 8, value_parser = parse)] n: u8 }",
+    );
+    assert!(message.contains("`range` already builds"), "{message}");
+}
+
+#[test]
+fn grammar_keys_are_accepted_in_the_spelling_claps_derive_accepts() {
+    let keys = [
+        "required = true",
+        "hide = true",
+        "env",
+        "env = \"APP_N\"",
+        "default_value_t",
+        "value_parser",
+        "action",
+        "visible_alias = \"count\"",
+    ];
+    for key in keys {
+        let tokens = command(
+            "input = Greeting",
+            &format!("struct Cli {{ #[clifacet(long, {key})] n: u8 }}"),
+        )
+        .unwrap_or_else(|error| panic!("{key}: clap's own spelling is accepted: {error}"));
+        assert!(tokens.contains("# [arg (long ,"), "{key}: {tokens}");
+    }
+}
+
+#[test]
+fn grammar_keys_in_a_spelling_claps_derive_rejects_are_reported_here() {
+    let cases = [
+        ("required", "`required` takes a value"),
+        ("value_enum = true", "`value_enum` takes no value"),
+        ("long_alias = \"x\"", "`long_alias` is not a"),
+    ];
+    for (key, expected) in cases {
+        let message = rejected_command(
+            "input = Greeting",
+            &format!("struct Cli {{ #[clifacet(long, {key})] n: u8 }}"),
+        );
+        assert!(
+            message.contains(expected),
+            "{key}: expected {expected:?} in: {message}"
+        );
+    }
+}
+
+#[test]
+fn interaction_and_normalization_keys_are_forwarded_to_the_derive() {
+    let tokens = command(
+        "input = Greeting",
+        r#"struct Cli { #[clifacet(long, ask = "Who?", trim)] name: Option<String> }"#,
+    )
+    .expect("forwarded");
+    assert!(
+        tokens.contains("# [arg (long)]"),
+        "grammar to clap: {tokens}"
+    );
+    assert!(
+        tokens.contains("# [facet (ask = \"Who?\" , trim)]"),
+        "rules to the derive: {tokens}"
+    );
+}
+
+#[test]
+fn a_type_that_is_not_an_option_or_a_vec_of_one_type_is_parsed_as_itself() {
+    let cases = [
+        // Not a path at all.
+        ("[u8; 2]", "value_parser ! ([u8 ; 2])"),
+        // A path, but not a container this peels.
+        (
+            "Result<u8, String>",
+            "value_parser ! (Result < u8 , String >)",
+        ),
+        // `Option` without angle brackets is a path with no type to peel.
+        ("Option", "value_parser ! (Option)"),
+        // `Vec` with two type arguments (an allocator) is not `Vec<T>`.
+        ("Vec<u8, Global>", "value_parser ! (Vec < u8 , Global >)"),
+        // A lifetime argument is not a type.
+        ("Option<'static>", "value_parser ! (Option < 'static >)"),
+    ];
+    for (ty, parser) in cases {
+        let tokens = command(
+            "input = Greeting",
+            &format!("struct Cli {{ #[clifacet(long, range = 1 ..= 8)] n: {ty} }}"),
+        )
+        .expect("range is forwarded whatever the type; clap reports a type it cannot range");
+        assert!(tokens.contains(parser), "{ty}: {tokens}");
+    }
+}
+
+#[test]
+fn an_id_that_is_not_a_string_literal_leaves_the_field_name_as_the_id() {
+    for id in ["id = 5", "id = NAME"] {
+        let tokens = expanded(&format!(
+            r#"
+            #[facet(input = Greeting)]
+            struct Cli {{
+                #[arg(long, {id})]
+                #[facet(ask = "Who?")]
+                name: Option<String>,
+            }}
+            "#
+        ))
+        .expect("the derive leaves a malformed id to clap");
+        assert!(
+            tokens.contains("& command , \"name\" , \"Who?\""),
+            "{id}: {tokens}"
+        );
+    }
 }

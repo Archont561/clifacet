@@ -126,32 +126,53 @@ fn derive_snippet_2() {
     assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
 }
 
-/// `derive.md`, line 89.
+/// `derive.md`, line 91.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_3() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::clap::{CommandFactory as _, Parser as _};
+    use clifacet::clap::Parser as _;
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    use clifacet::prompt::{Answer, Collect as _, Scripted, Session};
+    use clifacet::Facet;
     #[clifacet::command(input = Greeting)]
     #[command(name = "greet", about = "Say hello")]
     struct Cli {
         /// Who to greet.
-        #[clifacet(long, short = 'n', alias = "nickname", value_name = "NAME")]
+        #[clifacet(
+            long, short = 'n', alias = "nickname", value_name = "NAME",
+            ask = "Who should I greet?", fill = "world", trim, non_empty,
+        )]
         name: Option<String>,
-        /// How many times to greet.
-        #[clifacet(long, value_name = "COUNT")]
+        /// How many times to greet, from 1 to 8.
+        #[clifacet(long, value_name = "COUNT", range = 1..=8, default_value_t = 1)]
         repeat: u8,
     }
-    /// The typed input, built field by field.
+    /// The typed input: never missing a name, never a blank one.
     struct Greeting {
-        name: Option<String>,
+        name: String,
         repeat: u8,
     }
-    let cli = Cli::try_parse_from(["greet", "--nickname", "ada", "--repeat", "3"])
+    // The flags: clap parses, the generated bridge normalises.
+    let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
         .expect("the forwarded grammar parses");
-    assert_eq!(cli.name.as_deref(), Some("ada"));
-    assert_eq!(cli.repeat, 3);
-    assert!(Cli::command().render_help().to_string().contains("-n, --name <NAME>"));
+    let input = cli.validate().expect("valid");
+    assert_eq!((input.name.as_str(), input.repeat), ("ada", 3));
+    // `Facet::command()` is clap's command: the help is built from the forwarded keys.
+    assert!(<Cli as Facet>::command().render_help().to_string().contains("-n, --name <NAME>"));
+    // No flag at a terminal: the declaration asks, and the answer meets the same rules.
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("prompts are permitted");
+    let mut session = Session::start(plan, || {
+        Box::new(Scripted::new([Answer::Text(String::from(" grace "))]))
+    });
+    let input = Cli::try_parse_from(["greet"])
+        .expect("parses")
+        .collect(&mut session)
+        .and_then(Facet::validate)
+        .expect("valid");
+    assert_eq!(input.name, "grace");
 }
 
 /// `getting-started.md`, line 26.
