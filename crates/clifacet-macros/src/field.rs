@@ -159,12 +159,9 @@ pub(crate) fn parse(attribute: &Attribute, ty: &Type) -> syn::Result<Declared> {
 /// derive parses each value as. A `value_parser` beside `range` would be a second
 /// parser for one argument, so that is an error rather than a silent choice.
 fn ranged(arguments: Vec<Meta>, ty: &Type) -> syn::Result<Vec<Meta>> {
-    let Some(position) = arguments
-        .iter()
-        .position(|entry| entry.path().is_ident(RANGE))
-    else {
+    if !arguments.iter().any(|entry| entry.path().is_ident(RANGE)) {
         return Ok(arguments);
-    };
+    }
     if let Some(parser) = arguments
         .iter()
         .find(|entry| entry.path().is_ident("value_parser"))
@@ -176,38 +173,43 @@ fn ranged(arguments: Vec<Meta>, ty: &Type) -> syn::Result<Vec<Meta>> {
              `value_parser = clap::value_parser!(T).range(..)` on its own",
         ));
     }
-    let mut arguments = arguments;
-    let Meta::NameValue(range) = arguments.remove(position) else {
-        // `check_key` only lets `range` through with a value.
-        return Ok(arguments);
-    };
-    let (bounds, value) = (range.value, parsed_type(ty));
-    arguments.insert(
-        position,
-        syn::parse_quote_spanned!(range.path.segments[0].ident.span()=>
-            value_parser = ::clifacet::clap::value_parser!(#value).range(#bounds)
-        ),
-    );
-    Ok(arguments)
+    let value = parsed_type(ty);
+    // `check_key` only lets `range` through with a value, so it is always a name-value
+    // pair here; matching on that shape replaces it and leaves every other entry alone.
+    Ok(arguments
+        .into_iter()
+        .map(|entry| match entry {
+            Meta::NameValue(range) if range.path.is_ident(RANGE) => {
+                let bounds = range.value;
+                syn::parse_quote_spanned!(range.path.segments[0].ident.span()=>
+                    value_parser = ::clifacet::clap::value_parser!(#value).range(#bounds)
+                )
+            }
+            other => other,
+        })
+        .collect())
 }
 
 /// The type clap parses one value of this field as: `Option<T>` and `Vec<T>` peeled.
 fn parsed_type(ty: &Type) -> &Type {
+    peeled(ty).map_or(ty, parsed_type)
+}
+
+/// The `T` of an `Option<T>` or a `Vec<T>`; any other type is parsed as itself.
+fn peeled(ty: &Type) -> Option<&Type> {
     let Type::Path(path) = ty else {
-        return ty;
+        return None;
     };
-    let Some(last) = path.path.segments.last() else {
-        return ty;
-    };
+    let last = path.path.segments.last()?;
     if last.ident != "Option" && last.ident != "Vec" {
-        return ty;
+        return None;
     }
     let PathArguments::AngleBracketed(arguments) = &last.arguments else {
-        return ty;
+        return None;
     };
-    match arguments.args.first() {
-        Some(GenericArgument::Type(inner)) if arguments.args.len() == 1 => parsed_type(inner),
-        _ => ty,
+    match (arguments.args.len(), arguments.args.first()) {
+        (1, Some(GenericArgument::Type(inner))) => Some(inner),
+        _ => None,
     }
 }
 

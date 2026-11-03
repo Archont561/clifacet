@@ -122,3 +122,35 @@ mod prompt {
         assert!(failure.message().contains("cannot read the answer"));
     }
 }
+
+mod describe_argument {
+    use clap::{Arg, Command};
+
+    use crate::facet::describe_argument;
+
+    /// One argument of each shape a diagnostic has to name.
+    fn command() -> Command {
+        Command::new("probe")
+            .arg(Arg::new("name").long("greet-name").short('n'))
+            .arg(Arg::new("level").short('l'))
+            .arg(Arg::new("target").value_name("TARGET"))
+            .arg(Arg::new("rest"))
+    }
+
+    #[test]
+    fn an_argument_is_named_the_way_the_user_types_it() {
+        let cases = [
+            // The long flag wins, and it is clap's spelling, not the field's.
+            ("name", "--greet-name"),
+            ("level", "-l"),
+            ("target", "<TARGET>"),
+            // A positional with no value name falls back to its id, as clap shows it.
+            ("rest", "REST"),
+            // An id the command does not have is still named, never a panic.
+            ("missing", "missing"),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(describe_argument(&command(), id), expected, "{id}");
+        }
+    }
+}

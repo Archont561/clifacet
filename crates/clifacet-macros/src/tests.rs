@@ -634,3 +634,51 @@ fn interaction_and_normalization_keys_are_forwarded_to_the_derive() {
         "rules to the derive: {tokens}"
     );
 }
+
+#[test]
+fn a_type_that_is_not_an_option_or_a_vec_of_one_type_is_parsed_as_itself() {
+    let cases = [
+        // Not a path at all.
+        ("[u8; 2]", "value_parser ! ([u8 ; 2])"),
+        // A path, but not a container this peels.
+        (
+            "Result<u8, String>",
+            "value_parser ! (Result < u8 , String >)",
+        ),
+        // `Option` without angle brackets is a path with no type to peel.
+        ("Option", "value_parser ! (Option)"),
+        // `Vec` with two type arguments (an allocator) is not `Vec<T>`.
+        ("Vec<u8, Global>", "value_parser ! (Vec < u8 , Global >)"),
+        // A lifetime argument is not a type.
+        ("Option<'static>", "value_parser ! (Option < 'static >)"),
+    ];
+    for (ty, parser) in cases {
+        let tokens = command(
+            "input = Greeting",
+            &format!("struct Cli {{ #[clifacet(long, range = 1 ..= 8)] n: {ty} }}"),
+        )
+        .expect("range is forwarded whatever the type; clap reports a type it cannot range");
+        assert!(tokens.contains(parser), "{ty}: {tokens}");
+    }
+}
+
+#[test]
+fn an_id_that_is_not_a_string_literal_leaves_the_field_name_as_the_id() {
+    for id in ["id = 5", "id = NAME"] {
+        let tokens = expanded(&format!(
+            r#"
+            #[facet(input = Greeting)]
+            struct Cli {{
+                #[arg(long, {id})]
+                #[facet(ask = "Who?")]
+                name: Option<String>,
+            }}
+            "#
+        ))
+        .expect("the derive leaves a malformed id to clap");
+        assert!(
+            tokens.contains("& command , \"name\" , \"Who?\""),
+            "{id}: {tokens}"
+        );
+    }
+}

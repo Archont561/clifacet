@@ -332,3 +332,61 @@ fn an_answer_is_parsed_alone_whatever_else_the_command_requires(
         ),
     }
 }
+
+// --- `Session::ask_for` on its own: a declaration mistake is a failure, never a panic ---
+
+/// A session that may ask, answering every question with `answer`.
+fn answering(answer: &str) -> Session {
+    let script = Scripted::new([Answer::Text(answer.to_owned())]);
+    Session::start(plan(Mode::Interactive, false), move || Box::new(script))
+}
+
+fn command() -> clap::Command {
+    clap::Command::new("probe")
+        .arg(
+            clap::Arg::new("count")
+                .long("count")
+                .value_parser(clap::value_parser!(u8)),
+        )
+        .arg(clap::Arg::new("target").value_name("TARGET"))
+}
+
+#[rstest]
+#[case::unknown_argument("missing", "`missing` is not an argument of `probe`")]
+#[case::positional_argument("target", "`target` is positional")]
+fn asking_for_an_argument_that_cannot_be_asked_for_is_a_declaration_mistake(
+    #[case] id: &str,
+    #[case] expected: &str,
+) {
+    let mut slot: Option<String> = None;
+    let failure = answering("ada")
+        .ask_for(&mut slot, &command(), id, "Which?")
+        .expect_err("the declaration is wrong, not the answer");
+    assert_eq!(failure.kind(), FailureKind::Execution);
+    assert!(
+        failure.message().contains(expected),
+        "{}",
+        failure.message()
+    );
+    assert_eq!(slot, None, "nothing is filled in");
+}
+
+#[test]
+fn an_answer_that_parses_to_another_type_than_the_field_is_a_declaration_mistake() {
+    // The argument's parser yields `u8`; the slot says `String`.
+    let mut slot: Option<String> = None;
+    let failure = answering("3")
+        .ask_for(&mut slot, &command(), "count", "How many?")
+        .expect_err("the field and its parser disagree");
+    assert_eq!(failure.kind(), FailureKind::Execution);
+    assert!(
+        failure.message().contains("--count"),
+        "names the flag: {}",
+        failure.message()
+    );
+    assert!(
+        failure.message().contains("different type"),
+        "{}",
+        failure.message()
+    );
+}

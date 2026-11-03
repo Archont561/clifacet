@@ -20,7 +20,7 @@
 
 use proc_macro2::Span;
 use syn::punctuated::Punctuated;
-use syn::{Attribute, Expr, Field, Lit, LitStr, Meta, Token};
+use syn::{Attribute, Expr, ExprLit, Field, Lit, LitStr, Meta, Token};
 
 /// The attribute these rules live in, shared with the struct-level keys.
 pub(crate) const ATTRIBUTE: &str = "facet";
@@ -118,9 +118,13 @@ fn read(rules: &mut Rules, entry: &Meta) -> syn::Result<()> {
     };
     let key = ident.to_string();
     let span = ident.span();
-    let value = match entry {
-        Meta::NameValue(pair) if VALUE_KEYS.contains(&key.as_str()) => Some(&pair.value),
-        Meta::Path(_) if FLAG_KEYS.contains(&key.as_str()) => None,
+    // Each shape goes to the helper that needs it, so a value key always has its value
+    // and a flag key never does — there is no "missing value" case left to handle.
+    let repeated = match entry {
+        Meta::NameValue(pair) if VALUE_KEYS.contains(&key.as_str()) => {
+            record_value(rules, &key, span, &pair.value)?
+        }
+        Meta::Path(_) if FLAG_KEYS.contains(&key.as_str()) => record_flag(rules, &key, span),
         Meta::Path(_) if VALUE_KEYS.contains(&key.as_str()) => {
             return Err(syn::Error::new(
                 span,
@@ -135,20 +139,6 @@ fn read(rules: &mut Rules, entry: &Meta) -> syn::Result<()> {
         }
         _ => return Err(syn::Error::new(span, unknown_message(&format!("`{key}`")))),
     };
-
-    let repeated = match key.as_str() {
-        "ask" => rules.ask.replace(question(value, span)?).is_some(),
-        "confirm" => rules.confirm.replace(question(value, span)?).is_some(),
-        "fill" => {
-            let fallback = value
-                .cloned()
-                .ok_or_else(|| syn::Error::new(span, "`fill` takes a value"))?;
-            rules.fill.replace(fallback).is_some()
-        }
-        "trim" => rules.trim.replace(span).is_some(),
-        "non_empty" => rules.non_empty.replace(span).is_some(),
-        _ => rules.secret.replace(span).is_some(),
-    };
     if repeated {
         return Err(syn::Error::new(
             span,
@@ -161,24 +151,38 @@ fn read(rules: &mut Rules, entry: &Meta) -> syn::Result<()> {
     Ok(())
 }
 
+/// Records a value key, returning whether it was already declared.
+fn record_value(rules: &mut Rules, key: &str, span: Span, value: &Expr) -> syn::Result<bool> {
+    Ok(match key {
+        "ask" => rules.ask.replace(question(value, span)?).is_some(),
+        "confirm" => rules.confirm.replace(question(value, span)?).is_some(),
+        _ => rules.fill.replace(value.clone()).is_some(),
+    })
+}
+
+/// Records a flag key, returning whether it was already declared.
+fn record_flag(rules: &mut Rules, key: &str, span: Span) -> bool {
+    match key {
+        "trim" => rules.trim.replace(span).is_some(),
+        "non_empty" => rules.non_empty.replace(span).is_some(),
+        _ => rules.secret.replace(span).is_some(),
+    }
+}
+
 /// A question has to be a string literal: it is shown to a person as written.
-fn question(value: Option<&Expr>, span: Span) -> syn::Result<Question> {
+fn question(value: &Expr, span: Span) -> syn::Result<Question> {
     match value {
-        Some(Expr::Lit(literal)) => match &literal.lit {
-            Lit::Str(text) => Ok(Question {
-                text: text.clone(),
-                span,
-            }),
-            other => Err(syn::Error::new_spanned(
-                other,
-                "a question is a string literal",
-            )),
-        },
-        Some(other) => Err(syn::Error::new_spanned(
+        Expr::Lit(ExprLit {
+            lit: Lit::Str(text),
+            ..
+        }) => Ok(Question {
+            text: text.clone(),
+            span,
+        }),
+        other => Err(syn::Error::new_spanned(
             other,
             "a question is a string literal",
         )),
-        None => Err(syn::Error::new(span, "a question is a string literal")),
     }
 }
 
@@ -225,13 +229,16 @@ pub(crate) fn argument_id(field: &Field, name: &syn::Ident) -> String {
         })
         .flatten()
         .find_map(|entry| match entry {
-            Meta::NameValue(pair) if pair.path.is_ident("id") => match pair.value {
-                Expr::Lit(literal) => match literal.lit {
-                    Lit::Str(text) => Some(text.value()),
-                    _ => None,
-                },
-                _ => None,
-            },
+            // Only a string literal names the id here; clap rejects anything else itself.
+            Meta::NameValue(syn::MetaNameValue {
+                path,
+                value:
+                    Expr::Lit(ExprLit {
+                        lit: Lit::Str(text),
+                        ..
+                    }),
+                ..
+            }) if path.is_ident("id") => Some(text.value()),
             _ => None,
         })
         .unwrap_or_else(|| name.to_string())

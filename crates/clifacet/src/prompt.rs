@@ -494,15 +494,18 @@ where
     let mut matches = probe
         .try_get_matches_from(argv)
         .map_err(|error| Failure::validation(clap_wording(&error)))?;
+    // The answer is always passed as an explicit value, so a parse that succeeded
+    // matched the argument; what is left to go wrong is the field and its parser
+    // disagreeing about the type. clap's mismatch says how, when it has one.
     match matches.try_remove_one::<T>(id) {
         Ok(Some(value)) => Ok(value),
-        Ok(None) => Err(Failure::validation(format!(
-            "{} needs a value",
-            describe_argument(command, id)
-        ))),
-        Err(mismatch) => Err(Failure::execution(format!(
-            "the answer for {} parsed to a different type than its field: {mismatch}",
-            describe_argument(command, id)
+        other => Err(Failure::execution(format!(
+            "the answer for {} parsed to a different type than its field{}",
+            describe_argument(command, id),
+            other
+                .err()
+                .map(|mismatch| format!(": {mismatch}"))
+                .unwrap_or_default()
         ))),
     }
 }

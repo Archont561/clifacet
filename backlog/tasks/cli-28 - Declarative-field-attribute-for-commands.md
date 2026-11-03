@@ -4,7 +4,7 @@ title: Declarative field attribute for commands
 status: In Progress
 assignee: []
 created_date: '2026-11-01 21:18'
-updated_date: '2026-11-03 09:35'
+updated_date: '2026-11-03 09:52'
 labels: []
 milestone: m-7
 dependencies: []
@@ -52,4 +52,6 @@ One `#[clifacet(...)]` per field, carrying grammar, interaction and normalizatio
 - **Docs.** The `docs/derive.md` 'Declaring one field once' section is rewritten with the corrected key table, the rule order, the compile errors and a compiled snippet that asks and normalises. 'Two ways to build the input' became three. The rustdoc on the derive and on `Facet` lists the field keys.
 - **Evidence.** `lint` (clippy `-D warnings`) and `fmt-check` clean. `test-src` 46, `test-integration` 291, `test-doc` ok (including the new `prompt::Collect` doctest). `coverage` 96.31% (1540/1599, target 90%). `check-features` all combinations compile. `test-scripts` 315 passed, 2 skipped. `check-docs` 10 pages, 13 snippets. `alint` 46 rules, plus `skills-check`, `sandbox-check`, `check-packages`, `check-advisory`, `deny-offline` and `actionlint` all clean.
 - **Still open:** AC#5 (generated form field list; `form` key) and AC#6 (reference application migration). AC#6 changes the documented decline message, because a generated `confirm` names the question and the flag. The example's `--repeat` range and blank-credential rules can move onto fields then.
+
+- 2026-11-03: Codecov reported 32 uncovered changed lines on PR #43 (patch 92.6%); now 428/428 of the changed lines are covered and the workspace is at 98.31%. Reachable branches got tests: `Session::ask_for` on an unknown id, on a positional argument, and on a field whose type differs from its parser's (`declared_fields.rs`); `describe_argument` naming a short-only, a positional with and without a value name, and an unknown argument (lib unit test); `range` on types that are not `Option<T>`/`Vec<T>`, and an `id` that is not a string literal (macro unit tests). Unreachable branches were restructured away rather than covered: `ranged` maps the name-value `range` entry in place instead of a `let … else` after `remove`, and `rules::read` hands value keys and flag keys to separate helpers, so 'a value key with no value' no longer exists as a case. One branch I expected to reach, `try_remove_one` returning `Ok(None)`, could not be constructed: clap reads `--maybe=` as the value `""` even with `num_args(0..=1)`, because the answer is always an explicit value. It is folded into the type-mismatch arm, which is tested, instead of keeping a separately worded message nothing can reach.
 <!-- SECTION:NOTES:END -->
