@@ -72,8 +72,9 @@ code a failure costs.
 | `clifacet::provenance` | where a value came from, recorded without recording the value |
 
 Frontends are features, so an application pays only for what it uses: `interactive`
-(prompts, with an `inquire` dialog), `tui` (full screen), and a reserved `json`
-boundary with no flag behind it yet. Prompts are a two-method seam — `ask` and
+(prompts, with an `inquire` dialog), `tui` (full screen), and `serde` (failures and
+redacted secrets that serialise, for an application that reports failures as JSON); see
+[what each feature adds and costs](docs/getting-started.md#features). Prompts are a two-method seam — `ask` and
 `confirm` — so the dialog is a default rather than a fixture: an application can hand
 `Session` its own frontend and keep the policy, the streams and the exit codes.
 
@@ -134,7 +135,7 @@ pixi run --frozen check-docs      # links, anchors, compiled snippets
 pixi run --frozen check-packages  # what `cargo publish` would upload, without publishing it
 ```
 
-Supported: the empty, `default`, `interactive`, `tui` and `json` configurations plus
+Supported: the empty, `default`, `interactive`, `serde` and `tui` configurations plus
 all-features together, on Linux, macOS and Windows, with Rust 1.88 as the floor — each
 one checked in CI rather than assumed. See
 [Supported platforms and feature combinations](docs/development.md#supported-platforms-and-feature-combinations).

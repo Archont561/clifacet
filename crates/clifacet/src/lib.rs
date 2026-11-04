@@ -50,9 +50,14 @@
 //! [`secret`] wraps a credential so nothing the framework prints can show it, and
 //! [`provenance`] records where each value came from without recording the value.
 //!
-//! # Not implemented yet
+//! # Features
 //!
-//! - JSON output: the `json` feature reserves `serde_json`; no flag selects it yet.
+//! - `interactive` — the `inquire` dialog behind [`prompt::Prompter`];
+//! - `tui` — the full-screen frontend in [`tui`];
+//! - `serde` — `Serialize` for [`Failure`] and [`FailureKind`] (a kind and a message)
+//!   and for [`secret::Secret`], which serialises redacted. The library writes no JSON
+//!   itself: output is the application's, so a JSON failure body is the application
+//!   serialising a [`Failure`] under its own flag.
 
 #![allow(
     clippy::module_name_repetitions,

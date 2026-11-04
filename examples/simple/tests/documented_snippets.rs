@@ -241,7 +241,7 @@ fn derive_snippet_5() {
     assert_eq!(input.name, "world");
 }
 
-/// `getting-started.md`, line 26.
+/// `getting-started.md`, line 43.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {

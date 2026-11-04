@@ -13,10 +13,27 @@ clifacet = { version = "0.2.0", features = ["tui"] }
 clap = "4.6.7"
 ```
 
-The `tui` feature is optional: without it the full-screen frontend is not compiled
-at all, and `clifacet` depends on neither `ratatui` nor `crossterm`. `interactive`
-and `json` reserve their dependencies the same way. Every combination is checked in
-CI — see [Supported platforms and feature combinations](development.md#supported-platforms-and-feature-combinations).
+### Features
+
+Every feature is off by default, and each one is a dependency boundary: a feature you
+do not enable is not compiled, and neither are the crates it would bring in.
+
+| Feature | What it adds | What it costs |
+| --- | --- | --- |
+| *(none)* | commands, the derive, the policy, the plain frontend, secrets, provenance and the harness | `clap`, `thiserror` and the `clifacet-macros` proc macro |
+| `interactive` | the `inquire`-backed dialog behind `Prompter`, so prompts work at a terminal | `inquire` with its `crossterm` backend — the largest prompt-side tree |
+| `tui` | the full-screen form in `clifacet::tui` and the TUI mode in the policy | `ratatui` and `crossterm` — the largest tree of the three |
+| `serde` | `Serialize` for `Failure` and `FailureKind` (`{"kind":"validation","message":"…"}`) and for `Secret`, which serialises as `[redacted]` | `serde` and its derive macro, a proc macro built at compile time |
+
+`serde` is how an application reports failures as JSON: it serialises a `Failure` with
+`serde_json` under a flag of its own, on a stream of its own, because output is the
+application's (decision-3) and the library writes no JSON itself. There is no `json`
+feature — 0.2.0 reserved one that selected `serde_json` and did nothing else; it was
+retired in favour of `serde`, so an application that wants JSON depends on `serde_json`
+directly and enables `serde` here.
+
+Every combination is checked in CI — see
+[Supported platforms and feature combinations](development.md#supported-platforms-and-feature-combinations).
 
 ## Write the command
 

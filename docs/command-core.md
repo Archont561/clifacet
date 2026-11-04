@@ -489,8 +489,10 @@ Documented so nobody reads absence as oversight:
   scroll views, the whole-screen escape hatches (CLI-12) and theming are not there,
   and neither is a universal widget-backend abstraction — tests use `ratatui`'s own
   `TestBackend`, which is why `tui::ratatui` is re-exported.
-- **`--json`.** The `json` feature reserves `serde_json`; no flag selects it, so
-  only the human data line exists.
+- **`--json`.** The library writes no JSON: output is the application's (decision-3),
+  so the flag and the stream are too. With the `serde` feature a `Failure` serialises
+  as `{"kind":…,"message":…}` and a `Secret` as `[redacted]`, which is what an
+  application builds a JSON failure body from with `serde_json`.
 - **A parity runner.** `clifacet::harness` measures and compares runs; it does not
   provide a mode enum or run an application's frontends for it. Each application
   knows how its own entry points are called.
