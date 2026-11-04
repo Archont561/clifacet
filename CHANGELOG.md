@@ -10,6 +10,13 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### Fixed
+
+* **release:** render the changelog before committing it in the release step
+([65b9cbd](https://github.com/Archont561/clifacet/commit/65b9cbd8b5d464d978c6bad90c19a54a9a9457b5))
+
+## [0.2.0] - 2026-11-04
+
 ### Added
 
 * **macros:** generate the form and check the whole input from the declarations
@@ -94,4 +101,5 @@ copy has drifted. Edit the commit messages, not the file.
 * **example:** move the reference application into its own crate
 ([3178b1d](https://github.com/Archont561/clifacet/commit/3178b1d44db717a4b242b1235cacf798e9d6e2f0))
 
-[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Archont561/clifacet/compare/v0.1.0...v0.2.0
