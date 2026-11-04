@@ -10,6 +10,20 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### ⚠ BREAKING CHANGE
+
+* the json feature is removed; enable serde instead and
+depend on serde_json in the application.
+
+### Added
+
+* retire the reserved json feature in favour of serde
+([80e330e](https://github.com/Archont561/clifacet/commit/80e330e90f31203ea0698aeef8b0f885a3bf4c93))
+* **failure:** serialise failures and redacted secrets behind an optional serde feature
+([d644a0e](https://github.com/Archont561/clifacet/commit/d644a0e9439778d9fe7e654253f71736ccb5cecd))
+* **macros:** accept any type the generated impls can name as the input
+([ba05b98](https://github.com/Archont561/clifacet/commit/ba05b9847761bcb1df6755d40dded058b99d58b4))
+
 ### Fixed
 
 * **release:** render the changelog before committing it in the release step
