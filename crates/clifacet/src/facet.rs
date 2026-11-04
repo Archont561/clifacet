@@ -42,9 +42,11 @@ use crate::failure::Failure;
 /// Type)]`. The default bridge is a generated `TryFrom<Self> for Input` that copies
 /// fields by name, so the two structs have to agree on every field — a missing one is
 /// a compile error rather than a silent default — and applies any field rule
-/// (`#[facet(fill = …, trim, non_empty, secret)]`) on the way. When a rule spans
-/// fields, declare the bridge explicitly with `#[facet(bridge = path)]` and a
-/// `fn(command) -> Result<Input, Failure>`.
+/// (`#[facet(fill = …, trim, non_empty, secret)]`) on the way, leaving out a field
+/// declared `skip`. A rule across fields is `#[facet(check = path)]`, a
+/// `fn(&Input) -> Result<(), Failure>` the generated bridge calls last. When the input
+/// is not a field-by-field copy at all, declare the bridge explicitly with
+/// `#[facet(bridge = path)]` and a `fn(command) -> Result<Input, Failure>`.
 ///
 /// # Unsupported
 ///
@@ -68,6 +70,18 @@ pub trait Facet: CommandFactory {
     #[must_use]
     fn command() -> ClapCommand {
         <Self as CommandFactory>::command()
+    }
+
+    /// The arguments a generated form asks for, in the order it shows them.
+    ///
+    /// The derive lists every field declared with `form`, in declaration order, so the
+    /// form is generated from the same declarations as the grammar and the bridge:
+    /// `FormState::generated(&<Cli as Facet>::command(), Cli::form_fields())`. Without
+    /// a `form` field — or for a hand-written implementation — the list is empty, and
+    /// a form generated from it is refused rather than drawn with nothing to ask.
+    #[must_use]
+    fn form_fields() -> &'static [&'static str] {
+        &[]
     }
 
     /// Bridges this parsed command to its typed input.

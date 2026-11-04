@@ -13,6 +13,8 @@
 //! | `trim` | normalization | the bridge: surrounding whitespace removed |
 //! | `non_empty` | normalization | the bridge: blank text rejected, or made absent if optional |
 //! | `secret` | normalization | the bridge: the field must be a redacted type |
+//! | `skip` | input | the bridge: the field is not copied; clap still parses it |
+//! | `form` | interaction | `Facet::form_fields`: the field is a question on the form |
 //!
 //! The bridge applies its rules in one fixed order — `fill`, `trim`, `non_empty`,
 //! `secret` — whatever order they were written in, because "trim, then check blank" is
@@ -29,9 +31,9 @@ pub(crate) const ATTRIBUTE: &str = "facet";
 pub(crate) const VALUE_KEYS: &[&str] = &["ask", "confirm", "fill"];
 
 /// Field keys that are flags.
-pub(crate) const FLAG_KEYS: &[&str] = &["non_empty", "secret", "trim"];
+pub(crate) const FLAG_KEYS: &[&str] = &["form", "non_empty", "secret", "skip", "trim"];
 
-/// Keys that need the struct's own bridge, because a declared `bridge` owns them.
+/// Keys that change the value the generated bridge copies.
 const NORMALIZATION_KEYS: &[&str] = &["fill", "non_empty", "secret", "trim"];
 
 /// A question and where it was declared, so a type error can point at the key.
@@ -49,7 +51,11 @@ pub(crate) struct Rules {
     pub(crate) trim: Option<Span>,
     pub(crate) non_empty: Option<Span>,
     pub(crate) secret: Option<Span>,
-    /// The first normalization key, for the "a bridge owns this" error.
+    /// Left out of the input: clap parses it, the generated bridge does not copy it.
+    pub(crate) skip: Option<Span>,
+    /// A question on the generated form.
+    pub(crate) form: Option<Span>,
+    /// The first normalization key, for the errors that name it.
     normalization: Option<(String, Span)>,
 }
 
@@ -59,15 +65,16 @@ impl Rules {
         self.normalization.is_some()
     }
 
-    /// Rejects normalization when the struct declared its own bridge.
+    /// Rejects a key only the generated bridge acts on when the struct declared its own.
     pub(crate) fn check_bridge(&self) -> syn::Result<()> {
-        match &self.normalization {
+        let skip = self.skip.map(|span| (String::from("skip"), span));
+        match self.normalization.clone().or(skip) {
             Some((key, span)) => Err(syn::Error::new(
-                *span,
+                span,
                 format!(
                     "`{key}` is a rule for the generated bridge, and this struct declares its \
-                     own `bridge = …`, which owns normalization: apply the rule in the bridge, \
-                     or drop `bridge` and let the declarations build the input"
+                     own `bridge = …`, which builds the whole input: apply the rule in the \
+                     bridge, or drop `bridge` and let the declarations build the input"
                 ),
             )),
             None => Ok(()),
@@ -106,6 +113,24 @@ pub(crate) fn parse(field: &Field) -> syn::Result<Rules> {
             ask.span,
             "`ask` needs a named option — `long` or `short` — because the answer is parsed \
              as that flag's value; a positional argument cannot be asked for",
+        ));
+    }
+    if let Some(form) = rules.form
+        && !is_named_option(&field.attrs)
+    {
+        return Err(syn::Error::new(
+            form,
+            "`form` needs a named option — `long` or `short` — because the form submits each \
+             answer as that flag's value; a positional argument cannot be a form field",
+        ));
+    }
+    if let (Some(_), Some((key, span))) = (rules.skip, &rules.normalization) {
+        return Err(syn::Error::new(
+            *span,
+            format!(
+                "`{key}` on a `skip` field would do nothing: a skipped field never reaches the \
+                 input, so there is no value for the rule to apply to"
+            ),
         ));
     }
     Ok(rules)
@@ -165,6 +190,8 @@ fn record_flag(rules: &mut Rules, key: &str, span: Span) -> bool {
     match key {
         "trim" => rules.trim.replace(span).is_some(),
         "non_empty" => rules.non_empty.replace(span).is_some(),
+        "skip" => rules.skip.replace(span).is_some(),
+        "form" => rules.form.replace(span).is_some(),
         _ => rules.secret.replace(span).is_some(),
     }
 }

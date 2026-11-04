@@ -152,6 +152,8 @@ naming the supported keys, rather than an argument that quietly means nothing:
 | normalising | `fill = expr` | the bridge's value when neither a flag nor an answer supplied one |
 | normalising | `trim`, `non_empty` | the bridge trims, then rejects blank text — or, on an `Option`, makes it absent |
 | normalising | `secret` | the field must be a `Secret<_>`, so the credential cannot be printed |
+| input | `skip` | the bridge leaves the field out of the input; clap still parses it (not clap's `#[arg(skip)]`) |
+| form | `form` | the field is listed in `Facet::form_fields`, in declaration order, for a generated TUI form |
 
 The bridge applies its rules in one order — `fill`, `trim`, `non_empty`, `secret` —
 whatever order they were written in, because trimming after the blank check would let
@@ -165,14 +167,17 @@ file:
 - **One key, one meaning.** A key declared twice is an error, not last-one-wins.
 - **`confirm` is for a `bool`, `ask` for an `Option`.** A value that cannot be missing
   cannot be asked for, and only a flag that is set can be confirmed.
-- **`ask` needs a named option.** The answer is parsed as the flag's value; a positional
-  argument cannot be asked for.
+- **`ask` and `form` need a named option.** An answer is parsed as the flag's value, and
+  a form submits each field as its flag; a positional argument can be neither.
 - **No `ask` on a `secret`.** No frontend hides an answer yet, so the credential would be
   echoed as it is typed.
 - **A rule names the types it fits.** `trim` on a number or `secret` on a `String` says
   so, in those words.
-- **A declared `bridge = …` owns normalization.** A `fill`/`trim`/`non_empty`/`secret`
-  beside it is an error, because it would do nothing; `ask` and `confirm` still work.
+- **A declared `bridge = …` builds the whole input.** A `fill`/`trim`/`non_empty`/
+  `secret`/`skip` or a struct-level `check` beside it is an error, because it would do
+  nothing; `ask`, `confirm` and `form` still work.
+- **A `skip` field takes no rule.** It never reaches the input, so a rule on it would
+  have no value to apply to.
 
 The escape hatch is the field next door: a raw `#[arg(..)]` on the same field passes
 through untouched, so a clap key this table has not grown yet stays available without
@@ -184,19 +189,75 @@ the same field rules are available there as `#[facet(ask = …, trim)]` on the f
 `#[clifacet(..)]` forwards to that attribute rather than generating anything itself, so
 the two spellings cannot drift.
 
+## A rule of your own, a field that is not input, and the form
+
+Three declarations are about the command rather than one value. `check = path` on the
+struct names a `fn(&Input) -> Result<(), Failure>` that the generated bridge calls
+last, on the input the field rules built — so it reads filled, trimmed values, and a
+field rule that fails stops the run before it. `skip` keeps a field (a flattened group
+of presentation flags, say) out of the input while clap still parses it. `form` lists a
+field in `Facet::form_fields`, which is what a generated TUI form asks for:
+
+```rust
+use clifacet::clap::Parser as _;
+use clifacet::{Facet, Failure};
+
+#[clifacet::command(input = Booking, check = check_booking)]
+#[command(name = "book")]
+struct Cli {
+    /// Who the booking is for.
+    #[clifacet(long, fill = "guest", trim, non_empty, form)]
+    name: Option<String>,
+
+    /// How many seats: a `u8` parses 255, so the bound is the check's.
+    #[clifacet(long, default_value_t = 1, form)]
+    seats: u8,
+
+    /// Presentation, parsed by clap and kept out of the booking.
+    #[clifacet(long, skip)]
+    loud: bool,
+}
+
+struct Booking {
+    name: String,
+    seats: u8,
+}
+
+fn check_booking(booking: &Booking) -> Result<(), Failure> {
+    if booking.seats > 8 {
+        return Err(Failure::validation(format!("--seats must be at most 8, got {}", booking.seats)));
+    }
+    Ok(())
+}
+
+let refused = Cli::try_parse_from(["book", "--seats", "9"]).expect("9 is a u8").validate();
+assert_eq!(refused.err().map(|failure| failure.message().to_owned()).as_deref(), Some("--seats must be at most 8, got 9"));
+
+let booking = Cli::try_parse_from(["book", "--name", " ada ", "--loud"]).expect("parses").validate().expect("valid");
+assert_eq!((booking.name.as_str(), booking.seats), ("ada", 1));
+
+// The form's field list, from the same declarations: `FormState::generated` takes it.
+assert_eq!(Cli::form_fields(), ["name", "seats"]);
+```
+
+A generated form submits each field under the flag clap knows it by — `--dry-run` for
+a field `dry_run`, `-l` for a short-only one — so the answers parse exactly as typed
+flags would.
+
 ## Three ways to build the input
 
 | Attribute | Effect |
 | --- | --- |
 | `#[facet(input = Type)]` | required; the type `validate` returns |
 | no `bridge`, no field rules | the generated `TryFrom` copies fields by name, so a renamed or missing field is a compile error |
-| no `bridge`, field rules | the same `TryFrom`, with each field's `fill`/`trim`/`non_empty`/`secret` applied on the way |
-| `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input whose rules span fields |
+| no `bridge`, field rules | the same `TryFrom`, with each field's `fill`/`trim`/`non_empty`/`secret` applied on the way and `skip` fields left out |
+| `#[facet(check = path)]` | the generated `TryFrom` ends by calling `path(&input) -> Result<(), Failure>`, for a rule across fields or one the keys cannot state |
+| `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input the declarations cannot describe |
 
-Reach for the bridge when a rule is about more than one field — the reference
-application's `--repeat` range check and its blank-credential rule both predate the
-field rules and still live in one `fn` there. A rule about one field belongs on that
-field.
+A rule about one field belongs on that field, and a rule about the input belongs in
+`check`. That is how the reference application is built: its `--repeat` range is
+`check_input`, everything else is a declaration. Reach for a whole `bridge` only when
+the input is not a field-by-field copy of the command at all.
 
 ## What the derive does not do
 

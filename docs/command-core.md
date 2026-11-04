@@ -14,7 +14,7 @@ one.
 | Layer | Lives in | Owns | Must not |
 | --- | --- | --- | --- |
 | `clap` surface | `clifacet_example::Cli` | flags, help, usage errors | know about the command |
-| Validation | `TryFrom<Cli> for ExampleInput`, reached through `Facet::validate` | rejecting bad values, defaults | run anything |
+| Validation | `TryFrom<Cli> for ExampleInput`, generated from the field declarations and ending in `check_input`, reached through `Facet::validate` | rejecting bad values, defaults | run anything |
 | Command | `impl Command for Example` | the operation | touch a stream, read a terminal, know `clap` exists |
 | Application | `clifacet_example::run`, `clifacet_example::main` | streams, exit codes, diagnostics | contain the operation |
 
@@ -62,7 +62,7 @@ Measured on `examples/simple` at this commit:
 | `example --token <revoked…>` | 1 | empty | `example: the credential [redacted] was rejected` |
 | `example --tui` | 0 | the form, then `hello, world` | empty |
 | `example --interactive` (a terminal) | 0 | `hello, ada` after answering `ada` | empty |
-| `example --interactive --explode`, answer `n` | 130 | empty | `example: the user declined to fail on purpose (--explode)` |
+| `example --interactive --explode`, answer `n` | 130 | empty | `example: the user declined "Fail on purpose?" (--explode)` |
 | `example --yes` | 0 | `hello, world` | empty |
 | `example --interactive --tui` | 2 | empty | `clap` usage error (the two conflict) |
 | closed data stream | 1 | — | `example: cannot write the output: …` |
@@ -135,9 +135,14 @@ gaps a flag left empty, and that rule lives in one place:
 
 ```rust,ignore
 let mut session = Session::start(plan, || Box::new(Terminal::stdio()));
-let name = session.value(cli.name.take(), "Who should I greet?")?;   // never re-asks
-let output = session.run(&Example, |session| collect(session, cli))?; // collect, then run
+// `collect` is generated from the fields' `ask`/`confirm`; it never re-asks.
+let output = session.run(&Example, |session| cli.collect(session).and_then(Facet::validate))?;
 ```
+
+The reference application writes no prompt code: `#[clifacet(.., ask = "Who should I
+greet?")]` on `--name` and `confirm = "Fail on purpose?"` on `--explode` generate
+`Collect::collect`, which calls `Session::ask_for` and `Session::confirm_flag` — the
+same session rules below, applied per declared field.
 
 - **A supplied value is never re-asked.** Parity is a property of `Session::value`,
   not a promise: the same `--name ada` and the prompted `ada` reach the same input
@@ -226,11 +231,13 @@ pieces (decision-4).
 Four rules keep it a frontend rather than a second command:
 
 - **A form is generated from the command, and asked for explicitly.**
-  `FormState::generated(&Cli::command(), &["name", "repeat", "level"])` takes the
-  labels from the arguments' help and the initial values from their defaults. Which
-  arguments a screen asks for is a design decision, so it is named, never guessed:
-  the flags that chose the mode are not questions for someone who already chose one.
-  A name the command does not have is an error, not an empty form.
+  `FormState::generated(&Cli::command(), Cli::form_fields())` takes the labels from
+  the arguments' help and the initial values from their defaults. Which arguments a
+  screen asks for is a design decision, so it is declared, never guessed: the fields
+  marked `form` (`name`, `repeat`, `level`), not the flags that chose the mode, which
+  are not questions for someone who already chose one. A name the command does not
+  have is an error, not an empty form, and each answer is submitted under the flag
+  clap knows it by.
 - **Submission goes through `clap`.** The answers become arguments,
   `Cli::try_parse_from` parses them, and `Facet::validate` plus the handler run as
   they would for flags. A rejected answer — `--repeat 9`, `--repeat x` — keeps the
@@ -429,9 +436,8 @@ application's, and is listed so absence is not mistaken for oversight:
 second grammar:
 
 ```rust,ignore
-#[derive(clap::Parser, clifacet::Facet)]
-#[facet(input = ExampleInput, bridge = build_input)]
-pub struct Cli { /* clap attributes unchanged */ }
+#[clifacet::command(input = ExampleInput, check = check_input)]
+pub struct Cli { /* one #[clifacet(..)] per field */ }
 
 let input = Cli::try_parse_from(argv)?.validate()?;   // Facet::validate
 ```
@@ -444,12 +450,16 @@ that input, and the derive implements one of them:
 | Attribute | Effect |
 | --- | --- |
 | `#[facet(input = Type)]` | required; the type `validate` returns |
-| — (no `bridge`) | copies fields by name, so a renamed or missing field is a compile error |
-| `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input that normalizes |
+| — (no `bridge`) | copies fields by name, so a renamed or missing field is a compile error, applying each field's declared rules on the way |
+| `#[facet(check = path)]` | ends the generated bridge with `path(&input) -> Result<(), Failure>` |
+| `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input the declarations cannot describe |
 
-The example uses the bridge, because `--name` normalizes from `Option<String>` to a
-trimmed `String` and a blank value is rejected; both rules live in
-`TryFrom<Cli> for ExampleInput`, next to the data they constrain.
+The example declares its rules on the fields they constrain: `--name` is filled with
+`world`, trimmed and refused when blank, and the credential is trimmed with blank
+meaning none, all by `#[clifacet(..)]` keys. The one rule no key states, the
+`--repeat` range, is `check_input`, which runs after them on the built input. So
+`--name "  " --repeat 9` reports the blank name: a field's own rule comes first. The
+key table and the compile errors are in [the derive guide](derive.md).
 
 ### What the slice proves
 

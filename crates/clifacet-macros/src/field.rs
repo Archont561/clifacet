@@ -8,8 +8,8 @@
 //! bridge and prompt collection do with the same field.
 //!
 //! This module is a forwarder and nothing else. Grammar keys become one `#[arg(..)]`;
-//! interaction and normalization keys (`ask`, `confirm`, `fill`, `trim`, `non_empty`,
-//! `secret`) become one field-level `#[facet(..)]`, which the `Facet` derive reads —
+//! derive keys (`ask`, `confirm`, `fill`, `trim`, `non_empty`, `secret`, `skip`, `form`)
+//! become one field-level `#[facet(..)]`, which the `Facet` derive reads —
 //! so there is still exactly one generator of the bridge and of collection, and this
 //! attribute cannot drift from it. Tokens are forwarded, never reinterpreted: the
 //! value of `short`, `range` or `value_parser` reaches clap exactly as written, so clap
@@ -91,11 +91,18 @@ pub(crate) struct Declared {
 }
 
 impl Declared {
-    /// The attributes this declaration becomes: clap's `#[arg(..)]`, and the derive's
-    /// `#[facet(..)]` when the field declared how it is asked for or normalised.
+    /// The attributes this declaration becomes: clap's `#[arg(..)]` when the field
+    /// declared any grammar, and the derive's `#[facet(..)]` when it declared any rule.
+    ///
+    /// An empty `#[arg()]` is left out rather than emitted: clap reads a field with
+    /// none exactly as one with an empty one, and a `#[command(flatten)]` field that
+    /// only declares `skip` must not gain an argument attribute it cannot have.
     pub(crate) fn attributes(&self) -> Vec<Attribute> {
         let (arguments, rules) = (&self.arguments, &self.rules);
-        let mut attributes: Vec<Attribute> = vec![syn::parse_quote!(#[arg(#(#arguments),*)])];
+        let mut attributes: Vec<Attribute> = Vec::new();
+        if !arguments.is_empty() {
+            attributes.push(syn::parse_quote!(#[arg(#(#arguments),*)]));
+        }
         if !rules.is_empty() {
             attributes.push(syn::parse_quote!(#[facet(#(#rules),*)]));
         }
@@ -258,7 +265,7 @@ fn unknown(entry: &Meta, key: &str) -> syn::Error {
 
 fn supported() -> String {
     format!(
-        "values — {}; flags — {}; either — {}; asking — {}; normalising — {}",
+        "values — {}; flags — {}; either — {}; derive values — {}; derive flags — {}",
         VALUE_KEYS.join(", "),
         FLAG_KEYS.join(", "),
         EITHER_KEYS.join(", "),

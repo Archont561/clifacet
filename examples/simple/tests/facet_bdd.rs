@@ -20,6 +20,8 @@ struct AppWorld {
     help: String,
     declared: Option<declared::DeclaredInput>,
     asked: Vec<String>,
+    failure: Option<String>,
+    form: Vec<String>,
 }
 
 #[fixture]
@@ -96,10 +98,11 @@ fn an_alias_resolves_to_the_same_typed_input(world: AppWorld) {
 /// Its fields are read by clap's derive, not by hand, which is why the module allows the
 /// dead-code lint a struct with no reader of its own would otherwise earn.
 ///
-/// It lives here rather than in the reference application on purpose: CLI-28's first
-/// criterion is the grammar half, and the example moves over once the interaction and
-/// normalization halves exist. Declaring it in an application-shaped test is the point —
-/// this is a consumer of the public macro, not a second implementation of it.
+/// The reference application is declared the same way; this smaller command stays
+/// because it pins things the application does not use — a raw `#[arg(..)]` beside the
+/// declared fields, and a required `--repeat` with no default. Declaring it in an
+/// application-shaped test is the point — this is a consumer of the public macro, not a
+/// second implementation of it.
 #[allow(
     dead_code,
     reason = "clap's derive is the reader, and the test drives the API"
@@ -274,5 +277,75 @@ fn a_field_declared_once_is_asked_for_and_normalised(world: AppWorld) {
 )]
 #[test]
 fn without_a_terminal_the_declared_default_fills_in(world: AppWorld) {
+    let _ = world;
+}
+
+#[given("the reference application, declared one attribute per field")]
+fn the_reference_application(_world: &mut AppWorld) {
+    // The fixture is `clifacet_example::Cli` itself: its fields carry `#[clifacet(..)]`,
+    // so the rules and the form below come from its declarations or not at all.
+}
+
+/// Validates an invocation of the reference application, keeping the failure message.
+fn validation_message(argv: &[&str]) -> String {
+    let cli = Cli::try_parse_from(std::iter::once("example").chain(argv.iter().copied()))
+        .expect("the reference grammar parses");
+    let failure = cli.validate().expect_err("this invocation is refused");
+    assert_eq!(failure.kind(), clifacet::FailureKind::Validation);
+    failure.message().to_owned()
+}
+
+#[when("the user runs it with a blank name and too many repeats")]
+fn the_user_runs_with_two_mistakes(world: &mut AppWorld) {
+    world.failure = Some(validation_message(&["--name", "   ", "--repeat", "9"]));
+}
+
+#[then("validation fails with {message:string}")]
+fn validation_fails_with(world: &mut AppWorld, message: String) {
+    assert_eq!(world.failure.as_deref(), Some(message.as_str()));
+}
+
+#[then("a name that is only padded still meets the repeat check {message:string}")]
+fn a_padded_name_reaches_the_check(_world: &mut AppWorld, message: String) {
+    assert_eq!(
+        validation_message(&["--name", "  ada  ", "--repeat", "9"]),
+        message
+    );
+}
+
+#[scenario(
+    path = "tests/features/facet_bridge.feature",
+    name = "The reference application checks its input after each field's own rule"
+)]
+#[test]
+fn the_reference_application_checks_after_the_field_rules(world: AppWorld) {
+    let _ = world;
+}
+
+#[when("its form is built")]
+fn its_form_is_built(world: &mut AppWorld) {
+    world.form = clifacet_example::tui_form()
+        .fields()
+        .iter()
+        .map(|field| field.name().to_owned())
+        .collect();
+}
+
+#[then("the form asks for {first:string}, {second:string} and {third:string}, in that order")]
+fn the_form_asks_for(world: &mut AppWorld, first: String, second: String, third: String) {
+    assert_eq!(world.form, [first, second, third]);
+    assert_eq!(
+        world.form,
+        <Cli as Facet>::form_fields(),
+        "the form is the declarations' list, not a second one"
+    );
+}
+
+#[scenario(
+    path = "tests/features/facet_bridge.feature",
+    name = "The reference application's form is generated from its declarations"
+)]
+#[test]
+fn the_reference_form_is_generated_from_its_declarations(world: AppWorld) {
     let _ = world;
 }

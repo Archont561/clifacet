@@ -55,6 +55,9 @@ pub struct FieldState {
     /// the user typed. Typing replaces a default; backspace edits it like any other
     /// text, because deleting a character from a default is an edit, not an answer.
     untouched: bool,
+    /// The flag the value is submitted under, when it is not `--{name}`: a generated
+    /// field takes it from clap, because an id (`dry_run`) is not a flag (`--dry-run`).
+    flag: Option<String>,
 }
 
 impl FieldState {
@@ -73,7 +76,15 @@ impl FieldState {
             value,
             required: false,
             secret: false,
+            flag: None,
         }
+    }
+
+    /// The flag this field's value is submitted under.
+    fn flag(&self) -> String {
+        self.flag
+            .clone()
+            .unwrap_or_else(|| format!("--{}", self.name))
     }
 
     /// Marks this field as required, which the form uses when it builds arguments.
@@ -176,8 +187,10 @@ impl FormState {
     /// The list of arguments is explicit on purpose: which values a screen asks for
     /// is a design decision, and guessing it from the grammar would put the
     /// interaction flags of a command in front of a user who already chose a mode.
-    /// The label comes from the argument's help, and the initial value from its
-    /// default.
+    /// A derived command declares it with `form` and passes `Cli::form_fields()`.
+    /// The label comes from the argument's help, the initial value from its default,
+    /// and each answer is submitted under the argument's own flag — `--dry-run` for
+    /// the id `dry_run`, `-l` for a short-only one.
     ///
     /// # Errors
     ///
@@ -205,9 +218,15 @@ impl FormState {
                 .map(|value| value.to_string_lossy().into_owned())
                 .unwrap_or_default();
 
-            fields.push(
-                FieldState::new(*name, label, value).mark_required(argument.is_required_set()),
-            );
+            let mut field =
+                FieldState::new(*name, label, value).mark_required(argument.is_required_set());
+            // The spelling clap parses, so the submission is the invocation a user would
+            // type. A positional keeps `--{name}`, as before: it has no flag to borrow.
+            field.flag = argument
+                .get_long()
+                .map(|long| format!("--{long}"))
+                .or_else(|| argument.get_short().map(|short| format!("-{short}")));
+            fields.push(field);
         }
 
         if fields.is_empty() {
@@ -305,7 +324,7 @@ impl FormState {
             if field.is_empty() && !field.required {
                 continue;
             }
-            arguments.push(format!("--{}", field.name));
+            arguments.push(field.flag());
             arguments.push(field.value.clone());
         }
         arguments

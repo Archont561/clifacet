@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **macros:** generate the form and check the whole input from the declarations
+([42a49be](https://github.com/Archont561/clifacet/commit/42a49be8c8acb8d87baadb9edbcc0b74db0d05a4))
 * **macros:** ask for and normalise a field from its one declaration
 ([1db9ff8](https://github.com/Archont561/clifacet/commit/1db9ff8f4bf4d9155f7250cb72f25c0b00e31889))
 * declare an argument once with a field attribute, and guard every feature's cfg site

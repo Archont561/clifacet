@@ -1,4 +1,4 @@
-error: unsupported `#[facet(...)]` key `magic`; supported keys: `input`, `bridge`
+error: unsupported `#[facet(...)]` key `magic`; supported keys: `input`, `bridge`, `check`
  --> tests/ui/facet_unknown_key.rs:4:27
   |
 4 | #[facet(input = Greeting, magic = true)]

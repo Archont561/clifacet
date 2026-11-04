@@ -1,10 +1,10 @@
 ---
 id: CLI-28
 title: Declarative field attribute for commands
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01 21:18'
-updated_date: '2026-11-03 09:52'
+updated_date: '2026-11-03 10:23'
 labels: []
 milestone: m-7
 dependencies: []
@@ -24,8 +24,8 @@ One `#[clifacet(...)]` per field, carrying grammar, interaction and normalizatio
 - [x] #2 The interaction keys (`ask`, `confirm`) and normalization keys (`fill`, `trim`, `non_empty`, `secret`) are parsed and consumed by the generated `prompt::Collect` and the generated bridge; an answer to `ask` is parsed by the argument's own clap parser.
 - [x] #3 The derive generates `TryFrom<Cli> for` the declared input from the field declarations: copy by name when no rule applies, `fill`/`trim`/`non_empty`/`secret` in that fixed order when one is declared.
 - [x] #4 An unknown key, a `confirm` on a non-boolean, an `ask` on a non-`Option` or positional field, an `ask` on a `secret`, a rule on a type it cannot apply to, and a normalization rule beside a declared `bridge` each fail to compile at the key, with a trybuild case and a documented key table.
-- [ ] #5 The TUI form's field list is generated from the same declarations rather than hand-written.
-- [ ] #6 The reference application declares its flags with the new syntax, keeps its `ExampleInput`, and every existing parity test passes unchanged.
+- [x] #5 The TUI form's field list is generated from the same declarations rather than hand-written.
+- [x] #6 The reference application declares its flags with the new syntax, keeps its `ExampleInput`, and every existing parity test passes unchanged.
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -54,4 +54,14 @@ One `#[clifacet(...)]` per field, carrying grammar, interaction and normalizatio
 - **Still open:** AC#5 (generated form field list; `form` key) and AC#6 (reference application migration). AC#6 changes the documented decline message, because a generated `confirm` names the question and the flag. The example's `--repeat` range and blank-credential rules can move onto fields then.
 
 - 2026-11-03: Codecov reported 32 uncovered changed lines on PR #43 (patch 92.6%); now 428/428 of the changed lines are covered and the workspace is at 98.31%. Reachable branches got tests: `Session::ask_for` on an unknown id, on a positional argument, and on a field whose type differs from its parser's (`declared_fields.rs`); `describe_argument` naming a short-only, a positional with and without a value name, and an unknown argument (lib unit test); `range` on types that are not `Option<T>`/`Vec<T>`, and an `id` that is not a string literal (macro unit tests). Unreachable branches were restructured away rather than covered: `ranged` maps the name-value `range` entry in place instead of a `let … else` after `remove`, and `rules::read` hands value keys and flag keys to separate helpers, so 'a value key with no value' no longer exists as a case. One branch I expected to reach, `try_remove_one` returning `Ok(None)`, could not be constructed: clap reads `--maybe=` as the value `""` even with `num_args(0..=1)`, because the answer is always an explicit value. It is folded into the type-mismatch arm, which is tested, instead of keeping a separately worded message nothing can reach.
+
+- 2026-11-03: AC#5 and AC#6 landed; the maintainer said 'finish cli28' after choosing option 1 (field rules first, then the application's own rule), which is also the authorisation to close this card. decision-13's addendum records the design.
+- **AC#6, the gap.** The parity test `unbounded_values_are_rejected_by_the_library_not_by_the_parser` requires that `--repeat 255` parses and `ExampleInput::try_from` rejects it, so `range` was ruled out, and `--name` needed field rules, which a declared `bridge` refuses. A bridge cannot take the command with the rules applied, because `fill` changes a field's type. New struct key `check = path`: `fn(&Input) -> Result<(), Failure>`, called last by the generated `TryFrom`. AC#4's 'rule beside a bridge' error is kept, and `check` beside a bridge is a new one. New field key `skip`, because `ExampleInput` has no `interaction` field and a field-by-field copy could not leave it out.
+- **AC#5.** Field key `form`, generating `Facet::form_fields()` in declaration order, with an empty default on the trait so a hand-written `Facet` still compiles. It needs a named option, like `ask`. Building it exposed a bug in `FormState::arguments`: it submitted `--{id}`, so `dry_run` went out as `--dry_run`, `long = "greet-name"` as `--name`, and a short-only `-l` as `--level`. A generated field now stores clap's own spelling. The red test is `tui_form.rs::a_generated_field_is_submitted_under_the_flag_clap_knows_it_by`.
+- **Reference application.** `examples/simple/src/lib.rs` is declared with `#[clifacet::command(input = ExampleInput, check = check_input)]` and one `#[clifacet(..)]` per field. The hand-written `TryFrom`, `build_input`, the prompt code in `collect` and the form's name list are gone, and `collect` is `cli.collect(session).and_then(Facet::validate)`. `ExampleInput` is unchanged. Every existing example test passes unchanged: the diff under `examples/simple/tests` is additions only, apart from `documented_snippets.rs`, which `check_docs.py --write` regenerated.
+- **Visible changes.** (1) A declined `--explode` now reads `the user declined "Fail on purpose?" (--explode)`; `docs/command-core.md` is updated, and no test pinned the old text. (2) With two mistakes, the field rule wins: `--name '  ' --repeat 9` reports the blank name, where the old bridge reported the range. A BDD scenario pins this.
+- **TDD evidence.** Written red first: `crates/clifacet/tests/declared_command.rs` failed to compile on `form` ('not a #[clifacet(..)] key') and on `Facet::form_fields` (E0576). `facet_bdd.rs`'s two new scenarios failed on `form_fields`. The `tui_form` test failed with `left: ["--dry_run", …, "--name", …, "--level", …]`. Three trybuild cases, `field_form_positional`, `field_skip_with_rule` and `facet_check_beside_bridge`, had goldens generated with `TRYBUILD=overwrite`. Three goldens changed wording only: the unknown-key lists and the 'builds the whole input' sentence.
+- **Also fixed.** The '`{key}` takes a path' derive message had a broken line continuation, which left a run of spaces in the middle of the sentence.
+- **Evidence.** `test-local` green: fmt, clippy, alint 46, check-docs (10 pages, 14 snippets), nextest 49 + 308, doctests, Python 315 passed with 2 skipped, deny, advisory, packages, sandbox-check. `coverage`: 357 tests, 98.38%, and all 77 changed instrumented lines covered. `check-features` green. `Cargo.lock` unchanged.
+- **Known limits, not in scope.** A `bool` form field would submit `--flag value`, and a positional form field is refused at compile time rather than supported.
 <!-- SECTION:NOTES:END -->
