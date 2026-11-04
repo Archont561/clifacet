@@ -213,6 +213,34 @@ fn derive_snippet_4() {
     assert_eq!(Cli::form_fields(), ["name", "seats"]);
 }
 
+/// `derive.md`, line 267.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_5() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::clap::Parser as _;
+    use clifacet::Facet;
+    /// A family of commands, each naming its input through one trait.
+    trait Family {
+        type Input;
+    }
+    struct Greet;
+    impl Family for Greet {
+        type Input = Labelled<String>;
+    }
+    struct Labelled<T> {
+        name: T,
+    }
+    #[clifacet::command(input = <Greet as Family>::Input)]
+    #[command(name = "greet")]
+    struct Cli {
+        #[clifacet(long, fill = "world")]
+        name: Option<String>,
+    }
+    let input = Cli::try_parse_from(["greet"]).expect("parses").validate().expect("valid");
+    assert_eq!(input.name, "world");
+}
+
 /// `getting-started.md`, line 26.
 #[rustfmt::skip]
 #[test]

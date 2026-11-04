@@ -449,7 +449,7 @@ that input, and the derive implements one of them:
 
 | Attribute | Effect |
 | --- | --- |
-| `#[facet(input = Type)]` | required; the type `validate` returns |
+| `#[facet(input = Type)]` | required; the type `validate` returns: a path, a generic type, an alias or a projection — [what `input` may name](derive.md#what-input-may-name) |
 | — (no `bridge`) | copies fields by name, so a renamed or missing field is a compile error, applying each field's declared rules on the way |
 | `#[facet(check = path)]` | ends the generated bridge with `path(&input) -> Result<(), Failure>` |
 | `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input the declarations cannot describe |

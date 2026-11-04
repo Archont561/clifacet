@@ -85,7 +85,7 @@ fn a_struct_without_fields_still_bridges() {
     )
     .expect("an empty struct has nothing to copy");
 
-    assert!(tokens.contains("Nothing { }"), "{tokens}");
+    assert!(tokens.contains("let input = Self { }"), "{tokens}");
 }
 
 #[test]
@@ -681,4 +681,300 @@ fn an_id_that_is_not_a_string_literal_leaves_the_field_name_as_the_id() {
             "{id}: {tokens}"
         );
     }
+}
+
+// --- `input = Type`: any type the generated impls can name (CLI-35) ----------
+
+#[test]
+fn a_generic_input_type_is_named_whole_in_every_generated_impl() {
+    let tokens = expanded(
+        r"
+        #[facet(input = Greeting<String>)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("a generic input type is a type, not an expression");
+
+    assert!(
+        tokens.contains("type Input = Greeting < String >"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("TryFrom < Cli > for Greeting < String >"),
+        "{tokens}"
+    );
+}
+
+#[test]
+fn a_qualified_self_type_keeps_its_qualification() {
+    let tokens = expanded(
+        r"
+        #[facet(input = <Marker as Shape>::Input)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("a projection names one type");
+
+    assert!(
+        tokens.contains("type Input = < Marker as Shape > :: Input"),
+        "the `<Marker as Shape>` part must survive: {tokens}"
+    );
+}
+
+#[test]
+fn the_generated_bridge_builds_the_input_through_self_whatever_its_spelling() {
+    let tokens = expanded(
+        r"
+        #[facet(input = crate::inputs::Greeting<'static>)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("a qualified generic path is supported");
+
+    // `Greeting<'static> { .. }` is not an expression; `Self { .. }` is, for every type.
+    assert!(
+        tokens.contains("let input = Self { name : cli . name }"),
+        "{tokens}"
+    );
+}
+
+#[test]
+fn the_command_structs_generics_reach_every_generated_impl() {
+    let tokens = expanded(
+        r"
+        #[facet(input = Greeting<'a>)]
+        struct Cli<'a> { name: Option<String>, #[facet(skip)] marker: PhantomData<&'a ()> }
+        ",
+    )
+    .expect("a lifetime the command struct declares can appear in the input");
+
+    for generated in [
+        "impl < 'a > :: clifacet :: Facet for Cli < 'a >",
+        "impl < 'a > :: core :: convert :: TryFrom < Cli < 'a > > for Greeting < 'a >",
+        "impl < 'a > :: clifacet :: prompt :: Collect for Cli < 'a >",
+    ] {
+        assert!(
+            tokens.contains(generated),
+            "missing `{generated}`: {tokens}"
+        );
+    }
+}
+
+#[test]
+fn a_bridge_and_a_check_keep_their_qualification() {
+    let bridged = expanded(
+        r"
+        #[facet(input = Greeting, bridge = <Greeting as Build>::build)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("a qualified bridge path is supported");
+    let checked = expanded(
+        r"
+        #[facet(input = Greeting, check = <Greeting as Rule>::check)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("a qualified check path is supported");
+
+    assert!(
+        bridged.contains("< Greeting as Build > :: build (self)"),
+        "{bridged}"
+    );
+    assert!(
+        checked.contains("< Greeting as Rule > :: check"),
+        "{checked}"
+    );
+}
+
+#[test]
+fn an_input_that_is_not_a_type_says_what_input_takes() {
+    let message = rejected(
+        r"
+        #[facet(input = 1 + 2)]
+        struct Cli { name: Option<String> }
+        ",
+    );
+
+    assert_eq!(
+        message,
+        "`input` takes a type, for example `input = my_module::MyInput`"
+    );
+}
+
+#[test]
+fn self_in_the_input_type_is_rejected_because_it_names_the_command() {
+    let message = rejected(
+        r"
+        #[facet(input = Self::Input)]
+        struct Cli { name: Option<String> }
+        ",
+    );
+
+    assert_eq!(
+        message,
+        "`input` cannot mention `Self`: the generated impls are for the command struct, \
+         so `Self` would be the command or the input itself; name the type directly"
+    );
+}
+
+#[test]
+fn a_lifetime_the_command_struct_does_not_declare_is_rejected() {
+    let message = rejected(
+        r"
+        #[facet(input = Greeting<'a>)]
+        struct Cli { name: Option<String> }
+        ",
+    );
+
+    assert_eq!(
+        message,
+        "`'a` is not declared on the command struct, so the generated impls cannot name it: \
+         declare it there (`struct Cli<'a>`) or use `'static`"
+    );
+}
+
+#[test]
+fn static_and_higher_ranked_lifetimes_need_no_declaration() {
+    expanded(
+        r"
+        #[facet(input = Greeting<'static>, bridge = build)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("`'static` is always in scope");
+    expanded(
+        r"
+        #[facet(input = Box<dyn for<'b> Fn(&'b str) -> String>, bridge = build)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("a lifetime bound by `for<..>` is declared where it is used");
+}
+
+#[test]
+fn an_elided_lifetime_is_rejected() {
+    let message = rejected(
+        r"
+        #[facet(input = Greeting<'_>)]
+        struct Cli { name: Option<String> }
+        ",
+    );
+
+    assert_eq!(
+        message,
+        "`input` needs every lifetime named: `'_` cannot appear in an associated type; \
+         declare a lifetime on the command struct or use `'static`"
+    );
+}
+
+#[test]
+fn an_inferred_or_opaque_input_type_is_rejected() {
+    for (source, written) in [("_", "_"), ("impl Iterator<Item = u8>", "impl Trait")] {
+        let message = rejected(&format!(
+            "#[facet(input = {source}, bridge = build)] struct Cli {{ name: Option<String> }}"
+        ));
+
+        assert_eq!(
+            message,
+            format!(
+                "`input` names the one type `validate` returns, so `{written}` cannot stand \
+                 for it: write the concrete type"
+            )
+        );
+    }
+}
+
+#[test]
+fn an_input_that_is_not_a_struct_path_needs_a_declared_bridge() {
+    let message = rejected(
+        r"
+        #[facet(input = (String, u8))]
+        struct Cli { name: Option<String> }
+        ",
+    );
+    expanded(
+        r"
+        #[facet(input = (String, u8), bridge = build)]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("a declared bridge can build any type");
+
+    assert_eq!(
+        message,
+        "without `bridge = path`, the generated bridge builds the input field by field, so \
+         `input` has to name a struct; declare `bridge = path` to build this type yourself"
+    );
+}
+
+#[test]
+fn the_command_attribute_takes_the_same_input_types() {
+    let tokens = command(
+        "input = <Marker as Shape>::Input",
+        "struct Cli { name: Option<String> }",
+    )
+    .expect("the attribute reads `input` as a type too");
+
+    assert!(
+        tokens.contains(" [facet (input = < Marker as Shape >:: Input)]"),
+        "{tokens}"
+    );
+    assert!(
+        command(
+            "input = Greeting<String>",
+            "struct Cli { name: Option<String> }"
+        )
+        .is_ok(),
+        "a generic input type is not an expression"
+    );
+}
+
+#[test]
+fn every_offending_token_in_the_input_type_is_reported_at_once() {
+    let source = r"
+        #[facet(input = Pair<Self, 'a>)]
+        struct Cli { name: Option<String> }
+        ";
+    let input: DeriveInput = syn::parse_str(source).expect("the test source parses");
+    let error = expand(&input).expect_err("both tokens are rejected");
+
+    let messages: Vec<String> = error.into_iter().map(|error| error.to_string()).collect();
+
+    assert_eq!(messages.len(), 2, "{messages:?}");
+    assert!(messages[0].contains("`Self`"), "{messages:?}");
+    assert!(messages[1].contains("`'a` is not declared"), "{messages:?}");
+}
+
+#[test]
+fn a_bare_function_binds_its_own_lifetimes_and_type_parameters_too() {
+    for input in [
+        "for<'b> fn(&'b str) -> String",
+        // syn reads a type parameter in a binder; it binds no lifetime, so `'b` still must.
+        "Box<dyn for<'b, T> Fn(&'b T)>",
+    ] {
+        expanded(&format!(
+            "#[facet(input = {input}, bridge = build)] struct Cli {{ name: Option<String> }}"
+        ))
+        .expect("a lifetime bound by `for<..>` is in scope where it is used");
+    }
+}
+
+#[test]
+fn a_parenthesized_or_invisibly_grouped_struct_path_still_names_a_struct() {
+    expanded(
+        r"
+        #[facet(input = (Greeting))]
+        struct Cli { name: Option<String> }
+        ",
+    )
+    .expect("parentheses around a path change nothing");
+
+    // A `macro_rules!` that forwards `$input:ty` wraps it in an invisible group.
+    let grouped = syn::Type::Group(syn::TypeGroup {
+        group_token: syn::token::Group::default(),
+        elem: Box::new(syn::parse_quote!(Greeting)),
+    });
+    crate::input_type::check(&grouped, &syn::Generics::default(), false)
+        .expect("an invisible group around a path changes nothing");
 }
