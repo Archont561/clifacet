@@ -146,8 +146,13 @@ def test_main_prints_the_current_version(tmp_path, monkeypatch, capsys):
 
 
 def test_main_check_passes_on_the_committed_manifests(capsys):
+    # The real manifests, whatever version they record: a constant here would fail the
+    # first time a release bumps it.
+    import scripts.bump_version as bump_version
+
+    recorded = versions(_read(bump_version.CARGO_MANIFEST), _read(bump_version.PIXI_MANIFEST))
     assert main(["--check"]) == 0
-    assert "all three version sites record 0.1.0" in capsys.readouterr().out
+    assert f"all three version sites record {recorded[0].value}" in capsys.readouterr().out
 
 
 def test_main_dry_run_reports_the_change_without_writing(tmp_path, monkeypatch, capsys):
@@ -178,9 +183,15 @@ def test_main_does_not_touch_the_changelog(tmp_path, monkeypatch):
     assert len(files) == 2, "the bump knows about two manifests and nothing else"
 
 
-def test_main_rejects_bumping_to_the_current_version(capsys):
+def test_main_rejects_bumping_to_the_current_version(tmp_path, monkeypatch, capsys):
+    # Against fixture copies, never the real manifests: on a repository that has moved
+    # past the fixtures' version, this call would succeed and rewrite them.
+    files = _install_fixtures(tmp_path, monkeypatch)
+    before = [_read(path) for path in files]
+
     assert main(["0.1.0"]) == 1
     assert "already the recorded version" in capsys.readouterr().err
+    assert [_read(path) for path in files] == before
 
 
 def test_main_requires_a_version_when_not_asking_a_question():
