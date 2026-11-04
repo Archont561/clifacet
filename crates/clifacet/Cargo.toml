@@ -15,12 +15,15 @@ readme = "../../README.md"
 default = []
 interactive = ["dep:inquire"]
 tui = ["dep:ratatui", "dep:crossterm"]
+# `Serialize` for `Failure`, `FailureKind` and a redacted `Secret`. JSON is not the
+# library's to write (decision-3): an application serialises a failure itself.
+serde = ["dep:serde"]
 json = ["dep:serde_json"]
 
 [dependencies]
 clifacet-macros.workspace = true
 clap.workspace = true
-serde.workspace = true
+serde = { workspace = true, optional = true }
 thiserror.workspace = true
 inquire = { workspace = true, optional = true }
 ratatui = { workspace = true, optional = true }
@@ -31,6 +34,8 @@ serde_json = { workspace = true, optional = true }
 assert_cmd.workspace = true
 trybuild.workspace = true
 rstest.workspace = true
+# What an application would build a JSON failure body with; the tests read it back.
+serde_json.workspace = true
 
 [lints]
 workspace = true
