@@ -29,6 +29,7 @@ from scripts.release import (
     preflight,
     probe,
     publish,
+    regenerate_changelog,
     tag,
     versions_in,
 )
@@ -457,3 +458,93 @@ def test_main_preflight_prints_the_version_it_resolved(tmp_path, capsys):
     )
     assert code == 0
     assert "release version: 0.1.0" in capsys.readouterr().out
+
+
+# --- the changelog, after the tag ---------------------------------------------
+
+RENDERED = "# Changelog\n\n## [0.2.0] - 2026-11-04\n\n### Added\n\n- A feature.\n"
+
+
+def test_the_changelog_step_renders_the_file_before_committing_it(tmp_path):
+    """The 0.2.0 release showed the step committing nothing: it never rendered.
+
+    The committed file still had the section as `[Unreleased]`, so `git status` was
+    clean and the step reported "already matches the tag" while it did nothing.
+    """
+    (tmp_path / "CHANGELOG.md").write_text("## [Unreleased]\n\n- A feature.\n", encoding="utf-8")
+    events = []
+
+    def render(root):
+        events.append("render")
+        return RENDERED
+
+    def commit(root, branch):
+        events.append(("commit", branch, (root / "CHANGELOG.md").read_text(encoding="utf-8")))
+        return "committed"
+
+    result = regenerate_changelog(
+        tmp_path, "main", run=runner(events), render=render, commit=commit
+    )
+
+    assert result == "committed"
+    assert events == [
+        ["git", "fetch", "--tags", "--force", "origin"],
+        "render",
+        ("commit", "main", RENDERED),
+    ], "fetch the tag, then render with it, then commit what was rendered"
+
+
+def test_a_failed_tag_fetch_renders_and_commits_nothing(tmp_path):
+    """Rendering without the new tag would write the section as unreleased again."""
+    events = []
+
+    with pytest.raises(ReleaseError, match="fetch the tag"):
+        regenerate_changelog(
+            tmp_path,
+            "main",
+            run=runner(events, exit_code=1),
+            render=lambda root: pytest.fail("rendered without the tag"),
+            commit=lambda root, branch: pytest.fail("committed without the tag"),
+        )
+    assert not (tmp_path / "CHANGELOG.md").exists()
+
+
+def test_main_changelog_goes_through_the_rendering_step(tmp_path, monkeypatch):
+    import scripts.release as release
+
+    seen = []
+    monkeypatch.setattr(release, "append_summary", seen.append)
+    monkeypatch.setattr(
+        release, "commit_changelog", lambda root, branch: f"pushed {branch}"
+    )
+
+    code = main(
+        ["changelog", "--root", str(tmp_path)],
+        run=runner([]),
+        render_changelog=lambda root: RENDERED,
+    )
+
+    assert code == 0
+    assert (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8") == RENDERED
+    assert seen == ["pushed main"]
+
+
+def test_main_reports_a_changelog_failure_without_a_traceback(tmp_path, monkeypatch, capsys):
+    """A push refused by branch protection is a message, like every other failure."""
+    import scripts.release as release
+    from scripts.changelog import ChangelogError
+
+    def refused(root, branch):
+        raise ChangelogError("could not push the regenerated changelog to main: protected")
+
+    monkeypatch.setattr(release, "commit_changelog", refused)
+    monkeypatch.setattr(release, "set_error", lambda message: None)
+
+    code = main(
+        ["changelog", "--root", str(tmp_path)],
+        run=runner([]),
+        render_changelog=lambda root: RENDERED,
+    )
+
+    assert code == 1
+    assert "could not push the regenerated changelog" in capsys.readouterr().err

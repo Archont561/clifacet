@@ -50,7 +50,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.bump_version import crate_pins, inconsistencies, versions
-from scripts.changelog import ChangelogError, commit as commit_changelog, convco, notes_for
+from scripts.changelog import (
+    CHANGELOG,
+    ChangelogError,
+    commit as commit_changelog,
+    convco,
+    generate,
+    notes_for,
+)
 from scripts.github_actions import append_summary, set_error, set_output
 
 INDEX = "https://index.crates.io"
@@ -221,6 +228,35 @@ def tag(run: Runner, version: str, notes_path: Path | str, sha: str) -> str:
     return f"created {tag_name} with the changelog notes"
 
 
+def regenerate_changelog(
+    root: Path,
+    branch: str,
+    run: Runner,
+    render: Callable[[Path], str],
+    commit: Callable[[Path, str], str],
+) -> str:
+    """Render `CHANGELOG.md` with the tag this run created, then commit and push it.
+
+    The order is the whole point. The tag was created on the remote by the step before,
+    and the renderer reads tags, so it is fetched first: rendered without it, the new
+    version would come out as `[Unreleased]` again. And the file has to be *written*
+    before it is committed — `commit` only commits a file that changed, so skipping the
+    render made this step report "already matches the tag" and do nothing, which is
+    what the 0.2.0 release did.
+    """
+    _check(
+        run,
+        ["git", "fetch", "--tags", "--force", "origin"],
+        "fetch the tag that was just created",
+    )
+    (Path(root) / CHANGELOG).write_text(render(Path(root)), encoding="utf-8")
+    return commit(Path(root), branch)
+
+
+def _render_changelog(root: Path) -> str:
+    return generate(convco(root), root)
+
+
 def preflight(
     root: Path = ROOT,
     ref: str = "",
@@ -268,6 +304,7 @@ def main(
     record: Record | None = None,
     sleep: Callable[[float], None] = time.sleep,
     notes_from: Callable[[str], str] | None = None,
+    render_changelog: Callable[[Path], str] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -312,14 +349,16 @@ def main(
             )
             return 0
         if arguments.action == "changelog":
-            # The tag was created by the step above, on the remote; convco reads tags, so
-            # the one this run just made has to be here before anything is rendered.
-            _check(
-                execute,
-                ["git", "fetch", "--tags", "--force", "origin"],
-                "fetch the tag that was just created",
+            _summary(
+                regenerate_changelog(
+                    arguments.root,
+                    arguments.branch,
+                    run=execute,
+                    render=render_changelog or _render_changelog,
+                    # Looked up at call time, so a test can stand in for the push.
+                    commit=lambda root, branch: commit_changelog(root, branch),
+                )
             )
-            _summary(commit_changelog(arguments.root, arguments.branch))
             return 0
         version = arguments.version or _recorded_version(arguments.root)
         notes = arguments.notes or Path(os.environ.get("NOTES_PATH", ""))
@@ -331,7 +370,7 @@ def main(
         )
         _summary(message)
         return 0
-    except ReleaseError as error:
+    except (ReleaseError, ChangelogError) as error:
         set_error(str(error))
         print(f"release: {error}", file=sys.stderr)
         return 1

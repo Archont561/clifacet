@@ -1,6 +1,6 @@
 # Development
 
-The workspace is the `0.1.0` library — published to crates.io on 2026-11-01 — plus the
+The workspace is the `0.2.0` library — published to crates.io on 2026-11-04 — plus the
 work merged since, which accumulates for the next version. The checked-in Pixi
 environment currently targets Linux x86-64.
 
@@ -426,6 +426,27 @@ rehearsal cannot reach — registry availability (the publish loop polled the in
 main crate was packaged only after the macro crate appeared) and the OIDC exchange itself.
 Partial-failure recovery is still only proven by rule, in `scripts/tests/test_release.py`:
 the first release had no partial failure to recover from.
+
+**`0.2.0` was the first release cut through the runbook end to end.** The bump was
+`bump-version 0.2.0 --relock` in PR #45, where CI's `lock guard` proved the relock; the
+maintainer then dispatched a rehearsal (run 41837299505, on the tree before the bump) and the
+release itself — run 41841115583, `dry_run` unchecked. Every irreversible step succeeded:
+the OIDC exchange, the publish loop (which polls the index, so a green step means both
+`0.2.0` crates were indexed), and the tag. Tag `v0.2.0` points at `32084490`, the merge of
+the bump, and the GitHub Release carries the notes rendered from the commits. Two defects
+surfaced, both only reachable by a real release, and both are now covered by tests:
+
+- **The bump tests rewrote the real manifests.** One test called `main(["0.1.0"])` on the
+  repository's own files to prove a same-version bump is refused; once they recorded `0.2.0`,
+  the call succeeded and set them back. They now run on fixtures and hold on any version.
+- **The changelog step never rendered.** `release changelog` fetched the new tag and went
+  straight to committing, and the commit only happens when the file changed, so the step
+  reported "already matches the tag" and pushed nothing — the `0.2.0` section reached `main`
+  by running `pixi run changelog` by hand, as the step's own failure message advises. The step
+  now renders, writes, then commits, and `test_release.py` pins that order. The `0.1.0`
+  release predates the changelog tooling, so this was the step's first real run.
+
+Partial-failure recovery remains proven by rule only: neither release failed half-way.
 
 When verifying a rehearsal, read the step list rather than trusting a summary: the
 irreversible steps are separate steps gated on `!inputs.dry_run`, so "skipped" there is

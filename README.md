@@ -80,14 +80,15 @@ boundary with no flag behind it yet. Prompts are a two-method seam — `ask` and
 ## Status
 
 Experimental. The command core, the interaction policy, prompts, the derive, the
-`command` wrapper and the TUI are implemented and covered; the JSON frontend is
-reserved and does not exist yet.
+`command` wrapper, one `#[clifacet(..)]` declaration per field and the TUI are
+implemented and covered; the JSON frontend is reserved and does not exist yet.
 
-**`0.1.0` is published.** [`clifacet`](https://crates.io/crates/clifacet) and
+**`0.2.0` is published.** [`clifacet`](https://crates.io/crates/clifacet) and
 [`clifacet-macros`](https://crates.io/crates/clifacet-macros) are on crates.io, tagged
-[`v0.1.0`](https://github.com/Archont561/clifacet/releases/tag/v0.1.0), and released by a
-manual, authorized dispatch of `release.yml` — publishing stays a separate act from
-merging, so a merge never puts a version on the registry by itself.
+[`v0.2.0`](https://github.com/Archont561/clifacet/releases/tag/v0.2.0) — see the
+[changelog](CHANGELOG.md) for what changed since `0.1.0` — and released by a manual,
+authorized dispatch of `release.yml`: publishing stays a separate act from merging, so a
+merge never puts a version on the registry by itself.
 
 ```sh
 cargo run -p clifacet-example                            # asks for what the flags left out

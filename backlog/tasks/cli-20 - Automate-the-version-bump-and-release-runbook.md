@@ -4,7 +4,7 @@ title: Automate the version bump and release runbook
 status: In Progress
 assignee: []
 created_date: '2026-10-30 16:30'
-updated_date: '2026-11-03 07:49'
+updated_date: '2026-11-04 13:52'
 labels: []
 milestone: m-10
 dependencies:
@@ -42,6 +42,8 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 
 - 2026-11-03: the note above from 2026-11-01 is now factually wrong and is corrected here rather than deleted, because it explains why AC\#4 stayed open. It said the `[Unreleased]` section was empty and that the bump refuses an empty section. Neither is true of the committed tree: `CHANGELOG.md` has one `### Added` entry under `## [Unreleased]` (the `examples: wrap the backlog.md CLI` commit, b753b84), and since the 2026-11-01 rewrite the changelog is rendered from the commits by `convco` — `--promote-current` and `--skip-changelog` were deleted, and the release refuses a tree whose commits since the last tag say nothing, which is a property of the commits and not of the file. The commit that closed the gap is b753b84 itself, which landed after that note was written.
 - Consequence, checked against the tree today: `scripts/bump_version.py --check` still reports the three version sites agreeing at 0.1.0, and there is one unreleased entry describing the next version, so the 'the next release has to describe itself' guard will not fire on an empty section. AC\#4 itself is unchanged and still open for the original reason: it needs `bump-version 0.1.1 --relock` to run through a `main` dispatch, which is CLI-38's first criterion.
+
+- 2026-11-04: 0.2.0 exercised two of AC#4's three remaining clauses. `bump-version 0.2.0 --relock` (PR #45) moved the manifest sites and refreshed the lock, and CI's `lock guard` proved it. The release was then dispatched from the resulting `main` (run [41841115583](https://github.com/Archont561/clifacet/actions/runs/41841115583)), and it published both crates and tagged `v0.2.0`. The third clause, 'the post-tag changelog commit lands', **failed silently**: the step never rendered the file, so `commit` found nothing changed and pushed nothing. That is fixed and tested in `scripts/release.py` (`regenerate_changelog`), and the `[0.2.0]` section was rendered with `pixi run changelog` and committed through a PR. AC#4 stays open, narrowed to that clause: the next release must show the changelog commit landing on `main` by itself.
 <!-- SECTION:NOTES:END -->
 
 ## Notes
