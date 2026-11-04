@@ -96,16 +96,15 @@ from `crates/clifacet/Cargo.toml` and checks each one against the committed lock
 | `default` | the manifest's `default` set | what a consumer gets with a bare `clifacet` dependency |
 | `interactive` | `--no-default-features --features interactive` | the prompt frontend compiles by itself |
 | `tui` | `--no-default-features --features tui` | the full-screen frontend compiles by itself |
-| `json` | `--no-default-features --features json` | the reserved serialization feature compiles by itself (and gates nothing yet: see below) |
+| `serde` | `--no-default-features --features serde` | serialization of failures and secrets compiles by itself |
 | `all-features` | `--all-features` (workspace-wide) | every frontend together, which is what the tests build |
 
 A row that compiles proves a feature *can* be enabled, not that enabling it does
 anything, so the same task also checks the other half: every declared feature has a
 `cfg(feature = "…")` site in the crate's source. A feature with no site fails the
 check, and the only way past it is a written reason in the script's `UNUSED_FEATURES`
-table. That table currently holds one entry — `json`, which selects `serde_json` and
-gates no code until CLI-36 either builds machine-readable failures on it or retires it.
-An entry that outlives its reason fails a test, so the excuse cannot quietly become
+table. That table is empty: its last entry, `json`, was retired by CLI-36 in favour of
+`serde`, which gates the `Serialize` impls. An entry that outlives its reason fails a test, so the excuse cannot quietly become
 permanent.
 
 `default` is empty today, so it resolves to the same configuration as
@@ -456,17 +455,19 @@ confirm from the repository side that the tag step did not run.
 ## Rust dependencies and features
 
 The root Cargo manifest centralizes dependency versions. The main crate includes
-clap, serde, thiserror and the companion macro crate as core dependencies. It
-also reserves three **optional dependency boundaries**, disabled by default:
+clap, thiserror and the companion macro crate as core dependencies. It has three
+**optional dependency boundaries**, disabled by default — what each adds and costs is
+in [Features](getting-started.md#features):
 
 - `interactive`: inquire with the crossterm backend.
 - `tui`: ratatui and crossterm (the same crossterm 0.29 line as inquire).
-- `json`: serde_json.
+- `serde`: serde, for `Serialize` on `Failure`, `FailureKind` and a redacted `Secret`.
 
-`interactive`, `tui` and the derive are implemented and covered; `json` still only
-selects its dependency, and no flag produces JSON yet. That gap is now checked rather
-than remembered: `check-features` fails on a declared feature that no `cfg` mentions,
-so `json` is the one feature named in its allowlist, with the card that will settle it. Everything is checked every
+All three are implemented and covered, and `check-features` fails on a declared feature
+that no `cfg` mentions. The `json` feature 0.2.0 reserved is gone: it selected
+`serde_json` and gated nothing, and since output is application-owned (decision-3) the
+library has no JSON of its own to write. `serde_json` is a development dependency, used
+by the tests that read the serialised shape back. Everything is checked every
 way — `--no-default-features`, the empty `default` set, each boundary on its own and
 all of them together — by the `check-features` task described in
 [Supported platforms and feature combinations](#supported-platforms-and-feature-combinations).

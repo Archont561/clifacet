@@ -55,17 +55,7 @@ ALL_FEATURES = "all-features"
 # compiles in the matrix and changes nothing. The few that are genuinely unbuilt yet are
 # named here with the reason, and nothing else may be: a silently allowlisted feature is
 # exactly the rot this guard exists to catch.
-#
-# CLI-36 decides `json`'s fate — either it gets a `cfg(feature = "json")` site that
-# serialises failures, or it is retired from the manifest. When that lands, delete the
-# entry; `test_the_declared_exceptions_still_describe_the_crate` fails if it outlives it.
-UNUSED_FEATURES: dict[str, str] = {
-    "json": (
-        "reserves `serde_json` for machine-readable output that is not implemented yet, "
-        "so no code is gated on it; CLI-36 either builds it on a real cfg site or retires "
-        "the feature"
-    ),
-}
+UNUSED_FEATURES: dict[str, str] = {}
 
 # `cfg(feature = "x")`, `cfg!(feature = "x")` and `cfg_attr(…, feature = "x")` are all
 # sites where a feature changes the code. Comments are stripped first, because a guide

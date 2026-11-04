@@ -16,7 +16,15 @@ use std::error::Error;
 use std::fmt;
 
 /// What kind of failure a [`Failure`] records.
+///
+/// With the `serde` feature it serialises as its lowercase name: `"validation"`,
+/// `"execution"` or `"cancelled"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize),
+    serde(rename_all = "lowercase")
+)]
 #[non_exhaustive]
 pub enum FailureKind {
     /// The input failed validation, so the command did not run.
@@ -36,7 +44,14 @@ pub enum FailureKind {
 /// The message is written for a person reading a diagnostic, not for parsing.
 /// Machine-readable output belongs on the application's data stream, which a
 /// failure never writes to.
+///
+/// With the `serde` feature a failure serialises as its kind and its message, in that
+/// order — `{"kind":"validation","message":"--name must not be blank"}` through
+/// `serde_json` — which is the body an application writes when it reports failures as
+/// JSON. The library never writes it itself: output stays the application's
+/// (decision-3), so the flag that selects JSON and the stream it goes to are too.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Failure {
     kind: FailureKind,
     message: String,

@@ -11,6 +11,7 @@
 mod command;
 mod facet;
 mod field;
+mod input_type;
 mod rules;
 
 use proc_macro::{Literal, TokenStream, TokenTree};
@@ -46,7 +47,12 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// # Attributes
 ///
-/// - `#[facet(input = Type)]` — required. The typed input the bridge builds.
+/// - `#[facet(input = Type)]` — required. The typed input the bridge builds: any type
+///   the generated impls can name — a qualified path, a generic type, an alias, a
+///   projection such as `<T as Trait>::Input`. A lifetime in it must be declared on the
+///   command struct, whose generics every generated impl takes, or be `'static`. Without
+///   a `bridge` it must name a struct, built as `Self { .. }`. `Self`, `_`, `impl Trait`
+///   and `'_` are compile errors at their tokens.
 /// - `#[facet(check = path)]` — optional. Called as `path(&input) -> Result<(),
 ///   Failure>` at the end of the generated `TryFrom`, after every field rule, for a
 ///   rule across fields.

@@ -33,9 +33,11 @@ pub const REDACTED: &str = "[redacted]";
 /// A value that prints as [`REDACTED`].
 ///
 /// It parses with [`FromStr`] so `clap` accepts it as a value, and it compares by
-/// value so an application can still test what it received. It implements no
-/// serialization on purpose: writing a credential into a config file or a log line is
-/// a decision the application has to make explicitly, through [`Secret::expose`].
+/// value so an application can still test what it received. With the `serde` feature
+/// it serialises as [`REDACTED`] too, so a secret inside a serialised value — a JSON
+/// report, a recorded run — cannot carry the credential out. It never deserialises:
+/// writing a credential into a config file and reading it back is a decision the
+/// application has to make explicitly, through [`Secret::expose`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Secret<T> {
     value: T,
@@ -68,6 +70,14 @@ impl<T: fmt::Debug> fmt::Debug for Secret<T> {
     /// Redacted even when `T` would print itself: the whole point of the type.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("Secret([redacted])")
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T> serde::Serialize for Secret<T> {
+    /// Redacted whatever `T` is, and without asking `T` to serialise at all.
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(REDACTED)
     }
 }
 

@@ -16,10 +16,11 @@
 //! - `#[facet(bridge = path)]`, for an input the declarations cannot describe, which
 //!   receives the parsed command and builds the whole input itself.
 
+use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
-use syn::punctuated::Punctuated;
+use syn::parse::{ParseStream, Parser as _};
 use syn::spanned::Spanned as _;
-use syn::{Data, DeriveInput, Expr, Fields, Ident, Meta, Path, Token};
+use syn::{Data, DeriveInput, Expr, ExprPath, Fields, Generics, Ident, Path, Token, Type};
 
 use crate::rules::{self, Rules};
 
@@ -32,13 +33,15 @@ const SUPPORTED_KEYS: &str = "`input`, `bridge`, `check`";
 /// What the `#[facet(...)]` attribute declared.
 #[derive(Default)]
 struct Declared {
-    input: Option<Path>,
-    bridge: Option<Path>,
+    /// Any type the generated impls can name; `crate::input_type` says which.
+    input: Option<Type>,
+    /// Kept whole, so a qualified `<T as Trait>::build` keeps its `<T as Trait>`.
+    bridge: Option<ExprPath>,
     /// A rule across the built input, run by the generated bridge after the field rules.
-    check: Option<Path>,
+    check: Option<ExprPath>,
 }
 
-pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
     let fields = named_fields(input)?;
     let declared = parse_attribute(input)?;
     let input_type = declared.input.ok_or_else(|| {
@@ -48,7 +51,10 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
              add `#[facet(input = YourInputType)]`",
         )
     })?;
+    crate::input_type::check(&input_type, &input.generics, declared.bridge.is_some())?;
     let name = &input.ident;
+    let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
+    let command = quote!(#name #type_generics);
 
     // Either generate the bridge from the field declarations, or hand over to the
     // declared one. A declared bridge receives the parsed command by value and owns
@@ -71,7 +77,7 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
         let assignments = fields
             .iter()
             .filter(|field| field.rules.skip.is_none())
-            .map(|field| field.assignment(name));
+            .map(|field| field.assignment(&command));
         // The check sees the input the field rules built, never the raw flags: by the
         // time it runs, every value is filled, trimmed and known not to be blank.
         let check = declared.check.as_ref().map(|check| {
@@ -82,13 +88,15 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
             }
         });
         let bridge_impl = quote! {
-            impl ::core::convert::TryFrom<#name> for #input_type {
+            impl #impl_generics ::core::convert::TryFrom<#command> for #input_type #where_clause {
                 type Error = ::clifacet::Failure;
 
                 fn try_from(
-                    cli: #name,
+                    cli: #command,
                 ) -> ::core::result::Result<Self, ::clifacet::Failure> {
-                    let input = #input_type { #(#assignments),* };
+                    // `Self`, not the type as written: `Greeting<'a> { .. }` and
+                    // `<T as Shape>::Input { .. }` are not expressions, `Self { .. }` is.
+                    let input = Self { #(#assignments),* };
                     #check
                     ::core::result::Result::Ok(input)
                 }
@@ -99,11 +107,11 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
             bridge_impl,
         )
     };
-    let collect = collect_impl(name, &fields);
+    let collect = collect_impl(name, &input.generics, &fields);
     let form_fields = form_fields(&fields);
 
     Ok(quote! {
-        impl ::clifacet::Facet for #name {
+        impl #impl_generics ::clifacet::Facet for #command #where_clause {
             type Input = #input_type;
 
             #form_fields
@@ -132,7 +140,7 @@ struct Declaration {
 impl Declaration {
     /// The field's entry in the generated struct literal: copied by name, with the
     /// declared rules applied in their one fixed order.
-    fn assignment(&self, command: &Ident) -> proc_macro2::TokenStream {
+    fn assignment(&self, command: &TokenStream) -> TokenStream {
         let name = &self.name;
         if !self.rules.normalises() {
             return quote!(#name: cli.#name);
@@ -173,7 +181,8 @@ impl Declaration {
 ///
 /// Generated for every derived command, with nothing to do when no field declares a
 /// question, so collection is one call whatever the command declares.
-fn collect_impl(name: &Ident, fields: &[Declaration]) -> proc_macro2::TokenStream {
+fn collect_impl(name: &Ident, generics: &Generics, fields: &[Declaration]) -> TokenStream {
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     let questions: Vec<_> = fields
         .iter()
         .filter_map(|field| {
@@ -197,7 +206,7 @@ fn collect_impl(name: &Ident, fields: &[Declaration]) -> proc_macro2::TokenStrea
 
     if questions.is_empty() {
         return quote! {
-            impl ::clifacet::prompt::Collect for #name {
+            impl #impl_generics ::clifacet::prompt::Collect for #name #type_generics #where_clause {
                 fn collect(
                     self,
                     _session: &mut ::clifacet::prompt::Session,
@@ -208,7 +217,7 @@ fn collect_impl(name: &Ident, fields: &[Declaration]) -> proc_macro2::TokenStrea
         };
     }
     quote! {
-        impl ::clifacet::prompt::Collect for #name {
+        impl #impl_generics ::clifacet::prompt::Collect for #name #type_generics #where_clause {
             fn collect(
                 mut self,
                 session: &mut ::clifacet::prompt::Session,
@@ -224,7 +233,7 @@ fn collect_impl(name: &Ident, fields: &[Declaration]) -> proc_macro2::TokenStrea
 /// `Facet::form_fields` for the command: every `form` field, in declaration order.
 ///
 /// Nothing is generated without one, so the trait's empty default stays in charge.
-fn form_fields(fields: &[Declaration]) -> proc_macro2::TokenStream {
+fn form_fields(fields: &[Declaration]) -> TokenStream {
     let ids: Vec<_> = fields
         .iter()
         .filter(|field| field.rules.form.is_some())
@@ -275,62 +284,101 @@ fn named_fields(input: &DeriveInput) -> syn::Result<Vec<Declaration>> {
 /// Reads the `#[facet(...)]` attribute, rejecting anything it cannot honor.
 fn parse_attribute(input: &DeriveInput) -> syn::Result<Declared> {
     let mut declared = Declared::default();
-
     for attribute in &input.attrs {
-        if !attribute.path().is_ident(ATTRIBUTE) {
-            continue;
-        }
-        let entries = attribute.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
-        for entry in entries {
-            let Meta::NameValue(entry) = entry else {
-                return Err(syn::Error::new_spanned(
-                    &entry,
-                    format!(
-                        "`#[{ATTRIBUTE}(...)]` takes `key = value` pairs; \
-                         supported keys: {SUPPORTED_KEYS}"
-                    ),
-                ));
-            };
-            let Some(key) = entry.path.get_ident() else {
-                return Err(syn::Error::new_spanned(
-                    &entry.path,
-                    format!(
-                        "unsupported `#[{ATTRIBUTE}(...)]` key; supported keys: {SUPPORTED_KEYS}"
-                    ),
-                ));
-            };
-            let slot = match key.to_string().as_str() {
-                "input" => &mut declared.input,
-                "bridge" => &mut declared.bridge,
-                "check" => &mut declared.check,
-                unknown => {
-                    return Err(syn::Error::new_spanned(
-                        key,
-                        format!(
-                            "unsupported `#[{ATTRIBUTE}(...)]` key `{unknown}`; \
-                             supported keys: {SUPPORTED_KEYS}"
-                        ),
-                    ));
-                }
-            };
-            if slot.is_some() {
-                return Err(syn::Error::new_spanned(
-                    key,
-                    format!("`{key}` is declared more than once"),
-                ));
-            }
-            let Expr::Path(value) = &entry.value else {
-                return Err(syn::Error::new_spanned(
-                    &entry.value,
-                    format!(
-                        "`{key}` takes a path, for example \
-                         `#[{ATTRIBUTE}({key} = my_module::item)]`"
-                    ),
-                ));
-            };
-            *slot = Some(value.path.clone());
+        if attribute.path().is_ident(ATTRIBUTE) {
+            attribute
+                .parse_args_with(|stream: ParseStream<'_>| parse_entries(&mut declared, stream))?;
         }
     }
-
     Ok(declared)
+}
+
+/// Whether `#[clifacet::command(..)]`'s arguments declare an input, read by the same
+/// parser as `#[facet(..)]` so the two attributes accept exactly the same values.
+pub(crate) fn declares_input(arguments: TokenStream) -> syn::Result<bool> {
+    let mut declared = Declared::default();
+    (|stream: ParseStream<'_>| parse_entries(&mut declared, stream)).parse2(arguments)?;
+    Ok(declared.input.is_some())
+}
+
+/// Reads comma-separated `key = value` entries.
+///
+/// Not `syn::Meta`: its value is an expression, and a type such as `Greeting<String>` is
+/// not one. Each key reads its own kind of value instead — a type for `input`, a path for
+/// `bridge` and `check`.
+fn parse_entries(declared: &mut Declared, stream: ParseStream<'_>) -> syn::Result<()> {
+    while !stream.is_empty() {
+        parse_entry(declared, stream)?;
+        if !stream.is_empty() {
+            stream.parse::<Token![,]>()?;
+        }
+    }
+    Ok(())
+}
+
+fn parse_entry(declared: &mut Declared, stream: ParseStream<'_>) -> syn::Result<()> {
+    let key = stream.call(Path::parse_mod_style)?;
+    if !stream.peek(Token![=]) {
+        return Err(syn::Error::new_spanned(
+            &key,
+            format!(
+                "`#[{ATTRIBUTE}(...)]` takes `key = value` pairs; supported keys: {SUPPORTED_KEYS}"
+            ),
+        ));
+    }
+    let Some(key) = key.get_ident() else {
+        return Err(syn::Error::new_spanned(
+            &key,
+            format!("unsupported `#[{ATTRIBUTE}(...)]` key; supported keys: {SUPPORTED_KEYS}"),
+        ));
+    };
+    let name = key.to_string();
+    let declared_before = match name.as_str() {
+        "input" => declared.input.is_some(),
+        "bridge" => declared.bridge.is_some(),
+        "check" => declared.check.is_some(),
+        unknown => {
+            return Err(syn::Error::new_spanned(
+                key,
+                format!(
+                    "unsupported `#[{ATTRIBUTE}(...)]` key `{unknown}`; \
+                     supported keys: {SUPPORTED_KEYS}"
+                ),
+            ));
+        }
+    };
+    if declared_before {
+        return Err(syn::Error::new_spanned(
+            key,
+            format!("`{key}` is declared more than once"),
+        ));
+    }
+    stream.parse::<Token![=]>()?;
+    match name.as_str() {
+        "input" => declared.input = Some(parse_type(stream)?),
+        "bridge" => declared.bridge = Some(parse_path(key, stream)?),
+        _ => declared.check = Some(parse_path(key, stream)?),
+    }
+    Ok(())
+}
+
+/// The value of `input`: a type, reported at the token that stops it being one.
+fn parse_type(stream: ParseStream<'_>) -> syn::Result<Type> {
+    stream.parse::<Type>().map_err(|error| {
+        syn::Error::new(
+            error.span(),
+            "`input` takes a type, for example `input = my_module::MyInput`",
+        )
+    })
+}
+
+/// The value of `bridge` or `check`: a path to a function, qualification included.
+fn parse_path(key: &Ident, stream: ParseStream<'_>) -> syn::Result<ExprPath> {
+    match stream.parse::<Expr>()? {
+        Expr::Path(path) => Ok(path),
+        value => Err(syn::Error::new_spanned(
+            value,
+            format!("`{key}` takes a path, for example `#[{ATTRIBUTE}({key} = my_module::item)]`"),
+        )),
+    }
 }

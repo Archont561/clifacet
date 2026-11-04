@@ -162,7 +162,7 @@ def test_main_prints_the_matrix_without_running_it(capsys):
     assert main(["--print-matrix"]) == 0
     out = capsys.readouterr().out
 
-    for name in ("no-default-features", "default", "interactive", "tui", "json", "all-features"):
+    for name in ("no-default-features", "default", "interactive", "serde", "tui", "all-features"):
         assert name in out
 
 

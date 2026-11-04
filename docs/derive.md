@@ -248,11 +248,57 @@ flags would.
 
 | Attribute | Effect |
 | --- | --- |
-| `#[facet(input = Type)]` | required; the type `validate` returns |
+| `#[facet(input = Type)]` | required; the type `validate` returns — any type the generated impls can name, see [below](#what-input-may-name) |
 | no `bridge`, no field rules | the generated `TryFrom` copies fields by name, so a renamed or missing field is a compile error |
 | no `bridge`, field rules | the same `TryFrom`, with each field's `fill`/`trim`/`non_empty`/`secret` applied on the way and `skip` fields left out |
 | `#[facet(check = path)]` | the generated `TryFrom` ends by calling `path(&input) -> Result<(), Failure>`, for a rule across fields or one the keys cannot state |
 | `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input the declarations cannot describe |
+
+### What `input` may name
+
+The input type is written into `type Input`, the generated `TryFrom` and `validate`'s
+signature, so it may be any type that means the same thing in all three: a qualified
+path (`crate::input::Greeting`), a generic type (`Labelled<String>`), an alias, or a
+projection such as `<Greet as Family>::Input`. A lifetime in it (`Greeting<'a>`) has to
+be declared on the command struct (`struct Cli<'a>`), which passes its generics to every
+generated impl, or be `'static`. Without a `bridge`, the type has to name a struct,
+because the generated bridge builds it as `Self { .. }`; with one, any type will do.
+
+```rust
+use clifacet::clap::Parser as _;
+use clifacet::Facet;
+
+/// A family of commands, each naming its input through one trait.
+trait Family {
+    type Input;
+}
+
+struct Greet;
+
+impl Family for Greet {
+    type Input = Labelled<String>;
+}
+
+struct Labelled<T> {
+    name: T,
+}
+
+#[clifacet::command(input = <Greet as Family>::Input)]
+#[command(name = "greet")]
+struct Cli {
+    #[clifacet(long, fill = "world")]
+    name: Option<String>,
+}
+
+let input = Cli::try_parse_from(["greet"]).expect("parses").validate().expect("valid");
+assert_eq!(input.name, "world");
+```
+
+What the generated impls cannot name is a compile error at the tokens at fault, not one
+error per generated item: `Self` (inside those impls it is the command or the input
+itself), a lifetime the command struct does not declare, the elided `'_`, `_` and
+`impl Trait` (which leave the type unnamed), and — without a `bridge` — a type that is
+not a struct path, such as a tuple.
 
 A rule about one field belongs on that field, and a rule about the input belongs in
 `check`. That is how the reference application is built: its `--repeat` range is
@@ -267,7 +313,8 @@ the input is not a field-by-field copy of the command at all.
   parsed. An answer to `ask` is the one value parsed later, and it goes through the
   argument's own `clap` parser rather than a second one.
 - **It does not guess.** Unsupported shapes — a missing `#[facet(input = …)]`, an
-  unknown key, an enum, an input missing a field the mirror would copy — are compile
+  unknown key, an input type the generated impls cannot name, an enum, an input
+  missing a field the mirror would copy — are compile
   errors with a golden `trybuild` file, so the message says what to write instead.
 
 ## Testing it

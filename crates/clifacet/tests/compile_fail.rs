@@ -43,3 +43,15 @@ fn a_field_rule_on_the_wrong_field_fails_to_compile_and_says_why() {
     cases.compile_fail("tests/ui/field_skip_with_rule.rs");
     cases.compile_fail("tests/ui/facet_check_beside_bridge.rs");
 }
+
+#[test]
+fn an_input_type_the_generated_impls_cannot_name_is_rejected_at_its_tokens() {
+    let cases = trybuild::TestCases::new();
+    cases.compile_fail("tests/ui/input_names_self.rs");
+    cases.compile_fail("tests/ui/input_undeclared_lifetime.rs");
+    cases.compile_fail("tests/ui/input_elided_lifetime.rs");
+    cases.compile_fail("tests/ui/input_inferred.rs");
+    cases.compile_fail("tests/ui/input_impl_trait.rs");
+    cases.compile_fail("tests/ui/input_not_a_struct.rs");
+    cases.compile_fail("tests/ui/input_not_a_type.rs");
+}

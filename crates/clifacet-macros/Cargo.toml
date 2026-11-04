@@ -19,7 +19,8 @@ quote.workspace = true
 # `value_parser = clap::value_parser!(u8).range(1..=8)` — and syn parses those only with
 # it. Declared here rather than inherited from clap_derive's feature unification, which
 # holds in an application's build and not in this crate's own.
-syn = { workspace = true, features = ["full"] }
+# `visit`: `input = Type` is walked for the tokens the generated impls cannot name.
+syn = { workspace = true, features = ["full", "visit"] }
 
 [dev-dependencies]
 trybuild.workspace = true

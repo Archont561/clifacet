@@ -22,6 +22,8 @@ struct AppWorld {
     asked: Vec<String>,
     failure: Option<String>,
     form: Vec<String>,
+    /// The name the generic input of the command family carries.
+    generic_name: Option<String>,
 }
 
 #[fixture]
@@ -347,5 +349,76 @@ fn the_form_asks_for(world: &mut AppWorld, first: String, second: String, third:
 )]
 #[test]
 fn the_reference_form_is_generated_from_its_declarations(world: AppWorld) {
+    let _ = world;
+}
+
+/// A command family that names each command's input through one trait, so the input
+/// type is written as a projection — `<Greet as Family>::Input` — rather than a struct
+/// path, and the struct it names is generic.
+mod family {
+    /// The trait the commands share: each names its own input.
+    pub trait Family {
+        type Input;
+    }
+
+    /// The `greet` member of the family.
+    pub struct Greet;
+
+    impl Family for Greet {
+        type Input = Labelled<String>;
+    }
+
+    /// An input generic over the value it carries.
+    pub struct Labelled<T> {
+        pub name: T,
+    }
+
+    /// The command, naming its input through the family's trait.
+    #[clifacet::command(input = <Greet as Family>::Input)]
+    #[command(name = "greet")]
+    pub struct GreetCommand {
+        /// Who to greet. Defaults to `world`.
+        #[clifacet(long, fill = "world")]
+        pub name: Option<String>,
+    }
+}
+
+#[given("a command whose input is written {written:string}, a generic type")]
+fn a_command_whose_input_is_a_projection(written: String) {
+    // The type `validate` returns is the one the projection names.
+    let built = std::any::type_name::<<family::GreetCommand as Facet>::Input>();
+    assert!(
+        built.ends_with("family::Labelled<alloc::string::String>"),
+        "{written} should name the generic input, but `validate` returns {built}"
+    );
+}
+
+#[when("the user runs that command with --name {name:string}")]
+fn the_user_runs_that_command(world: &mut AppWorld, name: String) {
+    let cli = family::GreetCommand::try_parse_from(["greet", "--name", &name])
+        .expect("the flag parses through clap");
+    world.generic_name = Some(cli.validate().expect("a name is valid input").name);
+}
+
+#[then("the generic input carries the name {name:string}")]
+fn the_generic_input_carries_the_name(world: &mut AppWorld, name: String) {
+    assert_eq!(world.generic_name, Some(name));
+}
+
+#[then("without --name the declared default fills it in as {name:string}")]
+fn the_declared_default_fills_the_generic_input(name: String) {
+    let input = family::GreetCommand::try_parse_from(["greet"])
+        .expect("--name is optional")
+        .validate()
+        .expect("the default is valid input");
+    assert_eq!(input.name, name);
+}
+
+#[scenario(
+    path = "tests/features/facet_bridge.feature",
+    name = "An input named through a trait the commands share is built from the declarations"
+)]
+#[test]
+fn an_input_named_through_a_trait_is_built_from_the_declarations(world: AppWorld) {
     let _ = world;
 }

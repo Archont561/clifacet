@@ -22,9 +22,8 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::parse::Parser as _;
 use syn::punctuated::Punctuated;
-use syn::{Attribute, Data, DeriveInput, Fields, Meta, Token};
+use syn::{Attribute, Data, DeriveInput, Fields, Token};
 
 /// The derives this attribute stands for, in the order they are emitted.
 const PARSER: &str = "Parser";
@@ -40,9 +39,7 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
         ));
     }
 
-    let entries = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute.clone())?;
-    let declares_input = entries.iter().any(|entry| entry.path().is_ident("input"));
-    if !declares_input {
+    if !crate::facet::declares_input(attribute.clone())? {
         return Err(syn::Error::new_spanned(
             &parsed,
             "`#[clifacet::command]` needs the typed input to build: \

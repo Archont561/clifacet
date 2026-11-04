@@ -37,3 +37,9 @@ Feature: Prove an existing clap command through Clifacet
     Given the reference application, declared one attribute per field
     When its form is built
     Then the form asks for "name", "repeat" and "level", in that order
+
+  Scenario: An input named through a trait the commands share is built from the declarations
+    Given a command whose input is written "<Greet as Family>::Input", a generic type
+    When the user runs that command with --name "ada"
+    Then the generic input carries the name "ada"
+    And without --name the declared default fills it in as "world"
