@@ -5,7 +5,7 @@
 //! form be driven headlessly, and it keeps the drawing in [`crate::tui::widgets`]
 //! where a look change cannot alter behaviour.
 
-use clap::Command;
+use clap::{Arg, ArgAction, Command};
 
 use crate::facet::Facet;
 use crate::failure::Failure;
@@ -41,12 +41,27 @@ pub enum Outcome {
     Cancel,
 }
 
+/// What kind of answer a field takes, which decides what a key does to it.
+///
+/// The value itself is always the text the field would submit, whatever the kind, so
+/// drawing, submission and a custom widget all read the same string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Kind {
+    /// Free text, typed character by character.
+    Text,
+    /// One of these names, or none (an empty value).
+    Choice(Vec<String>),
+    /// A flag: the value is `"true"` or `"false"`, and the bare flag sets `sets`.
+    Toggle { sets: bool },
+}
+
 /// One question in the form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldState {
     name: String,
     label: String,
     value: String,
+    kind: Kind,
     required: bool,
     /// Whether the value must not be drawn. Presentation only: the submission still
     /// carries it, because masking is about what a screen shows, not what a command
@@ -75,9 +90,73 @@ impl FieldState {
             label: label.into(),
             untouched: !value.is_empty(),
             value,
+            kind: Kind::Text,
             required: false,
             secret: false,
             flag: None,
+        }
+    }
+
+    /// Builds a toggle: a flag that is either given or not.
+    ///
+    /// Space flips it, and it submits the bare `--{name}` when it is on — the shape of a
+    /// `clap` `SetTrue` flag. A generated form also builds `SetFalse` flags, which submit
+    /// theirs when switched *off*.
+    #[must_use]
+    pub fn toggle(name: impl Into<String>, label: impl Into<String>, on: bool) -> Self {
+        let mut field = Self::new(name, label, on.to_string());
+        field.kind = Kind::Toggle { sets: true };
+        field
+    }
+
+    /// Makes this field a choice between `options`, keeping its value as the one chosen.
+    ///
+    /// Space moves to the next option and a letter jumps to the next option starting
+    /// with it; an optional choice also passes through *none*, an empty value, which
+    /// submits nothing.
+    #[must_use]
+    pub fn with_choices(mut self, options: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.kind = Kind::Choice(options.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// The options of a choice, in order; empty for any other kind of field.
+    #[must_use]
+    pub fn choices(&self) -> &[String] {
+        match &self.kind {
+            Kind::Choice(options) => options,
+            Kind::Text | Kind::Toggle { .. } => &[],
+        }
+    }
+
+    /// Whether this field is a toggle.
+    #[must_use]
+    pub const fn is_toggle(&self) -> bool {
+        matches!(self.kind, Kind::Toggle { .. })
+    }
+
+    /// Whether this field is a toggle that is on.
+    #[must_use]
+    pub fn is_on(&self) -> bool {
+        self.is_toggle() && self.value == "true"
+    }
+
+    /// The arguments this field submits: none, the bare flag, or the flag and a value.
+    fn arguments(&self) -> Vec<String> {
+        match self.kind {
+            // Only a toggle that differs from what absence means is given: the bare flag
+            // is the only spelling clap accepts, and an untouched one says nothing.
+            Kind::Toggle { sets } => {
+                if self.value == sets.to_string() {
+                    vec![self.flag()]
+                } else {
+                    Vec::new()
+                }
+            }
+            // An empty optional value is omitted rather than passed as an empty string,
+            // so a field left untouched behaves exactly as if the flag had not been typed.
+            Kind::Text | Kind::Choice(_) if self.is_empty() && !self.required => Vec::new(),
+            Kind::Text | Kind::Choice(_) => vec![self.flag(), self.value.clone()],
         }
     }
 
@@ -144,17 +223,75 @@ impl FieldState {
     /// A prefilled value is an offer, not an answer: appending to it would turn
     /// "change 1 to 3" into "delete the 1 first", which is the kind of small tax that
     /// makes a form worse than the flags it replaces.
+    ///
+    /// A choice and a toggle take no text: Space moves on or flips, and a letter on a
+    /// choice jumps to the next option starting with it.
     fn push(&mut self, character: char) {
-        if self.untouched {
-            self.value.clear();
-            self.untouched = false;
+        match &self.kind {
+            Kind::Text => {
+                if self.untouched {
+                    self.value.clear();
+                    self.untouched = false;
+                }
+                self.value.push(character);
+            }
+            Kind::Choice(options) if character == ' ' => self.value = self.next(options),
+            Kind::Choice(options) => {
+                if let Some(option) = self.jump(options, character) {
+                    self.value = option;
+                }
+            }
+            Kind::Toggle { .. } if character == ' ' => {
+                self.value = (!self.is_on()).to_string();
+            }
+            Kind::Toggle { .. } => (),
         }
-        self.value.push(character);
     }
 
+    /// Erases: the last character of text, or the choice of an optional choice.
     fn pop(&mut self) {
-        self.untouched = false;
-        self.value.pop();
+        match self.kind {
+            Kind::Text => {
+                self.untouched = false;
+                self.value.pop();
+            }
+            Kind::Choice(_) if !self.required => self.value.clear(),
+            Kind::Choice(_) | Kind::Toggle { .. } => (),
+        }
+    }
+
+    /// The option after the chosen one: from none to the first, and past the last back
+    /// to none — or round to the first, when the choice is required.
+    fn next(&self, options: &[String]) -> String {
+        let chosen = options.iter().position(|option| *option == self.value);
+        let next = match chosen {
+            None => 0,
+            Some(index) if index + 1 < options.len() => index + 1,
+            Some(_) if self.required => 0,
+            Some(_) => return String::new(),
+        };
+        options.get(next).cloned().unwrap_or_default()
+    }
+
+    /// The next option after the chosen one that starts with `letter`, in any case.
+    fn jump(&self, options: &[String], letter: char) -> Option<String> {
+        let start = options
+            .iter()
+            .position(|option| *option == self.value)
+            .map_or(0, |index| index + 1);
+        let starts_with = |option: &&String| {
+            option
+                .chars()
+                .next()
+                .is_some_and(|first| first.to_lowercase().eq(letter.to_lowercase()))
+        };
+        options
+            .iter()
+            .cycle()
+            .skip(start)
+            .take(options.len())
+            .find(starts_with)
+            .cloned()
     }
 }
 
@@ -213,14 +350,20 @@ impl FormState {
             let label = argument
                 .get_help()
                 .map_or_else(|| (*name).to_owned(), ToString::to_string);
-            let value = argument
-                .get_default_values()
-                .first()
-                .map(|value| value.to_string_lossy().into_owned())
-                .unwrap_or_default();
+            let kind = kind_of(argument)?;
+            let value = argument.get_default_values().first().map_or_else(
+                || match kind {
+                    // clap fills a flag's default in when it builds the command, which a
+                    // command fresh from the derive has not done yet.
+                    Kind::Toggle { sets } => (!sets).to_string(),
+                    Kind::Text | Kind::Choice(_) => String::new(),
+                },
+                |value| value.to_string_lossy().into_owned(),
+            );
 
             let mut field =
                 FieldState::new(*name, label, value).mark_required(argument.is_required_set());
+            field.kind = kind;
             // The spelling clap parses, so the submission is the invocation a user would
             // type. A positional keeps `--{name}`, as before: it has no flag to borrow.
             field.flag = argument
@@ -336,17 +479,57 @@ impl FormState {
     /// The arguments these answers describe, ready for the command's own parser.
     ///
     /// An empty optional value is omitted rather than passed as an empty string, so
-    /// a field left untouched behaves exactly as if the flag had not been typed.
+    /// a field left untouched behaves exactly as if the flag had not been typed; a
+    /// toggle is given as its bare flag, and only when it differs from its default.
     #[must_use]
     pub fn arguments(&self) -> Vec<String> {
-        let mut arguments = Vec::new();
-        for field in &self.fields {
-            if field.is_empty() && !field.required {
-                continue;
-            }
-            arguments.push(field.flag());
-            arguments.push(field.value.clone());
-        }
-        arguments
+        self.fields.iter().flat_map(FieldState::arguments).collect()
     }
+}
+
+/// What kind of field an argument becomes, read from its grammar.
+///
+/// A flag is a toggle and an argument with possible values is a choice, so the form
+/// offers what the parser accepts instead of a text box that rejects the rest. A list —
+/// a repeatable or counted flag, or more than one value — is refused: a field submits
+/// one value, and cutting a list to its first item would be a silent lie.
+fn kind_of(argument: &Arg) -> Result<Kind, Failure> {
+    let many = argument
+        .get_num_args()
+        .is_some_and(|range| range.max_values() > 1);
+    match argument.get_action() {
+        ArgAction::SetTrue => Ok(Kind::Toggle { sets: true }),
+        ArgAction::SetFalse => Ok(Kind::Toggle { sets: false }),
+        ArgAction::Set if !many => {
+            let options: Vec<String> = argument
+                .get_possible_values()
+                .iter()
+                .filter(|value| !value.is_hide_set())
+                .map(|value| value.get_name().to_owned())
+                .collect();
+            Ok(if options.is_empty() {
+                Kind::Text
+            } else {
+                Kind::Choice(options)
+            })
+        }
+        _ => Err(Failure::execution(format!(
+            "{} takes more than one value, and a form field submits one: collect a list \
+             with `Session::collect_values` instead",
+            spelling(argument)
+        ))),
+    }
+}
+
+/// How a user would type the argument: its long flag, its short one, or its id.
+fn spelling(argument: &Arg) -> String {
+    argument.get_long().map_or_else(
+        || {
+            argument.get_short().map_or_else(
+                || argument.get_id().to_string(),
+                |short| format!("-{short}"),
+            )
+        },
+        |long| format!("--{long}"),
+    )
 }

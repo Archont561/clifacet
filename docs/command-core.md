@@ -304,7 +304,7 @@ pieces (decision-4).
 | `tui::app::run` | the loop: draw, read, submit |
 | `tui::ratatui` | the frontend library at the version this crate was built against |
 
-Four rules keep it a frontend rather than a second command:
+Five rules keep it a frontend rather than a second command:
 
 - **A form is generated from the command, and asked for explicitly.**
   `FormState::of::<Cli>()` generates it from the fields declared `form` — that is
@@ -317,6 +317,16 @@ Four rules keep it a frontend rather than a second command:
   are not questions for someone who already chose one. A name the command does not
   have is an error, not an empty form, and each answer is submitted under the flag
   clap knows it by.
+- **A field is what its grammar says.** A `SetTrue`/`SetFalse` flag is a toggle, drawn
+  `[x]`/`[ ]`, that Space flips and that submits the bare flag only when it differs
+  from the default — `--dry-run yes` is not something clap accepts. An argument with
+  possible values is a choice, drawn `‹green›`: Space moves to the next option, a
+  letter jumps to the next option starting with it, and an optional choice without a
+  default passes through `‹(none)›`, which submits nothing. Everything else is text.
+  A list — a repeatable or counted flag, or more than one value — is refused by
+  `FormState::generated`, because cutting it to one value would be a silent lie;
+  `FieldState::choices()`, `is_toggle()` and `is_on()` let a custom field draw the
+  same kinds its own way.
 - **Submission goes through `clap`.** The answers become arguments,
   `Cli::try_parse_from` parses them, and `Facet::validate` plus the handler run as
   they would for flags. A rejected answer — `--repeat 9`, `--repeat x` — keeps the

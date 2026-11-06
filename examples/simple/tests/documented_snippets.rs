@@ -224,7 +224,7 @@ fn derive_snippet_3() {
     assert_eq!(input.name, "grace");
 }
 
-/// `derive.md`, line 202.
+/// `derive.md`, line 205.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_4() {
@@ -264,7 +264,7 @@ fn derive_snippet_4() {
     assert_eq!(Cli::secret_fields(), [""; 0]);
 }
 
-/// `derive.md`, line 270.
+/// `derive.md`, line 273.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_5() {
