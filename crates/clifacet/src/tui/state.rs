@@ -7,6 +7,7 @@
 
 use clap::Command;
 
+use crate::facet::Facet;
 use crate::failure::Failure;
 
 /// One keystroke the form understands.
@@ -235,6 +236,25 @@ impl FormState {
             ));
         }
         Ok(Self::new(fields))
+    }
+
+    /// Generates the form a derived command declares: its `form` fields, with its
+    /// `secret` fields masked.
+    ///
+    /// This is [`FormState::generated`] over [`Facet::form_fields`], plus
+    /// [`FormState::mark_secret`] for each of [`Facet::secret_fields`] — the one
+    /// constructor that cannot draw a declared credential in plain text because a
+    /// second call was forgotten.
+    ///
+    /// # Errors
+    ///
+    /// As [`FormState::generated`].
+    pub fn of<C: Facet>() -> Result<Self, Failure> {
+        let mut form = Self::generated(&<C as Facet>::command(), C::form_fields())?;
+        for name in C::secret_fields() {
+            form.mark_secret(name);
+        }
+        Ok(form)
     }
 
     /// The fields, in the order they are shown.

@@ -237,8 +237,10 @@ assert_eq!(refused.err().map(|failure| failure.message().to_owned()).as_deref(),
 let booking = Cli::try_parse_from(["book", "--name", " ada ", "--loud"]).expect("parses").validate().expect("valid");
 assert_eq!((booking.name.as_str(), booking.seats), ("ada", 1));
 
-// The form's field list, from the same declarations: `FormState::generated` takes it.
+// The form's field list, from the same declarations: `FormState::of::<Cli>()` takes it,
+// and masks whatever `Cli::secret_fields()` lists — nothing, here.
 assert_eq!(Cli::form_fields(), ["name", "seats"]);
+assert_eq!(Cli::secret_fields(), [""; 0]);
 ```
 
 A generated form submits each field under the flag clap knows it by — `--dry-run` for

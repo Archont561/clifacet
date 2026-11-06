@@ -307,8 +307,11 @@ pieces (decision-4).
 Four rules keep it a frontend rather than a second command:
 
 - **A form is generated from the command, and asked for explicitly.**
-  `FormState::generated(&Cli::command(), Cli::form_fields())` takes the labels from
-  the arguments' help and the initial values from their defaults. Which arguments a
+  `FormState::of::<Cli>()` generates it from the fields declared `form` — that is
+  `FormState::generated(&Cli::command(), Cli::form_fields())` — and masks the fields
+  declared `secret`, so a credential is hidden because it was declared one rather than
+  because a second call was remembered. Labels come from the arguments' help and the
+  initial values from their defaults. Which arguments a
   screen asks for is a design decision, so it is declared, never guessed: the fields
   marked `form` (`name`, `repeat`, `level`), not the flags that chose the mode, which
   are not questions for someone who already chose one. A name the command does not

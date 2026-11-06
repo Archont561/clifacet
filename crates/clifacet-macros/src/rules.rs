@@ -102,8 +102,9 @@ pub(crate) fn parse(field: &Field) -> syn::Result<Rules> {
     if let (Some(ask), Some(_)) = (&rules.ask, &rules.secret) {
         return Err(syn::Error::new(
             ask.span,
-            "`ask` on a `secret` would echo the credential as it is typed, and no frontend \
-             hides an answer yet: supply it with the flag or its environment variable",
+            "`ask` on a `secret` would echo the credential as it is typed, because a declared \
+             question is read as plain text: supply it with the flag or its environment \
+             variable, or ask for it by hand with `Session::ask_secret`",
         ));
     }
     if let Some(ask) = &rules.ask

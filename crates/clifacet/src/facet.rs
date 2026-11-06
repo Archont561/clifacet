@@ -84,6 +84,16 @@ pub trait Facet: CommandFactory {
         &[]
     }
 
+    /// The arguments declared `secret`, in declaration order.
+    ///
+    /// A frontend that draws values reads this to mask them, so a credential is hidden
+    /// because it was *declared* secret, not because an application remembered to say
+    /// so twice — `FormState::of::<Cli>()` is the form that does. Empty by default.
+    #[must_use]
+    fn secret_fields() -> &'static [&'static str] {
+        &[]
+    }
+
     /// Bridges this parsed command to its typed input.
     ///
     /// # Errors
