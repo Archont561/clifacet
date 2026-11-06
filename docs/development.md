@@ -1,6 +1,6 @@
 # Development
 
-The workspace is the `0.2.0` library — published to crates.io on 2026-11-04 — plus the
+The workspace is the `0.3.0` library — published to crates.io on 2026-11-06 — plus the
 work merged since, which accumulates for the next version. The checked-in Pixi
 environment currently targets Linux x86-64.
 
@@ -367,7 +367,7 @@ to get right before a release is that the commits describe it.
 3. Bump every recorded version and relock in one command:
 
    ```sh
-   pixi run --frozen --no-install bump-version 0.2.0 --relock
+   pixi run --frozen --no-install bump-version 0.3.0 --relock
    ```
 
    That rewrites `Cargo.toml` `[workspace.package] version`, the
@@ -385,6 +385,10 @@ to get right before a release is that the commits describe it.
    ```sh
    gh workflow run release.yml -f dry_run=false
    ```
+
+   From the Actions tab, **uncheck** "Package and verify without publishing" first: the box
+   is checked by default, so a plain Run workflow is a rehearsal. The step list tells them
+   apart — a rehearsal skips the OIDC exchange, the publish, the tag and the changelog.
 
 ### Rehearse a release
 
@@ -473,7 +477,25 @@ surfaced, both only reachable by a real release, and both are now covered by tes
   now renders, writes, then commits, and `test_release.py` pins that order. The `0.1.0`
   release predates the changelog tooling, so this was the step's first real run.
 
-Partial-failure recovery remains proven by rule only: neither release failed half-way.
+**`0.3.0` reached the changelog step, and failed there.** The bump was
+`bump-version 0.3.0 --relock` in PR #56 (lock guard, MSRV and the full CI lane green).
+The maintainer dispatched from `main` at the bump's merge, `b39e0554`: run 42276526243 ran
+as a rehearsal — the `dry_run` box is checked by default — and is the first rehearsal of a
+bumped tree on `main`; run 42276769551, with it unchecked, is the release. The OIDC
+exchange, the publish loop and the tag all succeeded: tag `v0.3.0` points at `b39e0554`
+and the GitHub Release carries the notes. Then `release changelog` rendered the file — the
+0.2.0 fix worked — and its commit failed with `Author identity unknown`: a fresh runner has
+no git identity, and the step ran a bare `git commit`. The `0.3.0` section reached `main` by
+`pixi run changelog`, as the step advises, and the step now commits as
+`github-actions[bot]` (`RELEASE_IDENTITY` in `scripts/release.py`, pinned by
+`test_release.py` and `test_changelog.py`).
+
+The push that follows that commit has still never run on a real release: each release so
+far has failed one step before it. The next release is its first test, and if it fails,
+the crates and the tag are already out — nothing to revert, only the section to commit.
+
+Partial-failure recovery remains proven by rule only: none of the three releases failed
+before its last irreversible step.
 
 When verifying a rehearsal, read the step list rather than trusting a summary: the
 irreversible steps are separate steps gated on `!inputs.dry_run`, so "skipped" there is

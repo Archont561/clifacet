@@ -109,6 +109,15 @@ class Preflight:
     notes_path: Path
 
 
+# Who the changelog commit is by. The runner has no git identity, and the 0.3.0 release's
+# changelog step failed on `Author identity unknown` after the crates and the tag had
+# shipped. This is the identity GitHub shows for commits made with the workflow token.
+RELEASE_IDENTITY = (
+    "github-actions[bot]",
+    "41898282+github-actions[bot]@users.noreply.github.com",
+)
+
+
 def index_url(crate: str, prefix: str = INDEX_PREFIX) -> str:
     return f"{INDEX}/{prefix}/{crate}"
 
@@ -356,7 +365,9 @@ def main(
                     run=execute,
                     render=render_changelog or _render_changelog,
                     # Looked up at call time, so a test can stand in for the push.
-                    commit=lambda root, branch: commit_changelog(root, branch),
+                    commit=lambda root, branch: commit_changelog(
+                        root, branch, identity=RELEASE_IDENTITY
+                    ),
                 )
             )
             return 0

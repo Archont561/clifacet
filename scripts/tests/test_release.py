@@ -515,7 +515,7 @@ def test_main_changelog_goes_through_the_rendering_step(tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(release, "append_summary", seen.append)
     monkeypatch.setattr(
-        release, "commit_changelog", lambda root, branch: f"pushed {branch}"
+        release, "commit_changelog", lambda root, branch, **_: f"pushed {branch}"
     )
 
     code = main(
@@ -529,12 +529,39 @@ def test_main_changelog_goes_through_the_rendering_step(tmp_path, monkeypatch):
     assert seen == ["pushed main"]
 
 
+def test_main_changelog_commits_as_the_release_bot(tmp_path, monkeypatch):
+    """The runner has no git identity, so the release names one rather than relying on
+    configuration a fresh checkout does not have — the 0.3.0 changelog step failed there."""
+    import scripts.release as release
+
+    seen = {}
+    monkeypatch.setattr(release, "append_summary", lambda line: None)
+
+    def commit(root, branch, **options):
+        seen.update(options)
+        return "pushed"
+
+    monkeypatch.setattr(release, "commit_changelog", commit)
+
+    code = main(
+        ["changelog", "--root", str(tmp_path)],
+        run=runner([]),
+        render_changelog=lambda root: RENDERED,
+    )
+
+    assert code == 0
+    assert seen == {"identity": release.RELEASE_IDENTITY}
+    name, email = release.RELEASE_IDENTITY
+    assert name == "github-actions[bot]"
+    assert email.endswith("+github-actions[bot]@users.noreply.github.com")
+
+
 def test_main_reports_a_changelog_failure_without_a_traceback(tmp_path, monkeypatch, capsys):
     """A push refused by branch protection is a message, like every other failure."""
     import scripts.release as release
     from scripts.changelog import ChangelogError
 
-    def refused(root, branch):
+    def refused(root, branch, **_):
         raise ChangelogError("could not push the regenerated changelog to main: protected")
 
     monkeypatch.setattr(release, "commit_changelog", refused)

@@ -10,6 +10,13 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### Fixed
+
+* **release:** commit the changelog as the workflow's bot
+([4e2f139](https://github.com/Archont561/clifacet/commit/4e2f139e3a2c2d39c5561ac33d537cbddba3f4bf))
+
+## [0.3.0] - 2026-11-06
+
 ### ⚠ BREAKING CHANGE
 
 * Session::confirm returns Confirmation instead of bool; call
@@ -144,5 +151,6 @@ depend on serde_json in the application.
 * **example:** move the reference application into its own crate
 ([3178b1d](https://github.com/Archont561/clifacet/commit/3178b1d44db717a4b242b1235cacf798e9d6e2f0))
 
-[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Archont561/clifacet/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Archont561/clifacet/compare/v0.1.0...v0.2.0
