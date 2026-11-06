@@ -169,6 +169,9 @@ file:
   cannot be asked for, and only a flag that is set can be confirmed.
 - **`ask` and `form` need a named option.** An answer is parsed as the flag's value, and
   a form submits each field as its flag; a positional argument can be neither.
+- **No `form` on a list.** A form field submits one answer, so a `Vec` (or an
+  `Option<Vec<_>>`) would be cut to its first item; collect a list with
+  `Session::collect_values`. A `bool` flag is fine: the form draws it as a toggle.
 - **No `ask` on a `secret`.** The generated `collect` asks through `Session::ask_for`,
   which shows what is typed; a secret is asked for by hand with `Session::ask_secret`,
   which refuses on a frontend that cannot hide input instead of echoing it.
