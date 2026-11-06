@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scripts.changelog import (
     UnreleasedError,
+    commit,
     main,
     notes,
     render,
@@ -158,3 +161,39 @@ def test_main_reports_a_convco_failure(tmp_path, capsys) -> None:
     code = main(["print"], root=tmp_path, runner=lambda argv: (2, "boom"))
     assert code == 1
     assert "convco" in capsys.readouterr().err
+
+
+# --- committing the regenerated file -------------------------------------------
+
+
+def committing_argv(identity=None):
+    """The `git commit` invocation `commit` makes, with git and the push stood in for."""
+    calls = []
+
+    def run(argv):
+        calls.append(list(argv))
+        return 0, (" M CHANGELOG.md\n" if "status" in argv else "")
+
+    commit(Path("."), "main", run=run, push=lambda argv: (0, ""), identity=identity)
+    return next(call for call in calls if "commit" in call)
+
+
+def test_commit_names_the_identity_it_is_given():
+    """A fresh runner has no git identity: the 0.3.0 release's changelog step failed with
+    `Author identity unknown` after the tag and both crates had shipped."""
+    argv = committing_argv(identity=("release-bot", "bot@example.test"))
+
+    assert argv[:6] == [
+        "git",
+        "-c",
+        "user.name=release-bot",
+        "-c",
+        "user.email=bot@example.test",
+        "commit",
+    ]
+
+
+def test_commit_without_an_identity_uses_the_configured_one():
+    """A maintainer running `changelog commit` locally commits as themselves."""
+    assert committing_argv()[:2] == ["git", "commit"]
+

@@ -244,8 +244,14 @@ def commit(
     message: str = COMMIT_MESSAGE,
     run: Output | None = None,
     push: Output | None = None,
+    identity: tuple[str, str] | None = None,
 ) -> str:
-    """Commit a regenerated changelog and push it to `branch`; report what happened."""
+    """Commit a regenerated changelog and push it to `branch`; report what happened.
+
+    `identity` is a `(name, email)` to commit as, for a checkout with no git identity of
+    its own — a release runner. Without one, git's configured identity is used, so a
+    maintainer running this locally commits as themselves.
+    """
     execute = run or (lambda argv: _run(argv, root))
     send = push or (lambda argv: _run(argv, root))
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
@@ -258,7 +264,7 @@ def commit(
 
     for argv, what in (
         (["git", "add", "--", CHANGELOG], "stage the changelog"),
-        (["git", "commit", "-m", message, "--", CHANGELOG], "commit the changelog"),
+        ([*_git_as(identity), "commit", "-m", message, "--", CHANGELOG], "commit the changelog"),
     ):
         code, output = execute(argv)
         if code != 0:
@@ -273,6 +279,14 @@ def commit(
             "Run `pixi run changelog` locally and commit the result."
         )
     return f"committed and pushed the regenerated changelog to {branch}"
+
+
+def _git_as(identity: tuple[str, str] | None) -> list[str]:
+    """`git`, with the identity to commit as given on the command line when there is one."""
+    if identity is None:
+        return ["git"]
+    name, email = identity
+    return ["git", "-c", f"user.name={name}", "-c", f"user.email={email}"]
 
 
 def main(
