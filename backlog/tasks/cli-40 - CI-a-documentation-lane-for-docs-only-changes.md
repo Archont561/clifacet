@@ -4,7 +4,7 @@ title: 'CI: a documentation lane for docs-only changes'
 status: Done
 assignee: []
 created_date: '2026-11-06 18:13'
-updated_date: '2026-11-06 18:43'
+updated_date: '2026-11-06 18:47'
 labels: []
 dependencies: []
 ordinal: 40000
@@ -19,7 +19,7 @@ A change that touches only documentation runs a light lane of the checks that do
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 A tested script classifies a change as documentation only when every changed path is under backlog/ or docs/, is a Markdown file, or is a root LICENSE file; any other path, an empty change, a dispatch, a branch's first push or a diff git cannot compute runs all of CI.
-- [ ] #2 On a documentation-only change, the quality, coverage, MSRV and platform jobs are skipped and a documentation job runs alint, the skills, Backlog, guide and changelog checks; the commit-message job runs on every change.
+- [x] #2 On a documentation-only change, the quality, coverage, MSRV and platform jobs are skipped and a documentation job runs alint, the skills, Backlog, guide and changelog checks; the commit-message job runs on every change.
 - [x] #3 If the classifier fails, the full jobs still run: a broken classifier never turns CI green by skipping it.
 - [x] #4 A test fails if a crate or example starts compiling a Markdown file in (include_str!/include_bytes!), since that would make a Markdown edit a code change the classifier calls documentation.
 <!-- AC:END -->
@@ -49,4 +49,6 @@ A change that touches only documentation runs a light lane of the checks that do
 - AC#2 is wired and statically tested but not yet seen live: this PR changes code, so it takes the full lane. The first documentation-only pull request after the merge (closing this task is one) will be the live proof.
 
 Closed by the maintainer on 2026-11-06 after PR #54 merged (260a1422; main CI took the full lane, green). This closing change touches only this file, so its own CI run is the live test of AC#2; the run is recorded below once seen.
+
+AC#2 seen live: PR #55's CI run 42273752814 ran Classify the change, Documentation checks and Conventional commit messages (all success) and skipped Repository and Rust quality, Tests and source coverage, Minimum supported Rust version and Supported platforms — about a minute, against about six for the full lane.
 <!-- SECTION:NOTES:END -->
