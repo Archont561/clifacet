@@ -156,11 +156,13 @@ impl Declaration {
     fn assignment(&self, command: &TokenStream) -> TokenStream {
         let name = &self.name;
         if let Some(span) = self.rules.subcommands {
-            // Spanned at the key: a field whose type is not a tree is reported there.
+            // Spanned at the key, the field access too: a field whose type is not a tree
+            // is reported there, on one line.
+            let field = Ident::new(&name.to_string(), span);
             return if self.optional {
-                quote_spanned!(span=> #name: ::clifacet::facet::__derive::optional_tree(cli.#name)?)
+                quote_spanned!(span=> #name: ::clifacet::facet::__derive::optional_tree(cli.#field)?)
             } else {
-                quote_spanned!(span=> #name: ::clifacet::facet::__derive::tree(cli.#name)?)
+                quote_spanned!(span=> #name: ::clifacet::facet::__derive::tree(cli.#field)?)
             };
         }
         if !self.rules.normalises() {
@@ -213,6 +215,7 @@ fn collect_impl(name: &Ident, generics: &Generics, fields: &[Declaration]) -> To
             let (field_name, id) = (&field.name, &field.id);
             if let Some(span) = field.rules.subcommands {
                 // The chosen leaf asks its own questions, wherever it sits in the tree.
+                let field_name = Ident::new(&field_name.to_string(), span);
                 return Some(if field.optional {
                     quote_spanned! {span=>
                         self.#field_name = ::clifacet::facet::__derive::collect_optional_tree(

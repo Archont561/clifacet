@@ -978,3 +978,432 @@ fn a_parenthesized_or_invisibly_grouped_struct_path_still_names_a_struct() {
     crate::input_type::check(&grouped, &syn::Generics::default(), false)
         .expect("an invisible group around a path changes nothing");
 }
+
+// --- command trees (CLI-32) -------------------------------------------------------
+
+/// Expands `#[clifacet::subcommands(attribute)]` on the given enum, as the macro would.
+fn tree(attribute: &str, source: &str) -> syn::Result<String> {
+    let attribute: proc_macro2::TokenStream = attribute.parse().expect("the attribute lexes");
+    let item: proc_macro2::TokenStream = source.parse().expect("the item lexes");
+    crate::subcommands::expand(attribute, item).map(|tokens| tokens.to_string())
+}
+
+fn rejected_tree(attribute: &str, source: &str) -> String {
+    tree(attribute, source)
+        .err()
+        .map(|error| error.to_string())
+        .expect("this tree must be rejected")
+}
+
+const TWO_LEAVES: &str = "enum Commands { Add(Add), Done(Done) }";
+
+#[test]
+fn a_tree_is_claps_subcommand_with_its_conversion_and_collection() {
+    let tokens = tree("input = Request", TWO_LEAVES).expect("a tree of leaves");
+
+    assert!(
+        tokens.starts_with("# [derive (:: clap :: Subcommand)]"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("impl :: core :: convert :: TryFrom < Commands > for Request"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains(
+            "Commands :: Add (leaf) => Self :: Add (< Add as :: clifacet :: Facet > :: validate (leaf) ?)"
+        ),
+        "{tokens}"
+    );
+    // Naming every variant once more is what makes an extra `Request` variant an error.
+    assert!(
+        tokens.contains(
+            "| request : & Self | match request { Self :: Add (_) => { } Self :: Done (_) => { } }"
+        ),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("impl :: clifacet :: facet :: __derive :: Tree for Commands"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("impl :: clifacet :: prompt :: Collect for Commands"),
+        "{tokens}"
+    );
+    assert!(
+        !tokens.contains("Command for Commands"),
+        "no output, no dispatch: {tokens}"
+    );
+    assert!(!tokens.contains("Planned for Commands"), "{tokens}");
+}
+
+#[test]
+fn a_tree_with_an_output_runs_the_chosen_leaf() {
+    let tokens = tree("input = Request, output = Report", TWO_LEAVES).expect("a running tree");
+
+    assert!(
+        tokens.contains("impl :: clifacet :: Command for Commands"),
+        "{tokens}"
+    );
+    assert!(tokens.contains("type Output = Report"), "{tokens}");
+    assert!(
+        tokens.contains("type __ClifacetRequest = Request"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("(Self :: Add (leaf) , __ClifacetRequest :: Add (input)) => < Add as :: clifacet :: Command > :: execute (leaf , input) . map (:: core :: convert :: Into :: into)"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("Failure :: execution"),
+        "a mismatched pair fails: {tokens}"
+    );
+    assert!(!tokens.contains("Planned for Commands"), "{tokens}");
+}
+
+#[test]
+fn a_planned_tree_hands_the_chosen_leafs_plan_up_instead() {
+    let tokens = tree("input = Request, output = Report, planned", TWO_LEAVES).expect("planned");
+
+    assert!(
+        tokens.contains("impl :: clifacet :: command :: Planned for Commands"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("< Add as :: clifacet :: command :: Planned > :: plan (leaf , input) . map (| plan | plan . map (:: core :: convert :: Into :: into))"),
+        "{tokens}"
+    );
+    // `Command` comes from the library's blanket impl for every `Planned`.
+    assert!(
+        !tokens.contains("impl :: clifacet :: Command for Commands"),
+        "{tokens}"
+    );
+}
+
+#[test]
+fn variant_keys_become_claps_command_attributes_and_raw_ones_pass_through() {
+    let tokens = tree(
+        "input = Request",
+        r#"enum Commands {
+            #[clifacet(name = "add-task", alias = "new", visible_alias = "a", hide)]
+            #[command(long_about = "Adds one")]
+            Add(Add),
+        }"#,
+    )
+    .expect("known variant keys");
+
+    assert!(
+        tokens.contains(r#"# [command (name = "add-task")]"#),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains(r#"# [command (alias = "new")]"#),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains(r#"# [command (visible_alias = "a")]"#),
+        "{tokens}"
+    );
+    assert!(tokens.contains("# [command (hide = true)]"), "{tokens}");
+    assert!(
+        tokens.contains(r#"# [command (long_about = "Adds one")]"#),
+        "{tokens}"
+    );
+    assert!(!tokens.contains("clifacet ("), "consumed: {tokens}");
+}
+
+#[test]
+fn a_tree_is_an_enum_without_generics_with_at_least_one_leaf() {
+    assert!(
+        rejected_tree("input = Request", "struct Commands { add: Add }")
+            .contains("applies to an enum, one variant per subcommand"),
+    );
+    assert!(
+        rejected_tree("input = Request", "enum Commands<T> { Add(T) }")
+            .starts_with("a command tree takes no generics"),
+    );
+    assert!(
+        rejected_tree("input = Request", "enum Commands {}")
+            .starts_with("a command tree needs at least one subcommand"),
+    );
+    assert!(
+        rejected_tree(
+            "input = Request",
+            "#[derive(Debug, clap::Subcommand)] enum Commands { Add(Add) }"
+        )
+        .starts_with("`Subcommand` is derived twice"),
+    );
+}
+
+#[test]
+fn a_variant_is_one_leaf_struct_and_the_error_says_how_to_write_it() {
+    let inline = rejected_tree("input = Request", "enum Commands { Add { title: String } }");
+    assert!(
+        inline.starts_with("`Add` declares its arguments inline"),
+        "{inline}"
+    );
+    assert!(
+        inline.contains("write a leaf struct instead: `Add(Add)`, with `#[clifacet::command(input = AddInput)] struct Add { … }`"),
+        "{inline}"
+    );
+
+    let unit = rejected_tree("input = Request", "enum Commands { Doctor }");
+    assert!(unit.starts_with("`Doctor` has no leaf"), "{unit}");
+    assert!(
+        unit.contains("write a leaf struct instead: `Doctor(Doctor)`"),
+        "{unit}"
+    );
+    assert!(unit.ends_with("which may be empty"), "{unit}");
+
+    let pair = rejected_tree("input = Request", "enum Commands { Add(Add, Done) }");
+    assert!(
+        pair.starts_with("`Add` holds more than one value"),
+        "{pair}"
+    );
+}
+
+#[test]
+fn the_tree_attribute_takes_known_keys_once_each() {
+    assert_eq!(
+        rejected_tree("input = Request, dispatch = auto", TWO_LEAVES),
+        "`dispatch` is not a key of `#[clifacet::subcommands(..)]`; supported keys: \
+         `input = Type`, `output = Type`, `planned`"
+    );
+    assert_eq!(
+        rejected_tree("input = Request, input = Other", TWO_LEAVES),
+        "`input` is declared twice; one key, one meaning"
+    );
+    assert_eq!(
+        rejected_tree("input", TWO_LEAVES),
+        "`input` takes a type, for example `input = MyType`"
+    );
+    assert_eq!(
+        rejected_tree(
+            "input = Request, output = Report, planned = yes",
+            TWO_LEAVES
+        ),
+        "`planned` takes no value: write `planned` on its own"
+    );
+    assert!(
+        rejected_tree("input = Request, planned", TWO_LEAVES).starts_with(
+            "`planned` makes the tree a planned command, and a command needs its output"
+        ),
+    );
+    assert!(rejected_tree("output = Report", TWO_LEAVES).contains(
+        "needs the request it converts to: add `#[clifacet::subcommands(input = YourRequest)]`"
+    ),);
+}
+
+#[test]
+fn a_variant_takes_known_keys_once_each_in_their_own_shape() {
+    let variant = |attribute: &str| {
+        rejected_tree(
+            "input = Request",
+            &format!("enum Commands {{ #[clifacet({attribute})] Add(Add) }}"),
+        )
+    };
+
+    let unknown = variant(r#"about = "Adds""#);
+    assert!(
+        unknown.starts_with("`about` is not a variant key of `#[clifacet(..)]`; supported: `alias = \"…\"`, `name = \"…\"`, `visible_alias = \"…\"`, `hide`"),
+        "{unknown}"
+    );
+    assert!(
+        unknown.ends_with("raw `#[command(..)]` on the variant"),
+        "{unknown}"
+    );
+    assert!(variant("a::b").starts_with("this key is not a variant key"));
+    assert_eq!(
+        variant(r#"alias = "x", alias = "y""#),
+        "`alias` is declared twice on this variant; one key, one meaning"
+    );
+    assert_eq!(
+        variant("name"),
+        "`name` takes a string, for example `name = \"…\"`"
+    );
+    assert_eq!(
+        variant("name = 3"),
+        "`name` takes a string, for example `name = \"…\"`"
+    );
+    assert_eq!(
+        variant("hide = true"),
+        "`hide` takes no value: write `hide` on its own"
+    );
+}
+
+#[test]
+fn a_name_two_subcommands_answer_to_is_reported_at_the_second() {
+    assert_eq!(
+        rejected_tree(
+            "input = Request",
+            r#"enum Commands { Add(Add), #[clifacet(alias = "add")] Done(Done) }"#
+        ),
+        "`alias = \"add\"` answers to `add`, and so does `Add`: one name, one subcommand — \
+         rename one of them, or drop the alias"
+    );
+    // A default name is clap's kebab-case of the variant, and it is described as one.
+    assert_eq!(
+        rejected_tree(
+            "input = Request",
+            r#"enum Commands { #[clifacet(alias = "list-all")] Show(Show), ListAll(ListAll) }"#
+        ),
+        "`ListAll`, named `list-all` by default, answers to `list-all`, and so does `Show`: \
+         one name, one subcommand — rename one of them, or drop the alias"
+    );
+    // Raw clap names count too.
+    assert!(
+        rejected_tree(
+            "input = Request",
+            r#"enum Commands { Add(Add), #[command(name = "add")] Done(Done) }"#
+        )
+        .starts_with("`name = \"add\"` answers to `add`, and so does `Add`"),
+    );
+}
+
+#[test]
+fn an_explicit_name_replaces_the_default_and_a_renaming_enum_is_left_to_clap() {
+    tree(
+        "input = Request",
+        r#"enum Commands { #[clifacet(name = "plus")] Add(Add), #[clifacet(alias = "add")] Done(Done) }"#,
+    )
+    .expect("`add` is no longer `Add`'s name");
+    tree(
+        "input = Request",
+        r#"#[command(rename_all = "lower")] enum Commands { ListAll(ListAll), #[clifacet(alias = "list-all")] Show(Show) }"#,
+    )
+    .expect("clap computes the names when the enum renames them");
+}
+
+#[test]
+fn a_subcommands_field_converts_and_collects_through_the_tree() {
+    let required = expanded(
+        r"
+        #[facet(input = Input)]
+        struct Cli {
+            #[facet(subcommands)]
+            command: Commands,
+        }
+        ",
+    )
+    .expect("a required tree");
+    assert!(
+        required.contains("command : :: clifacet :: facet :: __derive :: tree (cli . command) ?"),
+        "{required}"
+    );
+    assert!(
+        required.contains(
+            "self . command = :: clifacet :: facet :: __derive :: collect_tree (self . command , session) ?"
+        ),
+        "{required}"
+    );
+    assert!(
+        !required.contains("CommandFactory"),
+        "nothing is asked by flag, so clap's command is not built: {required}"
+    );
+
+    let optional = expanded(
+        r"
+        #[facet(input = Input)]
+        struct Cli {
+            #[facet(subcommands)]
+            command: Option<Commands>,
+        }
+        ",
+    )
+    .expect("an optional tree");
+    assert!(
+        optional.contains(
+            "command : :: clifacet :: facet :: __derive :: optional_tree (cli . command) ?"
+        ),
+        "{optional}"
+    );
+    assert!(
+        optional.contains("collect_optional_tree (self . command , session ,) ?"),
+        "{optional}"
+    );
+}
+
+#[test]
+fn a_subcommands_field_stands_alone() {
+    assert_eq!(
+        rejected(
+            r"
+            #[facet(input = Input)]
+            struct Cli { #[facet(subcommands, skip)] command: Commands }
+            ",
+        ),
+        "`skip` beside `subcommands` would apply to the whole tree, and a tree is not one \
+         value: declare the rule on the leaf struct's own field instead"
+    );
+    assert!(
+        rejected(
+            r"
+            #[facet(input = Input, bridge = build)]
+            struct Cli { #[facet(subcommands)] command: Commands }
+            ",
+        )
+        .starts_with("`subcommands` is a rule for the generated bridge"),
+    );
+    assert!(
+        rejected_command(
+            "input = Input",
+            "struct Cli { #[clifacet(subcommands, long)] command: Commands }"
+        )
+        .starts_with("a `subcommands` field is a command tree, not an argument"),
+    );
+}
+
+#[test]
+fn the_command_attribute_marks_a_subcommands_field_for_clap() {
+    let tokens = command(
+        "input = Input",
+        "struct Cli { #[clifacet(subcommands)] command: Option<Commands> }",
+    )
+    .expect("a tree field");
+
+    assert!(
+        tokens.contains(
+            "# [command (subcommand)] # [facet (subcommands)] command : Option < Commands >"
+        ),
+        "{tokens}"
+    );
+}
+
+#[test]
+fn a_declared_collect_replaces_the_generated_questions() {
+    let tokens = expanded(
+        r"
+        #[facet(input = Input, collect = ask_by_hand)]
+        struct Cli { #[facet(fill = 1)] count: Option<u8> }
+        ",
+    )
+    .expect("collection by hand");
+
+    assert!(
+        tokens.contains("let collect : fn (Self , & mut :: clifacet :: prompt :: Session ,) -> :: core :: result :: Result < Self , :: clifacet :: Failure > = ask_by_hand ; collect (self , session)"),
+        "{tokens}"
+    );
+    assert!(!tokens.contains("ask_for"), "{tokens}");
+}
+
+#[test]
+fn a_question_beside_a_declared_collect_is_never_asked_so_it_is_rejected() {
+    for (rule, key) in [
+        ("ask = \"Who?\"", "ask"),
+        ("confirm = \"Sure?\"", "confirm"),
+    ] {
+        let message = rejected(&format!(
+            "#[facet(input = Input, collect = by_hand)] struct Cli {{ #[arg(long)] #[facet({rule})] name: Option<String> }}"
+        ));
+        assert!(
+            message.starts_with(&format!(
+                "`{key}` is a question for the generated collection"
+            )),
+            "{message}"
+        );
+    }
+    assert_eq!(
+        rejected("#[facet(input = Input, collect = a, collect = b)] struct Cli {}"),
+        "`collect` is declared more than once"
+    );
+}

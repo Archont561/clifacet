@@ -104,17 +104,26 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         let raw = raw_names(&variant.attrs);
         let mut answers_to = forward_variant_attributes(&mut variant.attrs)?;
         answers_to.extend(raw);
-        if !answers_to.iter().any(|(key, _, _)| key == "name") && !renamed {
+        let mut declared: Vec<(String, String, Span)> = answers_to
+            .into_iter()
+            .map(|(key, name, span)| (format!("`{key} = \"{name}\"`"), name, span))
+            .collect();
+        if !declared
+            .iter()
+            .any(|(label, _, _)| label.starts_with("`name "))
+            && !renamed
+        {
             let default = variant.ident.to_string().to_kebab_case();
-            answers_to.insert(0, (String::from("name"), default, variant.ident.span()));
+            let label = format!("`{}`, named `{default}` by default,", variant.ident);
+            declared.insert(0, (label, default, variant.ident.span()));
         }
-        for (key, name, span) in answers_to {
+        for (label, name, span) in declared {
             if let Some(first) = names.get(&name) {
                 return Err(syn::Error::new(
                     span,
                     format!(
-                        "`{key} = \"{name}\"` repeats a name `{first}` already answers to: one \
-                         name, one subcommand — rename one of them"
+                        "{label} answers to `{name}`, and so does `{first}`: one name, one \
+                         subcommand — rename one of them, or drop the alias"
                     ),
                 ));
             }
@@ -493,8 +502,7 @@ const MISMATCH: &str = "this request is for a different subcommand from the one 
 fn command(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
         let run = quote_spanned!(leaf.span()=>
-            <#leaf as ::clifacet::Command>::execute(leaf, input)
-                .map(::core::convert::Into::<#output>::into)
+            <#leaf as ::clifacet::Command>::execute(leaf, input).map(::core::convert::Into::into)
         );
         quote!((Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #run)
     });
@@ -522,7 +530,7 @@ fn planned(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenS
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
         let plan = quote_spanned!(leaf.span()=>
             <#leaf as ::clifacet::command::Planned>::plan(leaf, input)
-                .map(|plan| plan.map(::core::convert::Into::<#output>::into))
+                .map(|plan| plan.map(::core::convert::Into::into))
         );
         quote!((Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #plan)
     });

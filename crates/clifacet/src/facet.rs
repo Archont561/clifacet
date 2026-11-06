@@ -55,6 +55,12 @@ use crate::failure::Failure;
 /// - Types that do not implement [`clap::CommandFactory`] — in practice, a struct
 ///   that does not derive [`clap::Parser`]. A subcommand [`clap::Args`] value has
 ///   no command of its own to report.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a clifacet command: it has no typed input to validate into",
+    label = "not a command",
+    note = "declare it with `#[clifacet::command(input = YourInput)]`, or derive \
+            `clap::Parser` and `clifacet::Facet` with `#[facet(input = YourInput)]`"
+)]
 pub trait Facet: CommandFactory {
     /// The validated input this command produces.
     ///
