@@ -9,7 +9,7 @@ use std::cell::Cell;
 use std::io::Cursor;
 
 use clifacet::policy::{Capabilities, Mode, Plan, Policy, Request};
-use clifacet::prompt::{Answer, Scripted, Session, Terminal};
+use clifacet::prompt::{Answer, Confirmation, Scripted, Session, Terminal};
 use clifacet::{Command, Failure, FailureKind};
 use rstest::rstest;
 
@@ -24,6 +24,13 @@ fn interactive() -> Plan {
 fn non_interactive() -> Plan {
     Policy::non_interactive()
         .resolve(Request::none(), Capabilities::headless())
+        .expect("the default resolves")
+}
+
+/// A plan that may ask nothing, but whose confirmations answer themselves.
+fn non_interactive_assuming_yes() -> Plan {
+    Policy::non_interactive()
+        .resolve(Request::none().assuming_yes(true), Capabilities::headless())
         .expect("the default resolves")
 }
 
@@ -63,31 +70,56 @@ fn a_missing_value_is_prompted_only_when_permitted(
 }
 
 #[rstest]
-#[case::answers_yes(interactive(), Answer::Yes, true, 1)]
-#[case::answers_no(interactive(), Answer::No, false, 1)]
-#[case::yes_flag_skips_the_question(interactive_assuming_yes(), Answer::No, true, 0)]
-#[case::nothing_can_ask(non_interactive(), Answer::Yes, false, 0)]
-fn a_confirmation_respects_the_mode_and_the_yes_flag(
+#[case::answers_yes(interactive(), Answer::Yes, Confirmation::Confirmed, 1)]
+#[case::answers_no(interactive(), Answer::No, Confirmation::Declined, 1)]
+#[case::yes_flag_skips_the_question(
+    interactive_assuming_yes(),
+    Answer::No,
+    Confirmation::Assumed,
+    0
+)]
+#[case::yes_flag_without_a_frontend(
+    non_interactive_assuming_yes(),
+    Answer::No,
+    Confirmation::Assumed,
+    0
+)]
+#[case::nothing_can_ask(non_interactive(), Answer::Yes, Confirmation::Unavailable, 0)]
+fn a_confirmation_says_how_it_was_settled(
     #[case] plan: Plan,
     #[case] answer: Answer,
-    #[case] expected: bool,
+    #[case] expected: Confirmation,
     #[case] expected_asks: usize,
 ) {
     let script = Scripted::new([answer]);
     let probe = script.clone();
     let mut session = Session::start(plan, move || Box::new(probe));
 
-    let confirmed = session
+    let settled = session
         .confirm("Fail on purpose?")
         .expect("this answer works");
 
-    assert_eq!(confirmed, expected);
+    assert_eq!(settled, expected);
     assert_eq!(
         script.asked().len(),
         expected_asks,
         "asked: {:?}",
         script.asked()
     );
+}
+
+/// The boolean a caller that does not care *how* still gets is the old fail-safe one:
+/// only a yes, or `--yes`, proceeds. An unanswerable confirmation is not consent.
+#[rstest]
+#[case::confirmed(Confirmation::Confirmed, true)]
+#[case::assumed(Confirmation::Assumed, true)]
+#[case::declined(Confirmation::Declined, false)]
+#[case::unavailable(Confirmation::Unavailable, false)]
+fn only_a_yes_or_the_yes_flag_counts_as_confirmed(
+    #[case] settled: Confirmation,
+    #[case] proceeds: bool,
+) {
+    assert_eq!(settled.is_confirmed(), proceeds);
 }
 
 /// "No" and "I stopped" are different answers: one is a decision the flow may act
@@ -99,10 +131,11 @@ fn a_dismissed_confirmation_is_a_cancellation_not_a_no() {
         let probe = declined.clone();
         move || Box::new(probe)
     });
-    assert!(
-        !session
+    assert_eq!(
+        session
             .confirm("Fail on purpose?")
             .expect("no is an answer"),
+        Confirmation::Declined,
         "a refusal to proceed is an answer the caller acts on"
     );
 

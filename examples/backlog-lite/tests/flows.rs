@@ -178,6 +178,15 @@ fn yes_answers_the_confirmation_without_asking() {
     clifacet_backlog_lite::confirm_status("CLI-20", Status::Done, &mut session).expect("confirmed");
 }
 
+/// `--yes` is the answer a pipe gives in advance, so a run with no terminal that passed
+/// it must proceed rather than be told to pass the flag it already passed.
+#[test]
+fn yes_settles_the_confirmation_even_when_nothing_can_ask() {
+    let mut session = Session::start(headless_with_yes(), || Box::new(Scripted::default()));
+    clifacet_backlog_lite::confirm_status("CLI-20", Status::Done, &mut session)
+        .expect("--yes said so in advance");
+}
+
 #[test]
 fn a_state_change_nothing_can_confirm_asks_for_yes_instead_of_declining() {
     let mut session = Session::start(headless(), || Box::new(Scripted::default()));
@@ -201,6 +210,15 @@ fn interactive_with_yes() -> clifacet::policy::Plan {
         .resolve(
             ModeRequest::mode(Mode::Interactive).assuming_yes(true),
             Capabilities::terminal(),
+        )
+        .expect("resolves")
+}
+
+fn headless_with_yes() -> clifacet::policy::Plan {
+    Policy::up_to(Mode::Interactive)
+        .resolve(
+            ModeRequest::none().assuming_yes(true),
+            Capabilities::headless(),
         )
         .expect("resolves")
 }

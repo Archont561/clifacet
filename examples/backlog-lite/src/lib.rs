@@ -27,7 +27,7 @@ use clap::Parser;
 use clifacet::contract::ExitPolicy;
 use clifacet::failure::Failure;
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
-use clifacet::prompt::{Prompter, Session, Terminal};
+use clifacet::prompt::{Confirmation, Prompter, Session, Terminal};
 
 /// The program the wrapper runs, overridable so a test never spawns the real tool.
 ///
@@ -354,30 +354,27 @@ pub fn collect_new(args: NewArgs, session: &mut Session) -> Result<Request, Fail
 
 /// Confirms a state change, or fails without running anything.
 ///
-/// A confirmation that cannot be asked is **not** an answer: when the plan asks the
-/// user nothing, this refuses instead of proceeding. `--yes` is the way to say so in
-/// advance, and it is the only thing `--yes` decides.
+/// A confirmation that cannot be asked is **not** an answer: when nothing can ask and
+/// `--yes` was not passed, this refuses instead of proceeding. `--yes` is the way to
+/// say so in advance, and it is the only thing `--yes` decides — with or without a
+/// terminal.
 ///
 /// # Errors
 ///
-/// Returns [`Failure::cancelled`] when the user declines, and the frontend's failure
-/// when the question breaks.
+/// Returns [`Failure::cancelled`] when the user declines,
+/// [`Failure::validation`] naming `--yes` when nobody could be asked, and the
+/// frontend's failure when the question breaks.
 pub fn confirm_status(id: &str, status: Status, session: &mut Session) -> Result<(), Failure> {
-    // A confirmation nothing can ask is not a confirmation. Saying so is more useful
-    // than the "declined" a silent `Ok(false)` would turn into: the user's mistake was
-    // omitting `--yes`, not saying no.
-    if !session.plan().asks_the_user() {
-        return Err(Failure::validation(format!(
+    match session.confirm(&format!("Move {id} to {status}?"))? {
+        Confirmation::Confirmed | Confirmation::Assumed => Ok(()),
+        Confirmation::Declined => Err(Failure::cancelled(format!(
+            "declined: {id} was not moved to {status}"
+        ))),
+        // Nobody could be asked, so nobody said no: the mistake was omitting `--yes`.
+        Confirmation::Unavailable => Err(Failure::validation(format!(
             "refusing to move {id} to {status} unconfirmed: pass --yes to say so in advance"
-        )));
+        ))),
     }
-    let question = format!("Move {id} to {status}?");
-    if session.confirm(&question)? {
-        return Ok(());
-    }
-    Err(Failure::cancelled(format!(
-        "declined: {id} was not moved to {status}"
-    )))
 }
 
 /// The command line this request stands for, plus why.

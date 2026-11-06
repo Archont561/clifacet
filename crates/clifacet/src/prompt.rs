@@ -74,6 +74,39 @@ pub trait Prompter {
     fn confirm(&mut self, question: &str) -> Result<bool, Failure>;
 }
 
+/// How a confirmation was settled.
+///
+/// "Not confirmed" has two very different causes — the user said no, or nobody could be
+/// asked — and an application usually answers them differently: the first is a decision
+/// to cancel, the second is a reason to say "pass `--yes`". Keeping them apart here is
+/// what lets a caller stop inspecting the [`Plan`] itself.
+///
+/// [`Confirmation::is_confirmed`] is the fail-safe boolean for a caller that does not
+/// care how: only a yes, or `--yes`, proceeds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[must_use = "an unread confirmation is a question nobody acted on"]
+pub enum Confirmation {
+    /// The user was asked and said yes.
+    Confirmed,
+    /// The user was asked and said no.
+    Declined,
+    /// Nobody was asked: `--yes` answered for them.
+    Assumed,
+    /// Nobody was asked, and nothing could be: the plan asks the user nothing.
+    Unavailable,
+}
+
+impl Confirmation {
+    /// Whether the run may proceed: confirmed by the user, or assumed by `--yes`.
+    ///
+    /// An unanswerable confirmation is *not* a confirmation, so this is `false` when
+    /// nothing could ask — a caller that only reads the boolean fails safe.
+    #[must_use]
+    pub const fn is_confirmed(self) -> bool {
+        matches!(self, Self::Confirmed | Self::Assumed)
+    }
+}
+
 /// What a scripted frontend answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Answer {
@@ -342,22 +375,28 @@ impl Session {
         }
     }
 
-    /// Confirms, unless `--yes` already answered or nothing may ask.
+    /// Confirms, unless `--yes` already answered or nothing may ask, and says which.
     ///
-    /// When the plan asks nothing this returns `Ok(false)`: an unanswerable
-    /// confirmation is *not* a confirmation, so a caller that forgets to check the
-    /// plan fails safe instead of proceeding.
+    /// `--yes` settles it as [`Confirmation::Assumed`] without asking; a plan that asks
+    /// nothing settles it as [`Confirmation::Unavailable`], which
+    /// [`Confirmation::is_confirmed`] reads as *no* — an unanswerable confirmation is
+    /// not consent, so a caller that only wants the boolean fails safe.
     ///
     /// # Errors
     ///
-    /// Returns the frontend's failure, including cancellation.
-    pub fn confirm(&mut self, question: &str) -> Result<bool, Failure> {
+    /// Returns the frontend's failure, including cancellation — dismissing the
+    /// question is not the same answer as declining it.
+    pub fn confirm(&mut self, question: &str) -> Result<Confirmation, Failure> {
         if self.plan.assumes_yes() {
-            return Ok(true);
+            return Ok(Confirmation::Assumed);
         }
         match self.prompter.as_mut() {
-            Some(prompter) => prompter.confirm(question),
-            None => Ok(false),
+            Some(prompter) => Ok(if prompter.confirm(question)? {
+                Confirmation::Confirmed
+            } else {
+                Confirmation::Declined
+            }),
+            None => Ok(Confirmation::Unavailable),
         }
     }
 
@@ -414,7 +453,9 @@ impl Session {
         id: &str,
         question: &str,
     ) -> Result<(), Failure> {
-        if !set || !self.plan.asks_the_user() || self.confirm(question)? {
+        // Only a refusal stops the run: a flag nobody could be asked about is the
+        // unattended request it was typed as.
+        if !set || self.confirm(question)? != Confirmation::Declined {
             return Ok(());
         }
         Err(Failure::cancelled(format!(

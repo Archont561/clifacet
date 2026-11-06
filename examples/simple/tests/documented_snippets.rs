@@ -51,7 +51,7 @@ fn readme_snippet_2() {
     }
 }
 
-/// `command-core.md`, line 182.
+/// `command-core.md`, line 185.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {

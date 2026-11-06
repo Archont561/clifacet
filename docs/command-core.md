@@ -150,9 +150,12 @@ same session rules below, applied per declared field.
 - **A missing value is asked for only when the plan permits.** `Session::start`
   builds the frontend through `Plan::with_frontend`, so a non-interactive run has
   no frontend at all and a question is never asked, let alone answered.
-- **`--yes` answers confirmations and nothing else.** `Session::confirm` returns
-  `true` without asking; a confirmation with nothing able to ask returns `false`,
-  so a caller that forgets to check the plan fails safe instead of proceeding.
+- **`--yes` answers confirmations and nothing else.** `Session::confirm` settles a
+  confirmation as `Confirmation::Assumed` without asking, and one with nothing able to
+  ask as `Confirmation::Unavailable`. `is_confirmed()` is the fail-safe boolean: only
+  `Confirmed` and `Assumed` proceed, so a caller that does not care *how* still fails
+  safe, and one that does — "pass `--yes`" is a better message than "declined" —
+  matches on the outcome instead of inspecting the plan.
 - **Collection precedes execution.** `Session::run` collects and then executes, so
   a cancelled question, a bad answer or an exhausted script returns before the
   command is reachable.
@@ -211,8 +214,8 @@ process uses `dialog_frontend()` and keeps `terminal_frontend()` beside it to sh
 choice is the application's.
 
 `FailureKind::Cancelled` is how "the user changed their mind" travels. Answering a
-confirmation with `no` is a *decision* (`Ok(false)`); dismissing the question, or
-end of input, is a *cancellation*. Only the second costs exit `130`.
+confirmation with `no` is a *decision* (`Confirmation::Declined`); dismissing the
+question, or end of input, is a *cancellation*. Only the second costs exit `130`.
 
 ## The full-screen form
 
