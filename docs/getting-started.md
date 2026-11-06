@@ -9,7 +9,7 @@ command reachable from all of them, and testable without any of them.
 
 ```toml
 [dependencies]
-clifacet = { version = "0.2.0", features = ["tui"] }
+clifacet = { version = "0.3.0", features = ["tui"] }
 clap = "4.6.7"
 ```
 
