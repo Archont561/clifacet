@@ -513,9 +513,13 @@ fn kind_of(argument: &Arg) -> Result<Kind, Failure> {
                 Kind::Choice(options)
             })
         }
+        ArgAction::Set | ArgAction::Append | ArgAction::Count => Err(Failure::execution(format!(
+            "{} takes more than one value, and a form field submits one: collect a \
+                 list with `Session::collect_values` instead",
+            spelling(argument)
+        ))),
         _ => Err(Failure::execution(format!(
-            "{} takes more than one value, and a form field submits one: collect a list \
-             with `Session::collect_values` instead",
+            "{} is an action, not a value, so a form cannot ask for it",
             spelling(argument)
         ))),
     }

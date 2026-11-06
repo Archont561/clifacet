@@ -544,3 +544,25 @@ fn a_choice_and_a_toggle_are_drawn_as_what_they_are() {
     assert!(chosen.contains("Colour: ‹green›"), "{chosen}");
     assert!(chosen.contains("Dry run: [x]"), "{chosen}");
 }
+
+#[test]
+fn an_action_that_takes_no_value_is_refused_for_what_it_is() {
+    let command = clifacet::clap::Command::new("manual").arg(
+        clifacet::clap::Arg::new("manual")
+            .long("manual")
+            .action(ArgAction::Help),
+    );
+
+    let failure = FormState::generated(&command, &["manual"]).expect_err("help is not an answer");
+
+    assert!(
+        failure.message().contains("--manual"),
+        "{}",
+        failure.message()
+    );
+    assert!(
+        !failure.message().contains("more than one"),
+        "{}",
+        failure.message()
+    );
+}
