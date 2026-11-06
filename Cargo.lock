@@ -362,6 +362,8 @@ dependencies = [
  "clap",
  "clifacet",
  "rstest",
+ "rstest-bdd",
+ "rstest-bdd-macros",
 ]
 
 [[package]]

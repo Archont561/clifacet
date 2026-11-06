@@ -1,12 +1,13 @@
 //! Parity between a prompted run and a flag run, as an executable promise.
 //!
-//! Both scenarios drive `example::main_with` — the same entry point the binary
-//! uses — with a terminal capability and a scripted frontend. Nothing here can
-//! touch a real terminal, so a scenario that accidentally prompts fails loudly
-//! instead of hanging.
+//! The parity scenarios drive `example::main_with` — the same entry point the binary
+//! uses — with a terminal capability and a scripted frontend; the list scenario drives
+//! the `Session` an application collects through. Nothing here can touch a real
+//! terminal, so a scenario that accidentally prompts fails loudly instead of hanging.
 
-use clifacet::policy::Capabilities;
-use clifacet::prompt::{Answer, Scripted};
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Answer, Scripted, Session};
+use clifacet::{Failure, FailureKind};
 use clifacet_example as example;
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
@@ -17,6 +18,7 @@ struct World {
     code: i32,
     data: String,
     diagnostic: String,
+    collected: Option<Result<Vec<String>, Failure>>,
 }
 
 impl World {
@@ -95,6 +97,37 @@ fn the_exit_code_says_cancelled(world: &World) {
         "the diagnostic explains the cancel: {}",
         world.diagnostic
     );
+}
+
+#[when("the user gives two labels and then dismisses the question")]
+fn the_user_dismisses_a_list_part_way(world: &mut World) {
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("prompts are permitted here");
+    let answers = [
+        Answer::Text(String::from("cli")),
+        Answer::Text(String::from("docs")),
+        Answer::Cancel,
+    ];
+    let mut session = Session::start(plan, move || Box::new(Scripted::new(answers)));
+    world.collected = Some(session.collect_values(Vec::new(), "label", "Label (empty to finish)?"));
+}
+
+#[then("no list comes back, only the cancellation")]
+fn only_the_cancellation(world: &World) {
+    match world.collected.as_ref().expect("the list was asked for") {
+        Ok(partial) => panic!("a partial list came back as a success: {partial:?}"),
+        Err(failure) => assert_eq!(failure.kind(), FailureKind::Cancelled),
+    }
+}
+
+#[scenario(
+    path = "tests/features/prompting.feature",
+    name = "A list stopped part-way is not a list"
+)]
+#[test]
+fn a_list_stopped_part_way_is_not_a_list(world: World) {
+    let _ = world;
 }
 
 #[scenario(
