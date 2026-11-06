@@ -1,10 +1,10 @@
 ---
 id: CLI-40
 title: 'CI: a documentation lane for docs-only changes'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06 18:13'
-updated_date: '2026-11-06 18:16'
+updated_date: '2026-11-06 18:43'
 labels: []
 dependencies: []
 ordinal: 40000
@@ -47,4 +47,6 @@ A change that touches only documentation runs a light lane of the checks that do
 ## Open
 
 - AC#2 is wired and statically tested but not yet seen live: this PR changes code, so it takes the full lane. The first documentation-only pull request after the merge (closing this task is one) will be the live proof.
+
+Closed by the maintainer on 2026-11-06 after PR #54 merged (260a1422; main CI took the full lane, green). This closing change touches only this file, so its own CI run is the live test of AC#2; the run is recorded below once seen.
 <!-- SECTION:NOTES:END -->
