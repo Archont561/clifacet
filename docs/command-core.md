@@ -33,6 +33,54 @@ pub trait Command {
 `execute` has nothing left to reject. `Output` is data, not a message: the
 application decides whether it becomes stdout, JSON or a table.
 
+### A plan instead of an action
+
+A command that changes something can implement `command::Planned` instead. It answers
+its input with a `command::Plan` — the steps a person reads, and the work that takes
+them — and the library implements `Command` for it as "plan, then execute". A
+`--dry-run` prints the plan; a real run executes the same plan:
+
+```rust
+use clifacet::command::{Plan, Planned};
+use clifacet::{Command, Failure};
+
+struct Archive;
+
+impl Planned for Archive {
+    type Input = Vec<String>;
+    type Output = usize;
+
+    fn plan(&self, tasks: Vec<String>) -> Result<Plan<'_, usize>, Failure> {
+        if tasks.is_empty() {
+            return Err(Failure::validation("name a task to archive"));
+        }
+        let steps: Vec<String> = tasks.iter().map(|task| format!("archive {task}")).collect();
+        let plan = Plan::new(move || Ok(tasks.len())); // the real archiving goes here
+        Ok(steps.into_iter().fold(plan, Plan::step))
+    }
+}
+
+let tasks = vec![String::from("CLI-7"), String::from("CLI-9")];
+let dry_run = Archive.plan(tasks.clone()).expect("a valid request");
+assert_eq!(dry_run.describe(), "archive CLI-7\narchive CLI-9");
+assert_eq!(Archive.execute(tasks).expect("runs"), 2);
+```
+
+- **One execution path.** `Command::execute` for a planned command *is*
+  `plan(input)?.execute()`, and the library owns that impl, so a dry run cannot describe
+  one path while a real run takes another. A plan that fails to build fails both the same
+  way.
+- **Building a plan does nothing.** The work is a closure that runs only in
+  `Plan::execute`, which consumes the plan.
+- **The steps are the command's words.** They are written beside the work from the same
+  input; whether they describe what the work did is checked with the parity harness —
+  compare a described plan's steps with an executed plan's effects
+  (`crates/clifacet/tests/plan.rs`). `examples/backlog-lite`'s `Backlog` is the worked
+  case: its steps are the sentence and the runnable line `--dry-run` prints, and its work
+  spawns that line.
+- **`Plan` here is not `policy::Plan`.** The policy's plan decides how a run may interact;
+  this one is what a command would do. They live in different modules for that reason.
+
 ## Ownership, per decision-3
 
 **Failures are library-owned; exit codes are not.** `Failure` answers "what kind

@@ -3,8 +3,8 @@
 //! The point of this crate is not to reimplement Backlog.md. It is to show what a
 //! *thin* layer over somebody else's CLI costs when the layer is built on clifacet:
 //! typed input ([`Request`]) instead of a stringly argument soup, a decision that is
-//! data ([`Plan`]) instead of a side effect, questions asked only when something can
-//! answer them, and a run that can be printed before it happens.
+//! data ([`Invocation`]) instead of a side effect, questions asked only when something
+//! can answer them, and a run that can be printed before it happens.
 //!
 //! ```text
 //! bl                          # list, the thing you do most
@@ -16,14 +16,17 @@
 //!
 //! Every leaf builds an argument vector and never touches the process; [`run`] is the
 //! one place that spawns anything. That split is what lets the tests assert the
-//! command line byte for byte, and what makes `--dry-run` honest rather than a
-//! separate, slowly-drifting code path.
+//! command line byte for byte. [`Backlog`] is the wrapper as a clifacet
+//! [`Planned`] command: `--dry-run` prints its plan and a real run executes the same
+//! plan, which the library makes the only execution path — so the preview is honest
+//! rather than a separate, slowly-drifting code path.
 
 use std::fmt;
 use std::io::Write;
 use std::process::Command as Process;
 
 use clap::Parser;
+use clifacet::command::{Plan, Planned};
 use clifacet::contract::ExitPolicy;
 use clifacet::failure::Failure;
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
@@ -392,12 +395,12 @@ pub fn confirm_status(id: &str, status: Status, session: &mut Session) -> Result
 
 /// The command line this request stands for, plus why.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Plan {
+pub struct Invocation {
     argv: Vec<String>,
     explain: String,
 }
 
-impl Plan {
+impl Invocation {
     /// The argument vector, starting with the program.
     #[must_use]
     pub fn argv(&self) -> &[String] {
@@ -443,7 +446,7 @@ fn push_args(argv: &mut Vec<String>, values: &[&str]) {
 /// This is a pure function, and that is the design: the same value can be printed
 /// (`--dry-run`), asserted in a test, or executed, and the three cannot disagree.
 #[must_use]
-pub fn plan_of(request: Request) -> Plan {
+pub fn invocation_of(request: Request) -> Invocation {
     let mut argv = program();
     let explain = match request.verb {
         Action::List {
@@ -515,7 +518,7 @@ pub fn plan_of(request: Request) -> Plan {
     if request.json {
         argv.push(String::from("--json"));
     }
-    Plan { argv, explain }
+    Invocation { argv, explain }
 }
 
 /// The command to run: the environment's override, or `backlog`.
@@ -534,7 +537,7 @@ pub fn program() -> Vec<String> {
     )
 }
 
-/// Runs a plan, inheriting the terminal, and answers with its exit status.
+/// Runs an invocation, inheriting the terminal, and answers with its exit status.
 ///
 /// The wrapped tool owns its own exit codes, and its own output; this returns the
 /// child's status unchanged instead of remapping it, because remapping somebody
@@ -545,8 +548,8 @@ pub fn program() -> Vec<String> {
 ///
 /// Returns [`Failure::execution`] when the program cannot be spawned at all — a
 /// missing `backlog`, usually — and when the child ends without an exit code.
-pub fn run(plan: &Plan) -> Result<i32, Failure> {
-    let (program, arguments) = plan
+pub fn run(invocation: &Invocation) -> Result<i32, Failure> {
+    let (program, arguments) = invocation
         .argv()
         .split_first()
         .ok_or_else(|| Failure::execution("nothing to run"))?;
@@ -587,21 +590,48 @@ pub fn app(
     let json = cli.json;
     let dry_run = cli.dry_run;
     let mut session = Session::start(plan, build_frontend);
-    match collect(cli, &mut session) {
-        Ok(mut request) => {
-            request.json = json;
-            let planned = plan_of(request);
-            if dry_run {
-                report(out, planned.explain());
-                report(out, &format!("    {}", planned.shell_line()));
-                return EXIT.success();
-            }
-            match run(&planned) {
-                Ok(code) => code,
-                Err(failure) => clifacet::report::render("bl", &failure, &EXIT, out, err),
-            }
+    let planned = collect(cli, &mut session).and_then(|mut request| {
+        request.json = json;
+        Backlog.plan(request)
+    });
+    // The dry run describes the plan and the real run executes it: one value, so the
+    // printed line is the line that runs.
+    let outcome = match planned {
+        Ok(plan) if dry_run => {
+            report(out, &plan.describe());
+            return EXIT.success();
         }
+        Ok(plan) => plan.execute(),
+        Err(failure) => Err(failure),
+    };
+    match outcome {
+        Ok(code) => code,
         Err(failure) => clifacet::report::render("bl", &failure, &EXIT, out, err),
+    }
+}
+
+/// The wrapper as a clifacet command: a request is planned as one invocation of the
+/// wrapped tool, and running it is executing that plan.
+///
+/// The plan's steps are the sentence and the runnable line `--dry-run` prints; its work
+/// is [`run`]. Because the library implements [`clifacet::Command`] for a [`Planned`]
+/// command as "plan, then execute", there is no other way to run one.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Backlog;
+
+impl Planned for Backlog {
+    type Input = Request;
+    /// The wrapped tool's own exit status, passed through unchanged.
+    type Output = i32;
+
+    fn plan(&self, request: Request) -> Result<Plan<'_, i32>, Failure> {
+        let invocation = invocation_of(request);
+        let steps = [
+            invocation.explain().to_owned(),
+            format!("    {}", invocation.shell_line()),
+        ];
+        let plan = Plan::new(move || run(&invocation));
+        Ok(steps.into_iter().fold(plan, Plan::step))
     }
 }
 

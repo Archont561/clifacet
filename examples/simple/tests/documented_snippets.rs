@@ -51,10 +51,36 @@ fn readme_snippet_2() {
     }
 }
 
-/// `command-core.md`, line 81.
+/// `command-core.md`, line 43.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::command::{Plan, Planned};
+    use clifacet::{Command, Failure};
+    struct Archive;
+    impl Planned for Archive {
+        type Input = Vec<String>;
+        type Output = usize;
+        fn plan(&self, tasks: Vec<String>) -> Result<Plan<'_, usize>, Failure> {
+            if tasks.is_empty() {
+                return Err(Failure::validation("name a task to archive"));
+            }
+            let steps: Vec<String> = tasks.iter().map(|task| format!("archive {task}")).collect();
+            let plan = Plan::new(move || Ok(tasks.len())); // the real archiving goes here
+            Ok(steps.into_iter().fold(plan, Plan::step))
+        }
+    }
+    let tasks = vec![String::from("CLI-7"), String::from("CLI-9")];
+    let dry_run = Archive.plan(tasks.clone()).expect("a valid request");
+    assert_eq!(dry_run.describe(), "archive CLI-7\narchive CLI-9");
+    assert_eq!(Archive.execute(tasks).expect("runs"), 2);
+}
+
+/// `command-core.md`, line 129.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_2() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clap::Parser;
     use clifacet::contract::ExitPolicy;
@@ -77,10 +103,10 @@ fn command_core_snippet_1() {
     assert_eq!(out, b"", "neither reaches the data stream");
 }
 
-/// `command-core.md`, line 219.
+/// `command-core.md`, line 267.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_2() {
+fn command_core_snippet_3() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Dialog, Prompter, Session};
@@ -100,10 +126,10 @@ fn command_core_snippet_2() {
     );
 }
 
-/// `command-core.md`, line 263.
+/// `command-core.md`, line 311.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_3() {
+fn command_core_snippet_4() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Answer, Scripted, Session};
@@ -125,10 +151,10 @@ fn command_core_snippet_3() {
     );
 }
 
-/// `command-core.md`, line 293.
+/// `command-core.md`, line 341.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_4() {
+fn command_core_snippet_5() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Answer, Scripted, Session};
@@ -149,10 +175,10 @@ fn command_core_snippet_4() {
     assert!(session.provenance().is_secret("token"));
 }
 
-/// `command-core.md`, line 539.
+/// `command-core.md`, line 587.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_5() {
+fn command_core_snippet_6() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clap::{CommandFactory, FromArgMatches, Parser};
     use clifacet::provenance::{Provenance, Source};
