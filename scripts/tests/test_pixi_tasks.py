@@ -88,6 +88,7 @@ def test_the_workflow_facing_scripts_have_a_task_each(tasks):
     for name, script in (
         ("release", "scripts/release.py"),
         ("commit-range", "scripts/commit_range.py"),
+        ("change-scope", "scripts/change_scope.py"),
         ("advisory-cache", "scripts/advisory_cache.py"),
     ):
         assert tasks.get(name) == f"python {script}"

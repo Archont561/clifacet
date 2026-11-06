@@ -14,8 +14,71 @@ permissions:
   contents: read
 
 jobs:
+  # Which lane this change takes. A change that touches only documentation skips the four
+  # Rust jobs below and runs `documentation` instead; anything else, or anything the
+  # classifier cannot decide, runs all of CI. `scripts/change_scope.py` owns the decision
+  # and `scripts/tests/test_change_scope.py` exercises it, including the conditions on the
+  # jobs. Standard library only, so `python3` rather than Pixi: the documentation lane
+  # should not set an environment up twice.
+  changes:
+    name: Classify the change
+    runs-on: ubuntu-latest
+    outputs:
+      docs-only: ${{ steps.scope.outputs.docs-only }}
+    steps:
+      # Full history: the diff needs the base commit, whichever event this is.
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Decide whether the change is documentation only
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: python3 scripts/change_scope.py
+
+  # The lane a documentation-only change takes: the checks in `quality` that a Markdown
+  # or Backlog edit can break, and nothing a Markdown edit cannot reach. A guide's Rust
+  # snippets are not among them on purpose — changing one changes the generated
+  # `documented_snippets.rs`, which is code, so that change runs everything; forgetting
+  # to regenerate it is what `check-docs` here catches.
+  documentation:
+    name: Documentation checks
+    needs: changes
+    if: ${{ needs.changes.outputs.docs-only == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the changelog is rendered from the commits and tags.
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Set up Pixi
+        uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.83.0
+          cache: true
+          frozen: true
+      - name: Alint repository policy
+        run: pixi run --frozen alint
+      - name: Check agent skills
+        run: pixi run --frozen skills-check
+      - name: Check Backlog and frozen Bun dependencies
+        run: pixi run --frozen backlog-check
+      - name: Check the documentation guides
+        run: pixi run --frozen check-docs
+      - name: Check the changelog matches the commits
+        run: pixi run --frozen changelog-check
+
+  # The four jobs below are the full lane. `!cancelled()` keeps them running when the
+  # classifier itself fails, and `!= 'true'` treats a missing answer as code, so a broken
+  # classifier can only ever cost time, never skip a check.
   quality:
     name: Repository and Rust quality
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       # Full history: the changelog is rendered from the commits and tags, so a shallow
@@ -88,6 +151,8 @@ jobs:
 
   coverage:
     name: Tests and source coverage
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -122,6 +187,8 @@ jobs:
 
   msrv:
     name: Minimum supported Rust version
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -163,6 +230,8 @@ jobs:
   # whether the others still pass.
   platforms:
     name: Supported platforms (${{ matrix.os }})
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

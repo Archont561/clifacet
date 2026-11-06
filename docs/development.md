@@ -170,7 +170,8 @@ enforces it too: the
 without hooks cannot merge a message the changelog cannot read.
 
 The CI job's own decisions are scripts too — `scripts/commit_range.py` resolves which
-commits a run introduced, and `scripts/advisory_cache.py` computes the advisory-cache week
+commits a run introduced, `scripts/change_scope.py` decides whether a change is
+documentation only, and `scripts/advisory_cache.py` computes the advisory-cache week
 key and resets whatever the cache restored. A workflow step is expected to be one
 `pixi run` call; `scripts/tests/test_release_workflow.py` fails when a `run:` block grows
 a shell condition, a loop or a command substitution, because none of those can be tested
@@ -181,6 +182,33 @@ it used to find one on the CI runner but not in the Pixi environment — so a `r
 pass locally and fail CI. `shellcheck` is now a pinned Pixi dependency, which removes that gap
 and pins the version both places run: `pixi run actionlint` checks the workflow shell exactly
 as CI does.
+
+## Documentation-only changes
+
+CI has two lanes. The `changes` job runs `scripts/change_scope.py` over the paths this pull
+request or push changed (the same range the commit-message check uses):
+
+| The change touches | Runs |
+| --- | --- |
+| only `backlog/`, `docs/`, Markdown files anywhere, or the root `LICENSE-*` files | `documentation` (`alint`, `skills-check`, `backlog-check`, `check-docs`, `changelog-check`) and `commit-messages` |
+| anything else | every job: `quality`, `coverage`, `msrv`, the three platforms, and `commit-messages` |
+
+On a documentation-only change, the four full jobs show as skipped, and a skipped job counts as
+passing for a required check. The rule fails safe: a change with no base to compare against (a
+dispatch, a branch's first push), an empty change and a diff git cannot compute all run
+everything, and the full jobs' `!cancelled()` condition keeps them running if the classifier
+itself fails. The step summary lists the paths that decided it.
+
+Two things keep "every `.md` file" honest. A guide's `rust` snippets are compiled from the
+generated `examples/simple/tests/documented_snippets.rs`, so a change to one changes that file
+too and runs everything, and `check-docs` in the documentation lane catches a snippet edited
+without regenerating it. And no Rust source compiles a Markdown file in;
+`scripts/tests/test_change_scope.py` fails the day one does, because from then on a Markdown
+edit would be a code change.
+
+The classifier is standard library only and runs under the runner's `python3`, like the MSRV
+job, so the light lane does not set Pixi up twice; `pixi run change-scope` runs it locally with
+`EVENT`, `PR_BASE` and `PUSH_BASE` set the way the workflow sets them.
 
 ## Sandbox branch refreshes
 
