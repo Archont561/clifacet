@@ -1,10 +1,10 @@
 ---
 id: CLI-39
 title: 'TUI form: choice, toggle and secret fields'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06 13:40'
-updated_date: '2026-11-06 13:50'
+updated_date: '2026-11-06 14:01'
 labels: []
 milestone: m-6
 dependencies: []
@@ -55,3 +55,9 @@ Decision-18 consequence, accepted design: a generated form field is what its cla
 - AC#4: trybuild `field_form_list.rs` reported "Expected test case to fail to compile, but it succeeded"; golden from `TRYBUILD=overwrite`.
 - AC#6: scenario "Choosing a level produces the same data as the flag" failed at "the level is offered as a choice" (`[]` vs `["basic", "verbose"]`).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed on maintainer authorisation (2026-11-06). All six ACs met in PR #50: `FormState::of::<Cli>()` masks declared secrets via `Facet::secret_fields()`; SetTrue/SetFalse arguments are toggles that submit the bare flag only when it differs from the default; arguments with possible values are choices (Space cycles, a letter jumps, optional choices pass through none); lists are refused at runtime and `form` on a `Vec` is a compile error; `FieldState::{choices, is_toggle, is_on}` plus `toggle`/`with_choices`; the example's `Level` is a `clap::ValueEnum` offered as a choice, with a BDD scenario. Narrowings: no arrow keys (`Key` unchanged), no list field, a custom `value_parser = fn` stays text.
+<!-- SECTION:FINAL_SUMMARY:END -->
