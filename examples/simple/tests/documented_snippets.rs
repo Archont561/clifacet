@@ -123,6 +123,39 @@ fn command_core_snippet_3() {
     assert!(session.provenance().is_secret("token"));
 }
 
+/// `command-core.md`, line 506.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_4() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clap::{CommandFactory, FromArgMatches, Parser};
+    use clifacet::provenance::{Provenance, Source};
+    #[derive(Debug, Parser)]
+    #[command(name = "deploy")]
+    struct Deploy {
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long, default_value_t = 1)]
+        repeat: u8,
+        #[arg(long)]
+        token: Option<String>,
+    }
+    let command = Deploy::command();
+    let matches = command
+        .clone()
+        .try_get_matches_from(["deploy", "--token", "s3cret"])
+        .expect("a valid invocation");
+    let parsed = Deploy::from_arg_matches(&matches).expect("the matches are this command's");
+    let mut provenance = Provenance::from_matches(&command, &matches).with_secrets(&["token"]);
+    let mut asked = Provenance::default();
+    asked.record("name", Source::Prompt); // what `session.provenance()` holds after asking
+    provenance.merge(&asked);
+    assert_eq!(parsed.repeat, 1);
+    assert_eq!(provenance.source_of("repeat"), Some(Source::Default));
+    assert_eq!(provenance.source_of("name"), Some(Source::Prompt));
+    assert!(!provenance.to_string().contains("s3cret"));
+}
+
 /// `derive.md`, line 7.
 #[rustfmt::skip]
 #[test]

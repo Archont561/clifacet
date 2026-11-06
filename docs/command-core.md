@@ -497,6 +497,58 @@ Redaction is a property of the type, not a scrubbing pass:
   drawing changes. Masking the characters instead of replacing them would still report
   the length.
 
+### Provenance from the parse
+
+Nothing has to be recorded by hand. `Provenance::from_matches` reads where `clap` found
+each value, and `merge` adds what the session asked for, so one record covers a run
+whatever mixture of flags, environment, defaults and prompts produced it:
+
+```rust
+use clap::{CommandFactory, FromArgMatches, Parser};
+use clifacet::provenance::{Provenance, Source};
+
+#[derive(Debug, Parser)]
+#[command(name = "deploy")]
+struct Deploy {
+    #[arg(long)]
+    name: Option<String>,
+    #[arg(long, default_value_t = 1)]
+    repeat: u8,
+    #[arg(long)]
+    token: Option<String>,
+}
+
+let command = Deploy::command();
+let matches = command
+    .clone()
+    .try_get_matches_from(["deploy", "--token", "s3cret"])
+    .expect("a valid invocation");
+let parsed = Deploy::from_arg_matches(&matches).expect("the matches are this command's");
+
+let mut provenance = Provenance::from_matches(&command, &matches).with_secrets(&["token"]);
+let mut asked = Provenance::default();
+asked.record("name", Source::Prompt); // what `session.provenance()` holds after asking
+provenance.merge(&asked);
+
+assert_eq!(parsed.repeat, 1);
+assert_eq!(provenance.source_of("repeat"), Some(Source::Default));
+assert_eq!(provenance.source_of("name"), Some(Source::Prompt));
+assert!(!provenance.to_string().contains("s3cret"));
+```
+
+- **Three sources come from `clap`.** A typed value is `argv`, one read from an
+  argument's `env` is `environment`, and one `clap` filled in — a `default_value`, or
+  `false` for a flag that was not given — is `default`.
+- **An absent value records nothing.** An `Option` nobody supplied has no source, and
+  inventing one is the lie this exists to avoid; if the session then asks for it, the
+  prompt is its only record.
+- **The command is passed with the matches** because `ArgMatches` lists the derive's
+  argument group beside the arguments and cannot tell them apart. The chosen subcommand
+  is walked too.
+- **Secrets are named, not detected.** The parse does not know which values are
+  credentials; `with_secrets` marks them, and a command declared with
+  `#[clifacet::command]` lists its own in `Facet::secret_fields()`.
+
 ### What this cannot do
 
 The framework's promise is about the framework's own output. Everything below is the
