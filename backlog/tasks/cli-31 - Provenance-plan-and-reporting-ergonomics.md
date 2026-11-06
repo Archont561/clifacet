@@ -1,10 +1,10 @@
 ---
 id: CLI-31
 title: 'Provenance, plan and reporting ergonomics'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01 22:34'
-updated_date: '2026-11-06 15:13'
+updated_date: '2026-11-06 17:49'
 labels: []
 milestone: m-6
 dependencies: []
@@ -55,4 +55,6 @@ Decision-18 items 4 (`Provenance::from_matches`), 7 (`report::render`) and 5 (`C
 - AC#5 red: `tests/report.rs` failed on the unresolved `clifacet::report`; 7/7 pass (three failure kinds, a usage error with `Usage:`, help and version on the data stream). Both examples now report through it, and their full suites pass unchanged.
 - AC#3/#4 red: `tests/plan.rs` failed on the unresolved `command::{Plan, Planned}`; 7/7 pass. The Debug expectation was corrected to `finish_non_exhaustive`'s `..`.
 - Scenario: `examples/backlog-lite/tests/features/plan.feature` ("A dry run prints the plan, and only the plan") compares `bl --dry-run` output with `Backlog.plan(...)`'s description. It was written after the seam existed and passed when first run; it was not red first.
+
+Closed by the maintainer on 2026-11-06 after PR #52 merged (merge commit 0111ff0a, main CI green on all seven jobs), with the narrowings above as recorded: backlog-lite did not lose code (501 → 503), AC#3 is met as `Planned::plan` and AC#5's kind is carried by the exit code.
 <!-- SECTION:NOTES:END -->
