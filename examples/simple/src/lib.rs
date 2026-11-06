@@ -24,7 +24,6 @@
 
 use std::fmt;
 use std::io::Write;
-use std::str::FromStr;
 
 use clap::Parser;
 
@@ -69,10 +68,11 @@ pub const MAX_REPEAT: u8 = 8;
 
 /// How much detail the command reports.
 ///
-/// Parsed by [`parse_level`] rather than by a derived parser, so the error text is
-/// the command's own. An unknown level never reaches validation: `clap` rejects it
+/// A [`clap::ValueEnum`], so the grammar knows its possible values: `clap` lists them
+/// in the help and in its refusal, and the full-screen form offers them as a choice
+/// instead of a text box. An unknown level never reaches validation: `clap` rejects it
 /// while parsing, which is the whole point of a value parser.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum Level {
     /// One greeting. The default.
     #[default]
@@ -90,30 +90,11 @@ impl fmt::Display for Level {
     }
 }
 
-impl FromStr for Level {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "basic" => Ok(Self::Basic),
-            "verbose" => Ok(Self::Verbose),
-            other => Err(format!(
-                "`{other}` is not a level; expected basic or verbose"
-            )),
-        }
-    }
-}
-
-/// Parses a [`Level`], so `clap` reports [`Level`]'s own wording.
-fn parse_level(value: &str) -> Result<Level, String> {
-    value.parse()
-}
-
 /// The `clap` surface of the example command, each argument declared once.
 ///
 /// `#[clifacet::command]` derives `clap`'s parser and [`Facet`] together. Every field's
 /// `#[clifacet(..)]` carries the whole argument: the grammar keys reach `clap`
-/// untouched — aliases, the `--repeat` default and the [`Level`] parser stay `clap`'s
+/// untouched — aliases, the `--repeat` default and the [`Level`] values stay `clap`'s
 /// — and the rest generate the [`TryFrom<Cli>`] bridge to [`ExampleInput`], the
 /// questions [`Collect`] asks, and the form's field list ([`Facet::form_fields`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,7 +138,6 @@ pub struct Cli {
         long,
         value_name = "LEVEL",
         default_value_t = Level::Basic,
-        value_parser = parse_level,
         form
     )]
     pub level: Level,
@@ -632,17 +612,20 @@ fn finish_tui(
 ///
 /// The fields are the ones [`Cli`] declares with `form`, in declaration order
 /// ([`Facet::form_fields`]): only the value arguments, because the flags that chose
-/// the mode are not questions for a user who already chose one.
+/// the mode are not questions for a user who already chose one. Each is drawn as what
+/// its grammar says — the level, a [`clap::ValueEnum`], is a choice — and a declared
+/// `secret` would be masked ([`clifacet::tui::FormState::of`]).
 ///
 /// # Panics
 ///
-/// Panics if the command has none of its form fields. The list is generated from the
-/// same fields the command is, so that cannot happen short of a bug in the derive;
-/// [`clifacet::tui::FormState::generated`] still reports it as a failure for anyone
-/// generating a form from someone else's command.
+/// Panics if the command has none of its form fields, or one of them is a list. The
+/// list is generated from the same fields the command is and the derive refuses `form`
+/// on a list, so that cannot happen short of a bug in the derive;
+/// [`clifacet::tui::FormState::of`] still reports it as a failure for anyone generating
+/// a form from someone else's command.
 #[must_use]
 pub fn tui_form() -> clifacet::tui::FormState {
-    clifacet::tui::FormState::generated(&<Cli as Facet>::command(), Cli::form_fields())
+    clifacet::tui::FormState::of::<Cli>()
         .expect("the form fields are generated from the command's own arguments")
 }
 

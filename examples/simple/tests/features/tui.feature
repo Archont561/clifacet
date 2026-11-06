@@ -13,3 +13,10 @@ Feature: A full-screen form collects the same command input
     When the user presses escape
     Then nothing is written to the data stream
     And the exit code says the run was cancelled
+
+  Scenario: Choosing a level produces the same data as the flag
+    Given the example's full-screen form
+    Then the level is offered as a choice of basic and verbose
+    When the user types ada, presses v on the level and submits
+    Then the data is what --name ada --level verbose would produce
+    And the exit code says the run succeeded

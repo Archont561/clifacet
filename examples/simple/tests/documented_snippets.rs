@@ -398,7 +398,7 @@ fn tui_composition_snippet_1() {
     assert_eq!(state.fields().len(), 2);
 }
 
-/// `tui-composition.md`, line 61.
+/// `tui-composition.md`, line 69.
 #[rustfmt::skip]
 #[test]
 fn tui_composition_snippet_2() {
@@ -419,7 +419,7 @@ fn tui_composition_snippet_2() {
     let _hatch = Masked;
 }
 
-/// `tui-composition.md`, line 101.
+/// `tui-composition.md`, line 109.
 #[rustfmt::skip]
 #[test]
 fn tui_composition_snippet_3() {

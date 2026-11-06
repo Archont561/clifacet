@@ -52,7 +52,15 @@ assert_eq!(state.fields().len(), 2);
 
 The label comes from the argument's help and the initial value from its default. A
 name the command does not have is an error, not an empty form: it is a mistake in the
-application, not something a user can fix.
+application, not something a user can fix. So is a list — a repeatable or counted flag —
+because a field submits one value.
+
+Each field is what its grammar says: a `bool` flag is a toggle, an argument with
+possible values (a `clap::ValueEnum`, or `value_parser = ["a", "b"]`) is a choice, and
+anything else is text. A custom field reads the kind from `FieldState::choices()`,
+`is_toggle()` and `is_on()`. A command declared with `#[clifacet::command]` can use
+`FormState::of::<Cli>()` instead, which takes the `form` fields from the declarations
+and masks the declared `secret` ones.
 
 ## The two escape hatches
 

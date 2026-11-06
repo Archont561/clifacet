@@ -47,22 +47,42 @@ fn the_user_types_and_submits(world: &mut World, text: String) {
     world.run();
 }
 
+#[when("the user types {text}, presses {letter} on the level and submits")]
+fn the_user_chooses_a_level(world: &mut World, text: String, letter: char) {
+    world.keys.extend(text.chars().map(Key::Char));
+    world
+        .keys
+        .extend([Key::Tab, Key::Tab, Key::Char(letter), Key::Enter]);
+    world.run();
+}
+
+#[then("the level is offered as a choice of {first} and {second}")]
+fn the_level_is_a_choice(first: String, second: String) {
+    let form = example::tui_form();
+    let level = form.field("level").expect("the form asks for the level");
+
+    assert_eq!(level.choices(), [first, second]);
+    assert_eq!(
+        level.value(),
+        "basic",
+        "the default is chosen to begin with"
+    );
+}
+
 #[when("the user presses escape")]
 fn the_user_presses_escape(world: &mut World) {
     world.keys.push(Key::Escape);
     world.run();
 }
 
-#[then("the data is what --name {name} would produce")]
-fn the_data_matches_the_flag(world: &World, name: String) {
+#[then("the data is what {flags} would produce")]
+fn the_data_matches_the_flags(world: &World, flags: String) {
     let mut out = Vec::new();
     let mut err = Vec::new();
     let code = example::main_with(
-        [
-            String::from("example"),
-            String::from("--name"),
-            name.clone(),
-        ],
+        std::iter::once("example")
+            .chain(flags.split_whitespace())
+            .map(String::from),
         clifacet::policy::Capabilities::headless(),
         || Box::new(clifacet::prompt::Scripted::default()),
         &mut out,
@@ -72,7 +92,7 @@ fn the_data_matches_the_flag(world: &World, name: String) {
 
     assert_eq!(
         world.data, expected,
-        "the same name must produce the same data"
+        "the same answers must produce the same data"
     );
     assert_eq!(world.code, code);
 }
@@ -123,5 +143,14 @@ fn a_typed_answer_matches_the_flag(world: World) {
 )]
 #[test]
 fn leaving_the_form_runs_nothing(world: World) {
+    let _ = world;
+}
+
+#[scenario(
+    path = "tests/features/tui.feature",
+    name = "Choosing a level produces the same data as the flag"
+)]
+#[test]
+fn a_chosen_level_matches_the_flag(world: World) {
     let _ = world;
 }
