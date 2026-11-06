@@ -126,8 +126,9 @@ pub struct Cli {
 /// One leaf of the wrapper's tree.
 ///
 /// The tree is written out by hand, which is what clifacet supports today (decision-14
-/// proposes a declarative spelling for it). Adding a leaf is one variant, one struct
-/// and one arm — no registry, no macro, nothing global.
+/// accepts a declarative spelling for it, which CLI-32 builds and moves this tree to).
+/// Adding a leaf is one variant, one struct and one arm — no registry, no macro,
+/// nothing global.
 #[derive(Debug, clap::Subcommand)]
 pub enum Verb {
     /// List tasks, grouped by status.

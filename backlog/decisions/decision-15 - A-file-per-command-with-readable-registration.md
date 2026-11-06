@@ -2,7 +2,7 @@
 id: decision-15
 title: A file per command, with registration you can read
 date: '2026-11-01 22:10'
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -147,3 +147,23 @@ short about text.
 - **A tree that outgrows the list has a documented door.** Past roughly twenty commands
   the build-script helper is worth its cost, and because it must emit the same generated
   shape, moving to it changes `mod.rs` and nothing else.
+
+## Acceptance note (2026-11-06)
+
+**Accepted in part** by the maintainer on 2026-11-06. The Decision above is left as it was
+proposed; this note records the verdict per item.
+
+- **Items 3 and 4 are accepted:** distributed registration (`inventory`, `linkme`, `ctor`)
+  and a proc-macro directory scan are rejected, for the reasons measured above.
+- **Item 2 is narrowed to a refusal.** No `clifacet-build` crate is planned, not even as an
+  opt-in: it would be a third crate to publish and register for a problem no clifacet
+  application has. It can be proposed again with a tree that needs it.
+- **Item 1 is deferred.** Once decision-14 generates the conversion and the dispatch,
+  `clifacet::commands!` saves only the `pub mod` lines and the enum, and the only tree in
+  the repository has seven leaves. It is re-measured after CLI-32 moves
+  `examples/backlog-lite` to the tree, and CLI-33 waits for that measurement.
+- **"A file per leaf" is a recommended convention, not a required layout.** A library does
+  not choose an application's module tree; the authoring guide recommends it.
+- **The generated `Request` conflicts with decision-14** and is settled in decision-14's
+  favour: `Request` is written by the application. A `commands!` macro, if built, emits the
+  tree but not `Request`.
