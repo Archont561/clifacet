@@ -32,9 +32,11 @@ bl --dry-run done CLI-20        # print the exact command, run nothing
 
 ## Design notes
 
-- **A decision is data.** `Request` is validated input, `plan_of` turns it into a `Plan`
-  (argument vector plus one sentence), and `run` executes it. `--dry-run` prints the same
-  value the real path executes, so the two cannot disagree.
+- **A decision is data.** `Request` is validated input, `invocation_of` turns it into an
+  `Invocation` (argument vector plus one sentence), and `Backlog`, a clifacet `Planned`
+  command, wraps that in a `Plan` whose work is `run`. `--dry-run` describes the plan and
+  a real run executes it; the library makes executing the plan the only way to run a
+  planned command, so the two cannot disagree.
 - **Questions never change an explicit answer.** Every prompt goes through `Session`, which
   returns a supplied value untouched, and builds no frontend at all when the plan asks
   nothing.

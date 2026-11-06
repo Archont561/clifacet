@@ -401,8 +401,7 @@ where
         Ok(plan) => plan,
         Err(refusal) => {
             let failure = Failure::validation(refusal.message());
-            report(&failure, err);
-            return exit_code(&failure);
+            return report(&failure, out, err);
         }
     };
 
@@ -423,14 +422,10 @@ where
             Ok(()) => EXIT_SUCCESS,
             Err(error) => {
                 let failure = Failure::execution(format!("cannot write the output: {error}"));
-                report(&failure, err);
-                exit_code(&failure)
+                report(&failure, out, err)
             }
         },
-        Err(failure) => {
-            report(&failure, err);
-            exit_code(&failure)
-        }
+        Err(failure) => report(&failure, out, err),
     }
 }
 
@@ -468,7 +463,7 @@ pub fn main(
 ) -> i32 {
     match Cli::try_parse_from(argv) {
         Ok(cli) => run(cli, out, err),
-        Err(error) => report_usage(&error, out, err),
+        Err(error) => report(&error, out, err),
     }
 }
 
@@ -503,21 +498,7 @@ where
 {
     match Cli::try_parse_from(argv) {
         Ok(cli) => run_with_command(command, cli, capabilities, build_frontend, out, err),
-        Err(error) => report_usage(&error, out, err),
-    }
-}
-
-/// Reports a `clap` outcome on the stream and with the status `clap` implies.
-fn report_usage(error: &clap::Error, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
-    // `clap` decides the stream as well as the status: help and the version are
-    // the result the caller asked for, on the data stream, while a usage error is
-    // a diagnostic.
-    if error.use_stderr() {
-        let _ = write!(err, "{error}");
-        EXIT_USAGE
-    } else {
-        let _ = write!(out, "{error}");
-        EXIT_SUCCESS
+        Err(error) => report(&error, out, err),
     }
 }
 
@@ -597,14 +578,10 @@ fn finish_tui(
             Ok(()) => EXIT_SUCCESS,
             Err(error) => {
                 let failure = Failure::execution(format!("cannot write the output: {error}"));
-                report(&failure, err);
-                exit_code(&failure)
+                report(&failure, out, err)
             }
         },
-        Err(failure) => {
-            report(&failure, err);
-            exit_code(&failure)
-        }
+        Err(failure) => report(&failure, out, err),
     }
 }
 
@@ -677,7 +654,15 @@ fn write_lines(lines: &[String], out: &mut dyn Write) -> std::io::Result<()> {
     Ok(())
 }
 
-/// One diagnostic line per failure, with the program name the application owns.
-fn report(failure: &Failure, err: &mut dyn Write) {
-    let _ = writeln!(err, "example: {failure}");
+/// Writes a failure, or `clap`'s verdict, where it belongs and answers with its code.
+///
+/// The program name and the numbers are the application's; the mapping is the
+/// library's [`clifacet::report::render`], so help lands on the data stream, a usage
+/// error and a failure on the diagnostic stream, each costing what [`EXIT`] says.
+fn report<'a>(
+    report: impl Into<clifacet::report::Report<'a>>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    clifacet::report::render("example", report, &EXIT, out, err)
 }

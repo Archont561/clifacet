@@ -51,10 +51,62 @@ fn readme_snippet_2() {
     }
 }
 
-/// `command-core.md`, line 186.
+/// `command-core.md`, line 43.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::command::{Plan, Planned};
+    use clifacet::{Command, Failure};
+    struct Archive;
+    impl Planned for Archive {
+        type Input = Vec<String>;
+        type Output = usize;
+        fn plan(&self, tasks: Vec<String>) -> Result<Plan<'_, usize>, Failure> {
+            if tasks.is_empty() {
+                return Err(Failure::validation("name a task to archive"));
+            }
+            let steps: Vec<String> = tasks.iter().map(|task| format!("archive {task}")).collect();
+            let plan = Plan::new(move || Ok(tasks.len())); // the real archiving goes here
+            Ok(steps.into_iter().fold(plan, Plan::step))
+        }
+    }
+    let tasks = vec![String::from("CLI-7"), String::from("CLI-9")];
+    let dry_run = Archive.plan(tasks.clone()).expect("a valid request");
+    assert_eq!(dry_run.describe(), "archive CLI-7\narchive CLI-9");
+    assert_eq!(Archive.execute(tasks).expect("runs"), 2);
+}
+
+/// `command-core.md`, line 129.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clap::Parser;
+    use clifacet::contract::ExitPolicy;
+    use clifacet::{Failure, report};
+    #[derive(Debug, Parser)]
+    #[command(name = "greet")]
+    struct Greet {
+        #[arg(long)]
+        name: Option<String>,
+    }
+    let policy = ExitPolicy::standard();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let usage = Greet::try_parse_from(["greet", "--nope"]).expect_err("an unknown flag");
+    assert_eq!(report::render("greet", &usage, &policy, &mut out, &mut err), policy.usage());
+    let failure = Failure::execution("the greeting could not be sent");
+    assert_eq!(report::render("greet", &failure, &policy, &mut out, &mut err), policy.execution());
+    let err = String::from_utf8(err).expect("utf-8");
+    assert!(err.contains("Usage: greet"));
+    assert!(err.ends_with("greet: the greeting could not be sent\n"));
+    assert_eq!(out, b"", "neither reaches the data stream");
+}
+
+/// `command-core.md`, line 267.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_3() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Dialog, Prompter, Session};
@@ -74,10 +126,10 @@ fn command_core_snippet_1() {
     );
 }
 
-/// `command-core.md`, line 230.
+/// `command-core.md`, line 311.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_2() {
+fn command_core_snippet_4() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Answer, Scripted, Session};
@@ -99,10 +151,10 @@ fn command_core_snippet_2() {
     );
 }
 
-/// `command-core.md`, line 260.
+/// `command-core.md`, line 341.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_3() {
+fn command_core_snippet_5() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Answer, Scripted, Session};
@@ -121,6 +173,39 @@ fn command_core_snippet_3() {
     assert_eq!(token.to_string(), "[redacted]");
     assert_eq!(session.provenance().source_of("token"), Some(Source::Prompt));
     assert!(session.provenance().is_secret("token"));
+}
+
+/// `command-core.md`, line 587.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_6() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clap::{CommandFactory, FromArgMatches, Parser};
+    use clifacet::provenance::{Provenance, Source};
+    #[derive(Debug, Parser)]
+    #[command(name = "deploy")]
+    struct Deploy {
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long, default_value_t = 1)]
+        repeat: u8,
+        #[arg(long)]
+        token: Option<String>,
+    }
+    let command = Deploy::command();
+    let matches = command
+        .clone()
+        .try_get_matches_from(["deploy", "--token", "s3cret"])
+        .expect("a valid invocation");
+    let parsed = Deploy::from_arg_matches(&matches).expect("the matches are this command's");
+    let mut provenance = Provenance::from_matches(&command, &matches).with_secrets(&["token"]);
+    let mut asked = Provenance::default();
+    asked.record("name", Source::Prompt); // what `session.provenance()` holds after asking
+    provenance.merge(&asked);
+    assert_eq!(parsed.repeat, 1);
+    assert_eq!(provenance.source_of("repeat"), Some(Source::Default));
+    assert_eq!(provenance.source_of("name"), Some(Source::Prompt));
+    assert!(!provenance.to_string().contains("s3cret"));
 }
 
 /// `derive.md`, line 7.

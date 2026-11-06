@@ -33,6 +33,54 @@ pub trait Command {
 `execute` has nothing left to reject. `Output` is data, not a message: the
 application decides whether it becomes stdout, JSON or a table.
 
+### A plan instead of an action
+
+A command that changes something can implement `command::Planned` instead. It answers
+its input with a `command::Plan` — the steps a person reads, and the work that takes
+them — and the library implements `Command` for it as "plan, then execute". A
+`--dry-run` prints the plan; a real run executes the same plan:
+
+```rust
+use clifacet::command::{Plan, Planned};
+use clifacet::{Command, Failure};
+
+struct Archive;
+
+impl Planned for Archive {
+    type Input = Vec<String>;
+    type Output = usize;
+
+    fn plan(&self, tasks: Vec<String>) -> Result<Plan<'_, usize>, Failure> {
+        if tasks.is_empty() {
+            return Err(Failure::validation("name a task to archive"));
+        }
+        let steps: Vec<String> = tasks.iter().map(|task| format!("archive {task}")).collect();
+        let plan = Plan::new(move || Ok(tasks.len())); // the real archiving goes here
+        Ok(steps.into_iter().fold(plan, Plan::step))
+    }
+}
+
+let tasks = vec![String::from("CLI-7"), String::from("CLI-9")];
+let dry_run = Archive.plan(tasks.clone()).expect("a valid request");
+assert_eq!(dry_run.describe(), "archive CLI-7\narchive CLI-9");
+assert_eq!(Archive.execute(tasks).expect("runs"), 2);
+```
+
+- **One execution path.** `Command::execute` for a planned command *is*
+  `plan(input)?.execute()`, and the library owns that impl, so a dry run cannot describe
+  one path while a real run takes another. A plan that fails to build fails both the same
+  way.
+- **Building a plan does nothing.** The work is a closure that runs only in
+  `Plan::execute`, which consumes the plan.
+- **The steps are the command's words.** They are written beside the work from the same
+  input; whether they describe what the work did is checked with the parity harness —
+  compare a described plan's steps with an executed plan's effects
+  (`crates/clifacet/tests/plan.rs`). `examples/backlog-lite`'s `Backlog` is the worked
+  case: its steps are the sentence and the runnable line `--dry-run` prints, and its work
+  spawns that line.
+- **`Plan` here is not `policy::Plan`.** The policy's plan decides how a run may interact;
+  this one is what a command would do. They live in different modules for that reason.
+
 ## Ownership, per decision-3
 
 **Failures are library-owned; exit codes are not.** `Failure` answers "what kind
@@ -74,6 +122,39 @@ Two details worth keeping:
 - **Help and `--version` are success on the data stream**, because they are the
   result the caller asked for. `clap` decides that with `Error::use_stderr`, and
   the application follows it instead of guessing.
+
+Both rows of that table — a failure and `clap`'s verdict — go through one function,
+`clifacet::report::render`, so no `main` rewrites the mapping:
+
+```rust
+use clap::Parser;
+use clifacet::contract::ExitPolicy;
+use clifacet::{Failure, report};
+
+#[derive(Debug, Parser)]
+#[command(name = "greet")]
+struct Greet {
+    #[arg(long)]
+    name: Option<String>,
+}
+
+let policy = ExitPolicy::standard();
+let (mut out, mut err) = (Vec::new(), Vec::new());
+
+let usage = Greet::try_parse_from(["greet", "--nope"]).expect_err("an unknown flag");
+assert_eq!(report::render("greet", &usage, &policy, &mut out, &mut err), policy.usage());
+
+let failure = Failure::execution("the greeting could not be sent");
+assert_eq!(report::render("greet", &failure, &policy, &mut out, &mut err), policy.execution());
+
+let err = String::from_utf8(err).expect("utf-8");
+assert!(err.contains("Usage: greet"));
+assert!(err.ends_with("greet: the greeting could not be sent\n"));
+assert_eq!(out, b"", "neither reaches the data stream");
+```
+
+A failure is written as `program: message`; its kind is what the exit code carries, so
+the text does not repeat it. The program name and the numbers stay the application's.
 
 ## Interaction policy
 
@@ -496,6 +577,58 @@ Redaction is a property of the type, not a scrubbing pass:
 - **Masking is presentation.** A secret form field submits its real value; only the
   drawing changes. Masking the characters instead of replacing them would still report
   the length.
+
+### Provenance from the parse
+
+Nothing has to be recorded by hand. `Provenance::from_matches` reads where `clap` found
+each value, and `merge` adds what the session asked for, so one record covers a run
+whatever mixture of flags, environment, defaults and prompts produced it:
+
+```rust
+use clap::{CommandFactory, FromArgMatches, Parser};
+use clifacet::provenance::{Provenance, Source};
+
+#[derive(Debug, Parser)]
+#[command(name = "deploy")]
+struct Deploy {
+    #[arg(long)]
+    name: Option<String>,
+    #[arg(long, default_value_t = 1)]
+    repeat: u8,
+    #[arg(long)]
+    token: Option<String>,
+}
+
+let command = Deploy::command();
+let matches = command
+    .clone()
+    .try_get_matches_from(["deploy", "--token", "s3cret"])
+    .expect("a valid invocation");
+let parsed = Deploy::from_arg_matches(&matches).expect("the matches are this command's");
+
+let mut provenance = Provenance::from_matches(&command, &matches).with_secrets(&["token"]);
+let mut asked = Provenance::default();
+asked.record("name", Source::Prompt); // what `session.provenance()` holds after asking
+provenance.merge(&asked);
+
+assert_eq!(parsed.repeat, 1);
+assert_eq!(provenance.source_of("repeat"), Some(Source::Default));
+assert_eq!(provenance.source_of("name"), Some(Source::Prompt));
+assert!(!provenance.to_string().contains("s3cret"));
+```
+
+- **Three sources come from `clap`.** A typed value is `argv`, one read from an
+  argument's `env` is `environment`, and one `clap` filled in — a `default_value`, or
+  `false` for a flag that was not given — is `default`.
+- **An absent value records nothing.** An `Option` nobody supplied has no source, and
+  inventing one is the lie this exists to avoid; if the session then asks for it, the
+  prompt is its only record.
+- **The command is passed with the matches** because `ArgMatches` lists the derive's
+  argument group beside the arguments and cannot tell them apart. The chosen subcommand
+  is walked too.
+- **Secrets are named, not detected.** The parse does not know which values are
+  credentials; `with_secrets` marks them, and a command declared with
+  `#[clifacet::command]` lists its own in `Facet::secret_fields()`.
 
 ### What this cannot do
 

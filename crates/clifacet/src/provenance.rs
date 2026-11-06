@@ -21,11 +21,18 @@
 //! );
 //! ```
 //!
+//! A parsed invocation does not need recording by hand: [`Provenance::from_matches`]
+//! reads where `clap` found each value, and [`Provenance::merge`] adds what a session
+//! asked for, so the record covers every frontend without the application keeping it.
+//!
 //! Provenance is not a log. It is the answer to "which frontend supplied this?" — the
 //! question a parity test asks after it has already asserted that the answer itself
 //! was the same everywhere.
 
 use std::fmt;
+
+use clap::parser::ValueSource;
+use clap::{ArgMatches, Command};
 
 /// Where a value came from.
 ///
@@ -111,15 +118,89 @@ impl fmt::Display for Origin {
 
 /// The record of where each input value came from.
 ///
-/// Recording is explicit because only the application knows: the framework can see
-/// that a value was supplied rather than asked, not whether it arrived on the command
-/// line or from the environment.
+/// Built from the parse with [`Provenance::from_matches`], which knows whether `clap`
+/// found a value on the command line, in the environment or in a default, and
+/// completed with what a [`Session`](crate::prompt::Session) asked for through
+/// [`Provenance::merge`]. A source the framework cannot see — a configuration file of
+/// the application's own — is recorded by hand with [`Provenance::record`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Provenance {
     origins: Vec<Origin>,
 }
 
 impl Provenance {
+    /// Records where `clap` found every value it parsed, under each argument's id.
+    ///
+    /// `command` is the one `matches` came from. It is needed because the matches list
+    /// argument groups beside arguments — the derive adds one named after the struct —
+    /// and cannot tell the two apart; walking the command's own arguments records
+    /// values and nothing else.
+    ///
+    /// A value typed on the command line is [`Source::Argv`], one read from an
+    /// argument's `env` is [`Source::Environment`], and one `clap` filled in — a
+    /// `default_value`, or `false` for a flag that was not given — is
+    /// [`Source::Default`]. An argument with no value records nothing: it has no
+    /// source, and recording one would be the lie this function exists to avoid. The
+    /// chosen subcommand is walked too, so a leaf's arguments are recorded under their
+    /// own ids; a `global` argument, which `clap` propagates to every level, keeps one
+    /// entry.
+    ///
+    /// Nothing is marked secret, because the parse does not know which values are;
+    /// [`with_secrets`](Self::with_secrets) says so, and a derived command lists them
+    /// in [`Facet::secret_fields`](crate::Facet::secret_fields).
+    #[must_use]
+    pub fn from_matches(command: &Command, matches: &ArgMatches) -> Self {
+        let mut provenance = Self::default();
+        provenance.walk(command, matches);
+        provenance
+    }
+
+    /// Records one level of the parse, then the subcommand it chose.
+    fn walk(&mut self, command: &Command, matches: &ArgMatches) {
+        for argument in command.get_arguments() {
+            let id = argument.get_id().as_str();
+            // `try_contains_id` rather than `value_source`, which panics on an id the
+            // matches were not built with — a command and matches that disagree.
+            if !matches.try_contains_id(id).unwrap_or(false) {
+                continue;
+            }
+            if let Some(source) = matches.value_source(id).and_then(source_of) {
+                self.record(id, source);
+            }
+        }
+        if let Some((name, chosen)) = matches.subcommand()
+            && let Some(subcommand) = command.find_subcommand(name)
+        {
+            self.walk(subcommand, chosen);
+        }
+    }
+
+    /// Marks the named records secret, so they are reported without being shown.
+    ///
+    /// A name with no record stays unrecorded: marking a value secret does not invent
+    /// a source for it.
+    #[must_use]
+    pub fn with_secrets(mut self, names: &[&str]) -> Self {
+        for origin in &mut self.origins {
+            if names.contains(&origin.name.as_str()) {
+                origin.secret = true;
+            }
+        }
+        self
+    }
+
+    /// Adds every record of `later`, replacing an earlier record for the same name.
+    ///
+    /// This is how a parse and a session compose: the parse records what was supplied,
+    /// the session records what it asked for, and a value asked for after the parse
+    /// found none is recorded once, as asked.
+    pub fn merge(&mut self, later: &Self) -> &mut Self {
+        for origin in &later.origins {
+            self.insert(&origin.name, origin.source, origin.secret);
+        }
+        self
+    }
+
     /// Records an input and its source, replacing an earlier record for the same name.
     pub fn record(&mut self, name: &str, source: Source) -> &mut Self {
         self.insert(name, source, false)
@@ -191,5 +272,17 @@ impl fmt::Display for Provenance {
             write!(formatter, "{origin}")?;
         }
         Ok(())
+    }
+}
+
+/// The record a `clap` value source stands for, if this crate can name it.
+///
+/// `ValueSource` is non-exhaustive: a source a later `clap` adds is not guessed at.
+const fn source_of(source: ValueSource) -> Option<Source> {
+    match source {
+        ValueSource::CommandLine => Some(Source::Argv),
+        ValueSource::EnvVariable => Some(Source::Environment),
+        ValueSource::DefaultValue => Some(Source::Default),
+        _ => None,
     }
 }

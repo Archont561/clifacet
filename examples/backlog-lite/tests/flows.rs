@@ -3,7 +3,7 @@
 use clifacet::failure::Failure;
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
 use clifacet::prompt::{Answer, Scripted, Session};
-use clifacet_backlog_lite::{Cli, Request, Status, Verb, plan_of as plan};
+use clifacet_backlog_lite::{Cli, Request, Status, Verb, invocation_of as plan};
 
 fn argv(cli: Cli) -> Vec<String> {
     plan(Request::try_from(cli).expect("valid")).argv().to_vec()

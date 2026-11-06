@@ -169,3 +169,26 @@ Where the shipped API differs from the Decision above, and why:
 - **Not in CLI-30:** the `tui` form's choice field (a Consequence above), `ask` on a
   `secret` field in the derive, and typed `collect_values`.
 
+## Implementation note for items 4, 5 and 7 (2026-11-06, CLI-31)
+
+Built in the order the acceptance note set, item 5 last. Where the implementation differs
+from the Decision above, this note says how; CLI-31's notes have the evidence.
+
+- **Item 4 takes the command as well as the matches:**
+  `Provenance::from_matches(&clap::Command, &ArgMatches)`. `ArgMatches` lists the derive's
+  argument group beside the arguments and cannot tell them apart, so walking the matches
+  alone recorded the group as an input. Prompted values compose through
+  `Provenance::merge`, and secrets are named with `with_secrets`.
+- **Item 5 is a trait beside `Command`, not a method on it.** A command implements
+  `command::Planned` and returns a `command::Plan` (steps plus the work); the library
+  implements `Command` for it as `plan(input)?.execute()`, so the single execution path is
+  enforced by the compiler rather than by convention. `Plan` stays in `clifacet::command`
+  because `policy::Plan` already exists. The steps are the command's own words; the parity
+  harness is how a test checks them against what ran.
+- **Item 7 writes `program: message`.** The kind is carried by the exit code from
+  `ExitPolicy`, so the documented output did not change; clap's usage error keeps clap's
+  rendering, usage line included.
+- **The `examples/backlog-lite` acceptance case did not lose code overall** (501 → 503
+  non-comment lines): the reporting it rewrote went, and a `Planned` impl arrived.
+  `examples/simple` lost 14 lines.
+

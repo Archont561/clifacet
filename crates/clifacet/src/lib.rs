@@ -45,7 +45,9 @@
 //! - [`harness`] — the public way to prove the mode changed nothing else.
 //!
 //! [`contract`] states what a run may write where — data on the data stream, everything
-//! a person sees on the diagnostic one — and maps each outcome to an exit code.
+//! a person sees on the diagnostic one — and maps each outcome to an exit code;
+//! [`report`] applies that mapping, writing a failure or `clap`'s verdict where it
+//! belongs and answering with what it costs.
 //!
 //! [`secret`] wraps a credential so nothing the framework prints can show it, and
 //! [`provenance`] records where each value came from without recording the value.
@@ -78,6 +80,7 @@ pub mod harness;
 pub mod policy;
 pub mod prompt;
 pub mod provenance;
+pub mod report;
 pub mod secret;
 
 /// The full-screen frontend, available with the `tui` feature.
