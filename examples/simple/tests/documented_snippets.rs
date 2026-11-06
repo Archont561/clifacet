@@ -51,7 +51,7 @@ fn readme_snippet_2() {
     }
 }
 
-/// `command-core.md`, line 185.
+/// `command-core.md`, line 186.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {
@@ -71,6 +71,31 @@ fn command_core_snippet_1() {
         session.value(None, "Which license?").expect("nothing may ask"),
         None,
         "a missing value stays missing, and the dialog is never built"
+    );
+}
+
+/// `command-core.md`, line 230.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    use clifacet::prompt::{Answer, Scripted, Session};
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("prompts are permitted here");
+    let mut session = Session::start(plan, || {
+        // A script picks by label, exactly as offered.
+        Box::new(Scripted::new([Answer::Text(String::from("in progress"))]))
+    });
+    let statuses = ["to do", "in progress", "done"];
+    assert_eq!(
+        session.choose(None, "Which status?", statuses).expect("one was picked"),
+        Some("in progress"),
+    );
+    assert_eq!(
+        session.choose(Some("done"), "Which status?", statuses).expect("never asked"),
+        Some("done"),
     );
 }
 

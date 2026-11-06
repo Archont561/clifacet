@@ -160,14 +160,14 @@ same session rules below, applied per declared field.
   a cancelled question, a bad answer or an exhausted script returns before the
   command is reachable.
 
-Three adapters ship, all of them implementations of the same two-method
-`Prompter` seam:
+Three adapters ship, all of them implementations of the same `Prompter` seam — two
+required methods, `ask` and `confirm`, and provided ones a frontend may override:
 
 | Adapter | Feature | What it is |
 | --- | --- | --- |
-| `Terminal` | none | a question written to the *diagnostic* stream and a line read from `stdin`; end of input is a cancellation rather than an empty answer |
-| `Dialog` | `interactive` | the same two questions as an `inquire` dialog — a cursor, a help line, bracketed paste — drawn on `stderr` |
-| `Scripted` | none | answers from a list; the seam every test uses, so a flow is driven end to end without a terminal and cannot reach one by accident |
+| `Terminal` | none | a question written to the *diagnostic* stream and a line read from `stdin`; end of input is a cancellation rather than an empty answer; a choice is a numbered list that takes a number or a name and re-asks on anything else |
+| `Dialog` | `interactive` | the same questions as an `inquire` dialog — a cursor, a help line, bracketed paste — drawn on `stderr`, with a choice as a list to move through |
+| `Scripted` | none | answers from a list, a choice by its exact label; the seam every test uses, so a flow is driven end to end without a terminal and cannot reach one by accident |
 
 `Dialog` is the one a real process usually wants, and it changes nothing else: the
 session still decides whether a question may be asked, a supplied value is still
@@ -179,8 +179,9 @@ the platform's business — one `isatty` makes "no terminal" a reported failure
 everywhere instead of a wait on some platforms.
 
 Because presentation is a seam and not a setting, an application can ship its own.
-Implement `Prompter` — two methods, `ask` and `confirm` — and hand it to
-`Session::start`:
+Implement `Prompter` — `ask` and `confirm` are the two it requires; `choose` is provided
+as a numbered list read through `ask`, so a frontend written before choices existed
+keeps compiling — and hand it to `Session::start`:
 
 ```rust
 use clifacet::policy::{Capabilities, Mode, Policy, Request};
@@ -216,6 +217,41 @@ choice is the application's.
 `FailureKind::Cancelled` is how "the user changed their mind" travels. Answering a
 confirmation with `no` is a *decision* (`Confirmation::Declined`); dismissing the
 question, or end of input, is a *cancellation*. Only the second costs exit `130`.
+
+### Questions beyond text and yes/no
+
+`Session::choose` asks the user to pick one of a fixed set of values. Each value is
+shown by its `Display` text, and the value itself is what comes back — never its label
+read back and parsed — so the set of choices and the type they produce cannot drift. It
+keeps the session's rule: a supplied value is returned untouched, even one that is not
+among the choices, because checking it is the parser's job and prompting never changes
+an explicit choice.
+
+```rust
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Answer, Scripted, Session};
+
+let plan = Policy::up_to(Mode::Interactive)
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("prompts are permitted here");
+let mut session = Session::start(plan, || {
+    // A script picks by label, exactly as offered.
+    Box::new(Scripted::new([Answer::Text(String::from("in progress"))]))
+});
+
+let statuses = ["to do", "in progress", "done"];
+assert_eq!(
+    session.choose(None, "Which status?", statuses).expect("one was picked"),
+    Some("in progress"),
+);
+assert_eq!(
+    session.choose(Some("done"), "Which status?", statuses).expect("never asked"),
+    Some("done"),
+);
+```
+
+A frontend sees only `Choice` labels, with optional help, and answers with a position;
+the session maps it back, and a position it never offered is the frontend's failure.
 
 ## The full-screen form
 

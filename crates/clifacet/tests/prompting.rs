@@ -9,7 +9,7 @@ use std::cell::Cell;
 use std::io::Cursor;
 
 use clifacet::policy::{Capabilities, Mode, Plan, Policy, Request};
-use clifacet::prompt::{Answer, Confirmation, Scripted, Session, Terminal};
+use clifacet::prompt::{Answer, Choice, Confirmation, Prompter, Scripted, Session, Terminal};
 use clifacet::{Command, Failure, FailureKind};
 use rstest::rstest;
 
@@ -353,4 +353,231 @@ fn a_session_explains_itself_when_debugged() {
     let described = format!("{session:?}");
     assert!(described.contains("Session"), "{described}");
     assert!(described.contains("constructed"), "{described}");
+}
+
+/// The statuses a choice question offers in these tests.
+const STATUSES: [&str; 3] = ["to do", "in progress", "done"];
+
+#[rstest]
+#[case::prompted(interactive(), None, Some("in progress"), 1)]
+#[case::supplied_is_not_re_asked(interactive(), Some("done"), Some("done"), 0)]
+#[case::supplied_is_untouched_even_if_unoffered(interactive(), Some("blocked"), Some("blocked"), 0)]
+#[case::nothing_can_ask(non_interactive(), None, None, 0)]
+fn a_choice_is_asked_only_when_missing(
+    #[case] plan: Plan,
+    #[case] supplied: Option<&'static str>,
+    #[case] expected: Option<&str>,
+    #[case] expected_asks: usize,
+) {
+    let script = Scripted::new([Answer::Text(String::from("in progress"))]);
+    let probe = script.clone();
+    let mut session = Session::start(plan, move || Box::new(probe));
+
+    let chosen = session
+        .choose(supplied, "Which status?", STATUSES)
+        .expect("this answer is one of the choices");
+
+    assert_eq!(chosen, expected);
+    assert_eq!(
+        script.asked().len(),
+        expected_asks,
+        "asked: {:?}",
+        script.asked()
+    );
+}
+
+/// The value handed back is the option itself, not its label read back and parsed.
+#[test]
+fn a_choice_hands_back_the_offered_value() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Level {
+        Quiet,
+        Loud,
+    }
+    impl std::fmt::Display for Level {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str(match self {
+                Self::Quiet => "quiet",
+                Self::Loud => "loud",
+            })
+        }
+    }
+    let mut session = Session::start(interactive(), || {
+        Box::new(Scripted::new([Answer::Text(String::from("loud"))]))
+    });
+
+    let chosen = session
+        .choose(None, "How loud?", [Level::Quiet, Level::Loud])
+        .expect("a label that was offered");
+
+    assert_eq!(chosen, Some(Level::Loud));
+}
+
+#[rstest]
+#[case::an_unoffered_label(Answer::Text(String::from("blocked")), FailureKind::Execution, "done")]
+#[case::a_yes(Answer::Yes, FailureKind::Execution, "Which status?")]
+#[case::a_dismissal(Answer::Cancel, FailureKind::Cancelled, "Which status?")]
+fn a_script_that_cannot_choose_fails_loudly(
+    #[case] answer: Answer,
+    #[case] kind: FailureKind,
+    #[case] mentioned: &str,
+) {
+    let mut session = Session::start(interactive(), move || Box::new(Scripted::new([answer])));
+
+    let failure = session
+        .choose(None, "Which status?", STATUSES)
+        .expect_err("nothing usable was chosen");
+
+    assert_eq!(failure.kind(), kind, "{}", failure.message());
+    assert!(
+        failure.message().contains(mentioned),
+        "{}",
+        failure.message()
+    );
+}
+
+/// A choice with nothing to choose from is a declaration mistake, found before asking.
+#[test]
+fn a_choice_without_options_is_refused_before_anything_is_asked() {
+    let script = Scripted::default();
+    let probe = script.clone();
+    let mut session = Session::start(interactive(), move || Box::new(probe));
+
+    let failure = session
+        .choose(None, "Which status?", [""; 0])
+        .expect_err("there is nothing to choose");
+
+    assert_eq!(failure.kind(), FailureKind::Execution);
+    assert_eq!(script.asked(), [""; 0].map(String::from));
+}
+
+/// The statuses as a frontend sees them: labels only.
+fn status_choices() -> Vec<Choice> {
+    STATUSES.into_iter().map(Choice::new).collect()
+}
+
+#[rstest]
+#[case::by_number("2\n", 1)]
+#[case::by_name_in_any_case("Done\n", 2)]
+#[case::after_a_typo("dun\n3\n", 2)]
+#[case::after_numbers_out_of_range("0\n4\n1\n", 0)]
+fn a_terminal_choice_takes_a_number_or_a_name(#[case] typed: &str, #[case] expected: usize) {
+    let mut prompt = Vec::new();
+    let chosen = {
+        let mut terminal = Terminal::new(Cursor::new(typed), &mut prompt);
+        terminal.choose("Which status?", &status_choices())
+    };
+
+    assert_eq!(chosen.expect("an answer that names a choice"), expected);
+    let shown = String::from_utf8(prompt).expect("the prompt stream is UTF-8");
+    assert!(
+        shown.contains("Which status?") && shown.contains("2. in progress"),
+        "the choices are listed, numbered: {shown:?}"
+    );
+}
+
+#[test]
+fn a_terminal_choice_shows_the_help_beside_the_label() {
+    let mut prompt = Vec::new();
+    {
+        let mut terminal = Terminal::new(Cursor::new("1\n"), &mut prompt);
+        let choices = [Choice::new("done").with_help("finished and verified")];
+        terminal
+            .choose("Which status?", &choices)
+            .expect("one was named");
+    }
+
+    let shown = String::from_utf8(prompt).expect("the prompt stream is UTF-8");
+    assert!(
+        shown.contains("1. done — finished and verified"),
+        "{shown:?}"
+    );
+}
+
+#[test]
+fn a_terminal_choice_cancels_when_the_input_ends() {
+    let mut terminal = Terminal::new(Cursor::new(""), std::io::sink());
+
+    let failure = terminal
+        .choose("Which status?", &status_choices())
+        .expect_err("nobody is there to choose");
+
+    assert_eq!(failure.kind(), FailureKind::Cancelled);
+}
+
+/// A frontend written before choices existed: it can only ask for text.
+struct TextOnly(Vec<String>);
+
+impl Prompter for TextOnly {
+    fn ask(&mut self, question: &str) -> Result<String, Failure> {
+        assert!(
+            question.contains("1. to do"),
+            "the choices are listed: {question}"
+        );
+        Ok(self.0.remove(0))
+    }
+
+    fn confirm(&mut self, _question: &str) -> Result<bool, Failure> {
+        unreachable!("no confirmation is asked here")
+    }
+}
+
+/// `choose` is a provided method, so a frontend that only knows `ask` still offers a
+/// choice — as a numbered list it reads one answer for — and rejects what is not one.
+#[rstest]
+#[case::by_number("3", Ok("done"))]
+#[case::by_name("In Progress", Ok("in progress"))]
+#[case::neither("someday", Err(FailureKind::Validation))]
+fn a_frontend_that_only_asks_text_still_offers_a_choice(
+    #[case] typed: &str,
+    #[case] expected: Result<&str, FailureKind>,
+) {
+    let frontend = TextOnly(vec![typed.to_owned()]);
+    let mut session = Session::start(interactive(), move || Box::new(frontend));
+
+    let chosen = session.choose(None, "Which status?", STATUSES);
+
+    assert_eq!(
+        chosen
+            .map(|value| value.expect("asked"))
+            .map_err(|failure| failure.kind()),
+        expected
+    );
+}
+
+/// A frontend that answers with a position it was never offered.
+struct OutOfRange;
+
+impl Prompter for OutOfRange {
+    fn ask(&mut self, _question: &str) -> Result<String, Failure> {
+        unreachable!("only a choice is asked here")
+    }
+
+    fn confirm(&mut self, _question: &str) -> Result<bool, Failure> {
+        unreachable!("only a choice is asked here")
+    }
+
+    fn choose(&mut self, _question: &str, choices: &[Choice]) -> Result<usize, Failure> {
+        Ok(choices.len())
+    }
+}
+
+#[test]
+fn a_frontend_choosing_outside_the_list_is_a_frontend_failure() {
+    let mut session = Session::start(interactive(), || Box::new(OutOfRange));
+
+    let failure = session
+        .choose(None, "Which status?", STATUSES)
+        .expect_err("position 3 of 3 does not exist");
+
+    assert_eq!(failure.kind(), FailureKind::Execution);
+}
+
+#[test]
+fn a_choice_carries_a_label_and_optional_help() {
+    let plain = Choice::new("done");
+    let explained = Choice::new("done").with_help("finished and verified");
+
+    assert_eq!((plain.label(), plain.help()), ("done", None));
+    assert_eq!(explained.help(), Some("finished and verified"));
 }

@@ -74,8 +74,8 @@ code a failure costs.
 Frontends are features, so an application pays only for what it uses: `interactive`
 (prompts, with an `inquire` dialog), `tui` (full screen), and `serde` (failures and
 redacted secrets that serialise, for an application that reports failures as JSON); see
-[what each feature adds and costs](docs/getting-started.md#features). Prompts are a two-method seam — `ask` and
-`confirm` — so the dialog is a default rather than a fixture: an application can hand
+[what each feature adds and costs](docs/getting-started.md#features). Prompts are a seam that needs two methods —
+`ask` and `confirm`; choices come with them — so the dialog is a default rather than a fixture: an application can hand
 `Session` its own frontend and keep the policy, the streams and the exit codes.
 
 ## Status

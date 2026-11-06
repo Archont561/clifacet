@@ -37,6 +37,7 @@ mod dialog;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::fmt::{self, Write as _};
 use std::io::{BufRead, Write};
 use std::rc::Rc;
 
@@ -72,6 +73,107 @@ pub trait Prompter {
     ///
     /// As [`Prompter::ask`].
     fn confirm(&mut self, question: &str) -> Result<bool, Failure>;
+
+    /// Asks the user to pick one of `choices`, and returns its position.
+    ///
+    /// The provided implementation works for any frontend that can [`ask`](Self::ask):
+    /// it lists the choices, numbered, and accepts a number or a label in any case. It
+    /// asks once, because a frontend written before choices existed may not be able
+    /// to ask again; a frontend that can — [`Terminal`] does — re-asks instead.
+    ///
+    /// # Errors
+    ///
+    /// As [`Prompter::ask`], plus [`Failure::validation`](crate::Failure::validation)
+    /// when the answer names none of the choices.
+    fn choose(&mut self, question: &str, choices: &[Choice]) -> Result<usize, Failure> {
+        let answer = self.ask(&menu(question, choices))?;
+        pick(&answer, choices).ok_or_else(|| {
+            Failure::validation(format!(
+                "{answer:?} is not one of the choices for {question:?}: {}",
+                labels(choices)
+            ))
+        })
+    }
+}
+
+/// One option of a multiple-choice question, as a frontend shows it.
+///
+/// A frontend sees labels, never values, which is what keeps [`Prompter`] usable
+/// behind `dyn`: [`Session::choose`] keeps the values and maps the position a
+/// frontend returns back to one of them.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Choice {
+    label: String,
+    help: Option<String>,
+}
+
+impl Choice {
+    /// A choice called `label`.
+    #[must_use]
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            help: None,
+        }
+    }
+
+    /// The same choice, with a line saying what picking it means.
+    #[must_use]
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
+
+    /// What the choice is called.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// What picking it means, when that was said.
+    #[must_use]
+    pub fn help(&self) -> Option<&str> {
+        self.help.as_deref()
+    }
+
+    /// The one line a list shows for this choice: its label, then its help.
+    pub(crate) fn line(&self) -> String {
+        match &self.help {
+            Some(help) => format!("{} — {help}", self.label),
+            None => self.label.clone(),
+        }
+    }
+}
+
+/// A question followed by its choices, numbered from one, ready to be read as text.
+fn menu(question: &str, choices: &[Choice]) -> String {
+    let mut menu = String::from(question);
+    for (number, choice) in (1..).zip(choices) {
+        let _ = write!(menu, "\n  {number}. {}", choice.line());
+    }
+    menu.push_str("\nNumber or name:");
+    menu
+}
+
+/// The choice an answer names: its number, counted from one, or its label in any case.
+fn pick(answer: &str, choices: &[Choice]) -> Option<usize> {
+    let answer = answer.trim();
+    if let Ok(number) = answer.parse::<usize>() {
+        return number.checked_sub(1).filter(|&index| index < choices.len());
+    }
+    let answer = answer.to_lowercase();
+    choices
+        .iter()
+        .position(|choice| choice.label.to_lowercase() == answer)
+}
+
+/// The labels of `choices`, quoted, for a message that says what was on offer.
+fn labels(choices: &[Choice]) -> String {
+    choices
+        .iter()
+        .map(|choice| format!("{:?}", choice.label))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// How a confirmation was settled.
@@ -200,6 +302,30 @@ impl Prompter for Scripted {
             ))),
         }
     }
+
+    /// A script chooses by label, exactly as offered: a test names what it picks,
+    /// and a label the question does not offer is a broken script, not a typo to
+    /// forgive.
+    fn choose(&mut self, question: &str, choices: &[Choice]) -> Result<usize, Failure> {
+        match self.next(question)? {
+            Answer::Text(label) => choices
+                .iter()
+                .position(|choice| choice.label == label)
+                .ok_or_else(|| {
+                    Failure::execution(format!(
+                        "the script chose {label:?} for {question:?}, which offers only {}",
+                        labels(choices)
+                    ))
+                }),
+            Answer::Cancel => Err(Failure::cancelled(format!(
+                "the user dismissed {question:?}"
+            ))),
+            answer => Err(Failure::execution(format!(
+                "the script answered {question:?} with {answer:?} where one of {} was needed",
+                labels(choices)
+            ))),
+        }
+    }
 }
 
 /// A frontend that asks a person on a terminal.
@@ -262,6 +388,17 @@ impl<R: BufRead, W: Write> Prompter for Terminal<R, W> {
                 // Re-ask rather than guess: a confirmation that defaults on a typo
                 // is worse than one more question.
                 _ => (),
+            }
+        }
+    }
+
+    fn choose(&mut self, question: &str, choices: &[Choice]) -> Result<usize, Failure> {
+        let menu = menu(question, choices);
+        loop {
+            // The same rule as a confirmation: an answer that names nothing is asked
+            // again, with the list shown again, rather than resolved to a guess.
+            if let Some(index) = pick(&self.line(&menu)?, choices) {
+                return Ok(index);
             }
         }
     }
@@ -398,6 +535,53 @@ impl Session {
             }),
             None => Ok(Confirmation::Unavailable),
         }
+    }
+
+    /// Takes the supplied choice, or asks the user to pick one of `options`.
+    ///
+    /// Each option is shown by its [`Display`](fmt::Display) text, and the option
+    /// itself — not its label read back and parsed — is what comes back. As with
+    /// [`Session::value`], a supplied value is returned untouched, even one that is not
+    /// among `options`: checking it is the parser's job, and prompting never changes an
+    /// explicit choice. `None` means it was missing and nothing may ask.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::execution`](crate::Failure::execution) when `options` is
+    /// empty — a declaration mistake, reported before anything is asked — or when the
+    /// frontend answers with a position it was not offered, and the frontend's
+    /// failure, including cancellation, when the question is not answered.
+    pub fn choose<T: fmt::Display>(
+        &mut self,
+        supplied: Option<T>,
+        question: &str,
+        options: impl IntoIterator<Item = T>,
+    ) -> Result<Option<T>, Failure> {
+        if supplied.is_some() {
+            return Ok(supplied);
+        }
+        let mut options: Vec<T> = options.into_iter().collect();
+        if options.is_empty() {
+            return Err(Failure::execution(format!(
+                "{question:?} offers nothing to choose from"
+            )));
+        }
+        let Some(prompter) = self.prompter.as_mut() else {
+            return Ok(None);
+        };
+        let choices: Vec<Choice> = options
+            .iter()
+            .map(|option| Choice::new(option.to_string()))
+            .collect();
+        let index = prompter.choose(question, &choices)?;
+        if index >= options.len() {
+            return Err(Failure::execution(format!(
+                "the frontend chose position {} for {question:?}, which offers {}",
+                index + 1,
+                options.len()
+            )));
+        }
+        Ok(Some(options.swap_remove(index)))
     }
 
     /// Fills an optional argument by asking, when no flag supplied it.
@@ -563,8 +747,8 @@ fn clap_wording(error: &clap::Error) -> String {
         .to_owned()
 }
 
-impl std::fmt::Debug for Session {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Session {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Session")
             .field("plan", &self.plan)

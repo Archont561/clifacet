@@ -10,7 +10,7 @@ use std::io::IsTerminal;
 
 use clifacet::FailureKind;
 use clifacet::policy::{Capabilities, Mode, Policy, Request};
-use clifacet::prompt::{Dialog, Prompter, Session};
+use clifacet::prompt::{Choice, Dialog, Prompter, Session};
 
 /// Whether this process can be asked anything at all.
 ///
@@ -58,6 +58,24 @@ fn a_confirmation_without_a_terminal_fails_the_same_way() {
     }
 
     let failure = the_failure_it_reports(|| Dialog::new().confirm("Install the hooks?").map(drop));
+
+    assert_eq!(failure.kind(), FailureKind::Execution);
+    assert!(
+        failure.message().contains("terminal"),
+        "{}",
+        failure.message()
+    );
+}
+
+#[test]
+fn a_choice_without_a_terminal_fails_the_same_way() {
+    if !headless() {
+        return;
+    }
+
+    let choices = [Choice::new("MIT"), Choice::new("Apache-2.0")];
+    let failure =
+        the_failure_it_reports(|| Dialog::new().choose("Which license?", &choices).map(drop));
 
     assert_eq!(failure.kind(), FailureKind::Execution);
     assert!(
