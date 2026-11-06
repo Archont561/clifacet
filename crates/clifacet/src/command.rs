@@ -129,6 +129,31 @@ impl<'a, T> Plan<'a, T> {
     pub fn execute(self) -> Result<T, Failure> {
         (self.work)()
     }
+
+    /// The same plan, its output converted by `convert` once the work has run.
+    ///
+    /// The steps are kept as they are: converting what the work returns does not change
+    /// what it does. This is how a command tree hands a leaf's plan up as its own, with
+    /// the leaf's output turned into the tree's.
+    ///
+    /// ```
+    /// use clifacet::command::Plan;
+    ///
+    /// let plan = Plan::new(|| Ok(2)).step("count").map(|count| format!("{count} done"));
+    ///
+    /// assert_eq!(plan.steps(), ["count"]);
+    /// assert_eq!(plan.execute().unwrap(), "2 done");
+    /// ```
+    pub fn map<U>(self, convert: impl FnOnce(T) -> U + 'a) -> Plan<'a, U>
+    where
+        T: 'a,
+    {
+        let work = self.work;
+        Plan {
+            steps: self.steps,
+            work: Box::new(move || work().map(convert)),
+        }
+    }
 }
 
 impl<T> fmt::Debug for Plan<'_, T> {

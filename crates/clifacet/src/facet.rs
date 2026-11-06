@@ -251,4 +251,69 @@ pub mod __derive {
     pub fn credential<T: Credential>(value: T) -> T {
         value
     }
+
+    /// A command tree: what `#[clifacet::subcommands(input = …)]` declares.
+    ///
+    /// A `subcommands` field converts through this, so a field whose type is not a tree
+    /// is reported as that, at the field, instead of as a missing `TryFrom`.
+    #[diagnostic::on_unimplemented(
+        message = "`subcommands` needs a command tree, and `{Self}` is not one",
+        label = "declared on this field",
+        note = "declare the enum with `#[clifacet::subcommands(input = YourRequest)]`, one \
+                leaf struct per variant; the field may be the tree or an `Option` of it"
+    )]
+    pub trait Tree: crate::prompt::Collect + Sized {
+        /// The typed request the tree converts to: one variant per subcommand.
+        type Input;
+
+        /// Converts the chosen leaf to its typed input.
+        ///
+        /// # Errors
+        ///
+        /// Returns the leaf's own validation [`Failure`].
+        fn into_input(self) -> Result<Self::Input, Failure>;
+    }
+
+    /// `subcommands` on a required field: the chosen leaf, converted.
+    ///
+    /// # Errors
+    ///
+    /// Returns the leaf's own validation [`Failure`].
+    pub fn tree<T: Tree>(tree: T) -> Result<T::Input, Failure> {
+        tree.into_input()
+    }
+
+    /// `subcommands` on an `Option` field: absent stays absent, for the application to
+    /// pick a default leaf itself.
+    ///
+    /// # Errors
+    ///
+    /// Returns the leaf's own validation [`Failure`].
+    pub fn optional_tree<T: Tree>(tree: Option<T>) -> Result<Option<T::Input>, Failure> {
+        tree.map(Tree::into_input).transpose()
+    }
+
+    /// Collection for a required `subcommands` field: the chosen leaf asks its questions.
+    ///
+    /// # Errors
+    ///
+    /// Returns the leaf's collection [`Failure`].
+    pub fn collect_tree<T: Tree>(
+        tree: T,
+        session: &mut crate::prompt::Session,
+    ) -> Result<T, Failure> {
+        tree.collect(session)
+    }
+
+    /// Collection for an `Option` field: nothing is asked when no subcommand was given.
+    ///
+    /// # Errors
+    ///
+    /// Returns the leaf's collection [`Failure`].
+    pub fn collect_optional_tree<T: Tree>(
+        tree: Option<T>,
+        session: &mut crate::prompt::Session,
+    ) -> Result<Option<T>, Failure> {
+        tree.map(|tree| tree.collect(session)).transpose()
+    }
 }

@@ -15,6 +15,7 @@
 //! | `secret` | normalization | the bridge: the field must be a redacted type |
 //! | `skip` | input | the bridge: the field is not copied; clap still parses it |
 //! | `form` | interaction | `Facet::form_fields`: the field is a question on the form |
+//! | `subcommands` | input | the bridge and `Collect`: the chosen leaf's input, its questions |
 //!
 //! The bridge applies its rules in one fixed order — `fill`, `trim`, `non_empty`,
 //! `secret` — whatever order they were written in, because "trim, then check blank" is
@@ -31,7 +32,8 @@ pub(crate) const ATTRIBUTE: &str = "facet";
 pub(crate) const VALUE_KEYS: &[&str] = &["ask", "confirm", "fill"];
 
 /// Field keys that are flags.
-pub(crate) const FLAG_KEYS: &[&str] = &["form", "non_empty", "secret", "skip", "trim"];
+pub(crate) const FLAG_KEYS: &[&str] =
+    &["form", "non_empty", "secret", "skip", "subcommands", "trim"];
 
 /// Keys that change the value the generated bridge copies.
 const NORMALIZATION_KEYS: &[&str] = &["fill", "non_empty", "secret", "trim"];
@@ -55,6 +57,10 @@ pub(crate) struct Rules {
     pub(crate) skip: Option<Span>,
     /// A question on the generated form.
     pub(crate) form: Option<Span>,
+    /// A command tree: the bridge converts the chosen leaf, `Collect` delegates to it.
+    pub(crate) subcommands: Option<Span>,
+    /// Every key declared, in order, for the rule that `subcommands` stands alone.
+    keys: Vec<(String, Span)>,
     /// The first normalization key, for the errors that name it.
     normalization: Option<(String, Span)>,
 }
@@ -68,7 +74,10 @@ impl Rules {
     /// Rejects a key only the generated bridge acts on when the struct declared its own.
     pub(crate) fn check_bridge(&self) -> syn::Result<()> {
         let skip = self.skip.map(|span| (String::from("skip"), span));
-        match self.normalization.clone().or(skip) {
+        let subcommands = self
+            .subcommands
+            .map(|span| (String::from("subcommands"), span));
+        match self.normalization.clone().or(skip).or(subcommands) {
             Some((key, span)) => Err(syn::Error::new(
                 span,
                 format!(
@@ -90,6 +99,18 @@ pub(crate) fn parse(field: &Field) -> syn::Result<Rules> {
         for entry in entries {
             read(&mut rules, &entry)?;
         }
+    }
+
+    if rules.subcommands.is_some()
+        && let Some((key, span)) = rules.keys.iter().find(|(key, _)| key != "subcommands")
+    {
+        return Err(syn::Error::new(
+            *span,
+            format!(
+                "`{key}` beside `subcommands` would apply to the whole tree, and a tree is \
+                 not one value: declare the rule on the leaf struct's own field instead"
+            ),
+        ));
     }
 
     if let (Some(ask), Some(_)) = (&rules.ask, &rules.confirm) {
@@ -181,8 +202,9 @@ fn read(rules: &mut Rules, entry: &Meta) -> syn::Result<()> {
         ));
     }
     if NORMALIZATION_KEYS.contains(&key.as_str()) && rules.normalization.is_none() {
-        rules.normalization = Some((key, span));
+        rules.normalization = Some((key.clone(), span));
     }
+    rules.keys.push((key, span));
     Ok(())
 }
 
@@ -202,6 +224,7 @@ fn record_flag(rules: &mut Rules, key: &str, span: Span) -> bool {
         "non_empty" => rules.non_empty.replace(span).is_some(),
         "skip" => rules.skip.replace(span).is_some(),
         "form" => rules.form.replace(span).is_some(),
+        "subcommands" => rules.subcommands.replace(span).is_some(),
         _ => rules.secret.replace(span).is_some(),
     }
 }
@@ -237,6 +260,18 @@ fn unknown_message(key: &str) -> String {
             .collect::<Vec<_>>()
             .join(", "),
     )
+}
+
+/// Whether the field is written as an `Option<…>`, which is how clap's derive tells an
+/// optional subcommand from a required one; a type alias hides it from both.
+pub(crate) fn is_option(ty: &syn::Type) -> bool {
+    let syn::Type::Path(path) = ty else {
+        return false;
+    };
+    path.path
+        .segments
+        .last()
+        .is_some_and(|last| last.ident == "Option")
 }
 
 /// Whether the field holds a list: a `Vec<_>`, or an `Option<Vec<_>>`.

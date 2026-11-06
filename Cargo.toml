@@ -35,6 +35,9 @@ crossterm = "0.29.0"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
 syn = "2.0.119"
+# A subcommand's default name, computed exactly as clap's derive computes it, so the
+# tree's duplicate-name check agrees with clap. Already in every build through clap.
+heck = "0.5.0"
 
 # Test tooling.
 assert_cmd = "2.2.2"

@@ -15,6 +15,10 @@
 //!   a field out, and `#[facet(check = path)]` runs a rule across the built input;
 //! - `#[facet(bridge = path)]`, for an input the declarations cannot describe, which
 //!   receives the parsed command and builds the whole input itself.
+//!
+//! Collection is generated the same way — one question per `ask`/`confirm`, delegation
+//! per `subcommands` field — unless `#[facet(collect = path)]` hands it to a function,
+//! for questions the declarations cannot describe.
 
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
@@ -28,7 +32,7 @@ use crate::rules::{self, Rules};
 use crate::rules::ATTRIBUTE;
 
 /// The keys the attribute accepts.
-const SUPPORTED_KEYS: &str = "`input`, `bridge`, `check`";
+const SUPPORTED_KEYS: &str = "`input`, `bridge`, `check`, `collect`";
 
 /// What the `#[facet(...)]` attribute declared.
 #[derive(Default)]
@@ -39,6 +43,8 @@ struct Declared {
     bridge: Option<ExprPath>,
     /// A rule across the built input, run by the generated bridge after the field rules.
     check: Option<ExprPath>,
+    /// Collection by hand, in place of the generated questions.
+    collect: Option<ExprPath>,
 }
 
 pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
@@ -107,7 +113,10 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
             bridge_impl,
         )
     };
-    let collect = collect_impl(name, &input.generics, &fields);
+    let collect = match &declared.collect {
+        Some(path) => declared_collect(name, &input.generics, &fields, path)?,
+        None => collect_impl(name, &input.generics, &fields),
+    };
     let form_fields = form_fields(&fields);
     let secret_fields = secret_fields(&fields);
 
@@ -134,6 +143,8 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
 /// One field of the command struct, with what it declared.
 struct Declaration {
     name: Ident,
+    /// Whether the field is written as an `Option<…>`, read from the type as clap reads it.
+    optional: bool,
     /// The id clap knows the field by, for asking and for naming it in a message.
     id: String,
     rules: Rules,
@@ -144,6 +155,14 @@ impl Declaration {
     /// declared rules applied in their one fixed order.
     fn assignment(&self, command: &TokenStream) -> TokenStream {
         let name = &self.name;
+        if let Some(span) = self.rules.subcommands {
+            // Spanned at the key: a field whose type is not a tree is reported there.
+            return if self.optional {
+                quote_spanned!(span=> #name: ::clifacet::facet::__derive::optional_tree(cli.#name)?)
+            } else {
+                quote_spanned!(span=> #name: ::clifacet::facet::__derive::tree(cli.#name)?)
+            };
+        }
         if !self.rules.normalises() {
             return quote!(#name: cli.#name);
         }
@@ -185,10 +204,29 @@ impl Declaration {
 /// question, so collection is one call whatever the command declares.
 fn collect_impl(name: &Ident, generics: &Generics, fields: &[Declaration]) -> TokenStream {
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    let asks_by_flag = fields
+        .iter()
+        .any(|field| field.rules.ask.is_some() || field.rules.confirm.is_some());
     let questions: Vec<_> = fields
         .iter()
         .filter_map(|field| {
             let (field_name, id) = (&field.name, &field.id);
+            if let Some(span) = field.rules.subcommands {
+                // The chosen leaf asks its own questions, wherever it sits in the tree.
+                return Some(if field.optional {
+                    quote_spanned! {span=>
+                        self.#field_name = ::clifacet::facet::__derive::collect_optional_tree(
+                            self.#field_name,
+                            session,
+                        )?;
+                    }
+                } else {
+                    quote_spanned! {span=>
+                        self.#field_name =
+                            ::clifacet::facet::__derive::collect_tree(self.#field_name, session)?;
+                    }
+                });
+            }
             if let Some(ask) = &field.rules.ask {
                 let text = &ask.text;
                 // Spanned at the key: an `ask` on a field that is not an `Option` is a
@@ -218,18 +256,71 @@ fn collect_impl(name: &Ident, generics: &Generics, fields: &[Declaration]) -> To
             }
         };
     }
+    // Only a question asked by flag needs clap's command, to parse the answer with.
+    let command = asks_by_flag
+        .then(|| quote!(let command = <Self as ::clifacet::clap::CommandFactory>::command();));
     quote! {
         impl #impl_generics ::clifacet::prompt::Collect for #name #type_generics #where_clause {
             fn collect(
                 mut self,
                 session: &mut ::clifacet::prompt::Session,
             ) -> ::core::result::Result<Self, ::clifacet::Failure> {
-                let command = <Self as ::clifacet::clap::CommandFactory>::command();
+                #command
                 #(#questions)*
                 ::core::result::Result::Ok(self)
             }
         }
     }
+}
+
+/// `Collect` for the command by the declared `collect = path`, called as
+/// `path(self, session) -> Result<Self, Failure>`.
+///
+/// It owns every question, so a field's `ask` or `confirm` beside it is an error rather
+/// than a question that is silently never asked — the same rule `bridge` keeps for the
+/// field rules.
+fn declared_collect(
+    name: &Ident,
+    generics: &Generics,
+    fields: &[Declaration],
+    path: &ExprPath,
+) -> syn::Result<TokenStream> {
+    let asked = fields.iter().find_map(|field| {
+        let ask = field.rules.ask.as_ref().map(|ask| ("ask", ask.span));
+        ask.or_else(|| {
+            field
+                .rules
+                .confirm
+                .as_ref()
+                .map(|confirm| ("confirm", confirm.span))
+        })
+    });
+    if let Some((key, span)) = asked {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "`{key}` is a question for the generated collection, and this struct declares \
+                 its own `collect = …`, which asks every question: ask it there, or drop \
+                 `collect` and let the declarations ask"
+            ),
+        ));
+    }
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    // The `fn` pointer states the signature, so a wrong one is reported at the path.
+    Ok(quote_spanned! {path.span()=>
+        impl #impl_generics ::clifacet::prompt::Collect for #name #type_generics #where_clause {
+            fn collect(
+                self,
+                session: &mut ::clifacet::prompt::Session,
+            ) -> ::core::result::Result<Self, ::clifacet::Failure> {
+                let collect: fn(
+                    Self,
+                    &mut ::clifacet::prompt::Session,
+                ) -> ::core::result::Result<Self, ::clifacet::Failure> = #path;
+                collect(self, session)
+            }
+        }
+    })
 }
 
 /// `Facet::form_fields` for the command: every `form` field, in declaration order.
@@ -294,6 +385,7 @@ fn named_fields(input: &DeriveInput) -> syn::Result<Vec<Declaration>> {
         .filter_map(|field| field.ident.clone().map(|name| (field, name)))
         .map(|(field, name)| {
             Ok(Declaration {
+                optional: rules::is_option(&field.ty),
                 id: rules::argument_id(field, &name),
                 rules: rules::parse(field)?,
                 name,
@@ -326,7 +418,7 @@ pub(crate) fn declares_input(arguments: TokenStream) -> syn::Result<bool> {
 ///
 /// Not `syn::Meta`: its value is an expression, and a type such as `Greeting<String>` is
 /// not one. Each key reads its own kind of value instead — a type for `input`, a path for
-/// `bridge` and `check`.
+/// `bridge`, `check` and `collect`.
 fn parse_entries(declared: &mut Declared, stream: ParseStream<'_>) -> syn::Result<()> {
     while !stream.is_empty() {
         parse_entry(declared, stream)?;
@@ -358,6 +450,7 @@ fn parse_entry(declared: &mut Declared, stream: ParseStream<'_>) -> syn::Result<
         "input" => declared.input.is_some(),
         "bridge" => declared.bridge.is_some(),
         "check" => declared.check.is_some(),
+        "collect" => declared.collect.is_some(),
         unknown => {
             return Err(syn::Error::new_spanned(
                 key,
@@ -378,6 +471,7 @@ fn parse_entry(declared: &mut Declared, stream: ParseStream<'_>) -> syn::Result<
     match name.as_str() {
         "input" => declared.input = Some(parse_type(stream)?),
         "bridge" => declared.bridge = Some(parse_path(key, stream)?),
+        "collect" => declared.collect = Some(parse_path(key, stream)?),
         _ => declared.check = Some(parse_path(key, stream)?),
     }
     Ok(())
@@ -393,7 +487,7 @@ fn parse_type(stream: ParseStream<'_>) -> syn::Result<Type> {
     })
 }
 
-/// The value of `bridge` or `check`: a path to a function, qualification included.
+/// The value of `bridge`, `check` or `collect`: a path to a function, qualification included.
 fn parse_path(key: &Ident, stream: ParseStream<'_>) -> syn::Result<ExprPath> {
     match stream.parse::<Expr>()? {
         Expr::Path(path) => Ok(path),
