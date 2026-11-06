@@ -161,9 +161,9 @@ pub enum Verb {
 /// Filters for `bl list`, named the way a person asks the question.
 #[derive(Debug, Default, clap::Args)]
 pub struct ListArgs {
-    /// Only tasks in this status.
+    /// Only tasks in this status; with no value, it is asked for as a choice.
     #[arg(long, value_parser = parse_status)]
-    pub status: Option<Status>,
+    pub status: Option<Option<Status>>,
 
     /// Only tasks whose dependencies are all done.
     #[arg(long)]
@@ -283,7 +283,10 @@ impl TryFrom<Cli> for Request {
             .unwrap_or_else(|| Verb::List(ListArgs::default()))
         {
             Verb::List(args) => Action::List {
-                status: args.status,
+                status: args
+                    .status
+                    .map(|named| named.ok_or_else(unnamed_status))
+                    .transpose()?,
                 ready: args.ready,
                 limit: args.limit,
             },
@@ -322,6 +325,15 @@ impl TryFrom<Cli> for Request {
         };
         Ok(Self { verb, json })
     }
+}
+
+/// The refusal for a bare `--status` nothing could ask about.
+fn unnamed_status() -> Failure {
+    let statuses: Vec<&str> = Status::ALL.map(Status::as_str).into();
+    Failure::validation(format!(
+        "--status needs a value here, because nothing can ask which: one of {}",
+        statuses.join(", ")
+    ))
 }
 
 /// Asks for the title a bare `bl new` did not get.
@@ -630,6 +642,18 @@ fn collect(cli: Cli, session: &mut Session) -> Result<Request, Failure> {
                     status: Status::Done,
                 },
                 json,
+            })
+        }
+        Verb::List(mut args) => {
+            if args.status == Some(None) {
+                // Still `None` when nothing may ask, which `Request::try_from` refuses.
+                args.status = Some(session.choose(None, "Which status?", Status::ALL)?);
+            }
+            Request::try_from(Cli {
+                json,
+                dry_run: false,
+                yes: false,
+                command: Some(Verb::List(args)),
             })
         }
         command => Request::try_from(Cli {
