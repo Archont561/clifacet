@@ -1,10 +1,10 @@
 ---
 id: CLI-35
 title: Accept any type path in the facet input attribute
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01 22:46'
-updated_date: '2026-11-04 15:20'
+updated_date: '2026-11-06 09:05'
 labels: []
 milestone: m-7
 dependencies: []
@@ -20,7 +20,7 @@ The facet input attribute only forwards a token tree that happens to name a stru
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A qualified path (`crate::input::MyInput`), a generic type (`MyInput<'a>`), and an associated type (`Self::Input`) are all accepted where the input attribute names a type.
+- [x] #1 A qualified path (`crate::input::MyInput`), a generic type (`MyInput<'a>`), and an associated type written as a qualified projection (`<T as Trait>::Input`) are all accepted where the input attribute names a type.
 - [x] #2 A form that cannot be supported is rejected with the error span on the offending tokens, not on the whole attribute.
 - [x] #3 Each accepted form has a passing test and each rejected one has a trybuild case with the exact message asserted.
 - [x] #4 The documented attribute keys describe what the input value may be, and the documentation snippet compiles.
@@ -40,4 +40,6 @@ The facet input attribute only forwards a token tree that happens to name a stru
   - `docs/derive.md` gains a 'What `input` may name' section with a compiled snippet, linked from `docs/command-core.md` and the derive's rustdoc.
   - `test-local` is green; coverage is 98.04%.
 - **AC#1 narrowed, not checked; maintainer call.** The qualified path and the generic type are accepted. `Self::Input` cannot be: in `impl Facet for Cli`, `Self::Input` *is* `<Cli as Facet>::Input`, the item being defined, so `type Input = Self::Input` is self-referential (rustc reports overflow), and `Self` is not allowed in the `impl TryFrom<Cli> for …` header at all. It is now rejected at the `Self` token, per AC#2. The associated-type form that can work is a qualified projection, `<Marker as Shape>::Input`, which is accepted and tested. Proposed rewording: '…and an associated type written as a qualified projection (`<T as Trait>::Input`)'. The task is In Progress until that is agreed.
+
+- 2026-11-06: **AC#1 reworded with maintainer approval, then checked.** It used to read '…and an associated type (`Self::Input`) are all accepted…'. `Self::Input` cannot be supported: in `impl Facet for Cli` it is `<Cli as Facet>::Input`, the item being defined, and `Self` is not allowed in the generated `impl TryFrom<Cli> for …` header. It is rejected at the `Self` token, per AC#2 and `tests/ui/input_names_self.rs`. The associated-type form that works, a qualified projection `<T as Trait>::Input`, is what AC#1 now names, and it is accepted and tested (`tests/input_types.rs`, the facet_bridge scenario, the docs snippet). Merged in PR #47 (`ca0865de`). All four ACs are checked; closed with maintainer approval.
 <!-- SECTION:NOTES:END -->
