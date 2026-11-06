@@ -75,6 +75,39 @@ Two details worth keeping:
   result the caller asked for. `clap` decides that with `Error::use_stderr`, and
   the application follows it instead of guessing.
 
+Both rows of that table — a failure and `clap`'s verdict — go through one function,
+`clifacet::report::render`, so no `main` rewrites the mapping:
+
+```rust
+use clap::Parser;
+use clifacet::contract::ExitPolicy;
+use clifacet::{Failure, report};
+
+#[derive(Debug, Parser)]
+#[command(name = "greet")]
+struct Greet {
+    #[arg(long)]
+    name: Option<String>,
+}
+
+let policy = ExitPolicy::standard();
+let (mut out, mut err) = (Vec::new(), Vec::new());
+
+let usage = Greet::try_parse_from(["greet", "--nope"]).expect_err("an unknown flag");
+assert_eq!(report::render("greet", &usage, &policy, &mut out, &mut err), policy.usage());
+
+let failure = Failure::execution("the greeting could not be sent");
+assert_eq!(report::render("greet", &failure, &policy, &mut out, &mut err), policy.execution());
+
+let err = String::from_utf8(err).expect("utf-8");
+assert!(err.contains("Usage: greet"));
+assert!(err.ends_with("greet: the greeting could not be sent\n"));
+assert_eq!(out, b"", "neither reaches the data stream");
+```
+
+A failure is written as `program: message`; its kind is what the exit code carries, so
+the text does not repeat it. The program name and the numbers stay the application's.
+
 ## Interaction policy
 
 Which mode a run uses is decided before anything happens, and the decision is a

@@ -598,16 +598,10 @@ pub fn app(
             }
             match run(&planned) {
                 Ok(code) => code,
-                Err(failure) => {
-                    report(err, &format!("bl: {}", failure.message()));
-                    EXIT.for_failure(&failure)
-                }
+                Err(failure) => clifacet::report::render("bl", &failure, &EXIT, out, err),
             }
         }
-        Err(failure) => {
-            report(err, &format!("bl: {}", failure.message()));
-            EXIT.for_failure(&failure)
-        }
+        Err(failure) => clifacet::report::render("bl", &failure, &EXIT, out, err),
     }
 }
 
@@ -686,16 +680,8 @@ pub fn main(
 ) -> i32 {
     match Cli::try_parse_from(argv) {
         Ok(cli) => app(cli, Capabilities::detected(), terminal_frontend, out, err),
-        Err(error) => {
-            // `clap` decides the stream as well as the status: help is the result the
-            // user asked for, a usage error is a diagnostic.
-            let text = error.to_string();
-            if error.use_stderr() {
-                let _ = write!(err, "{text}");
-            } else {
-                let _ = write!(out, "{text}");
-            }
-            error.exit_code()
-        }
+        // Help is the result the user asked for, on the data stream; a usage error is
+        // a diagnostic. `render` applies that, with the codes `EXIT` gives them.
+        Err(error) => clifacet::report::render("bl", &error, &EXIT, out, err),
     }
 }

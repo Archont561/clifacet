@@ -67,6 +67,7 @@ code a failure costs.
 | `clifacet::prompt` | how a question is asked: a plain reader, an `inquire` dialog, or your own — and how to script the answers in a test |
 | `clifacet::tui` | the full-screen form, its fields, and the two escape hatches for drawing your own |
 | `clifacet::contract` | what a run may write where, and what each outcome costs |
+| `clifacet::report` | writing a failure or `clap`'s verdict on the right stream, and answering with its exit code |
 | `clifacet::harness` | proof that a different frontend changed nothing else |
 | `clifacet::secret` | a credential that cannot be printed by accident |
 | `clifacet::provenance` | where a value came from, recorded without recording the value |

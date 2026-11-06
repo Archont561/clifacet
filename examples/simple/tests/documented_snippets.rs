@@ -51,10 +51,36 @@ fn readme_snippet_2() {
     }
 }
 
-/// `command-core.md`, line 186.
+/// `command-core.md`, line 81.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clap::Parser;
+    use clifacet::contract::ExitPolicy;
+    use clifacet::{Failure, report};
+    #[derive(Debug, Parser)]
+    #[command(name = "greet")]
+    struct Greet {
+        #[arg(long)]
+        name: Option<String>,
+    }
+    let policy = ExitPolicy::standard();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let usage = Greet::try_parse_from(["greet", "--nope"]).expect_err("an unknown flag");
+    assert_eq!(report::render("greet", &usage, &policy, &mut out, &mut err), policy.usage());
+    let failure = Failure::execution("the greeting could not be sent");
+    assert_eq!(report::render("greet", &failure, &policy, &mut out, &mut err), policy.execution());
+    let err = String::from_utf8(err).expect("utf-8");
+    assert!(err.contains("Usage: greet"));
+    assert!(err.ends_with("greet: the greeting could not be sent\n"));
+    assert_eq!(out, b"", "neither reaches the data stream");
+}
+
+/// `command-core.md`, line 219.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_2() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Dialog, Prompter, Session};
@@ -74,10 +100,10 @@ fn command_core_snippet_1() {
     );
 }
 
-/// `command-core.md`, line 230.
+/// `command-core.md`, line 263.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_2() {
+fn command_core_snippet_3() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Answer, Scripted, Session};
@@ -99,10 +125,10 @@ fn command_core_snippet_2() {
     );
 }
 
-/// `command-core.md`, line 260.
+/// `command-core.md`, line 293.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_3() {
+fn command_core_snippet_4() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
     use clifacet::prompt::{Answer, Scripted, Session};
@@ -123,10 +149,10 @@ fn command_core_snippet_3() {
     assert!(session.provenance().is_secret("token"));
 }
 
-/// `command-core.md`, line 506.
+/// `command-core.md`, line 539.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_4() {
+fn command_core_snippet_5() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clap::{CommandFactory, FromArgMatches, Parser};
     use clifacet::provenance::{Provenance, Source};
