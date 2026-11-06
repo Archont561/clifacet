@@ -1,9 +1,10 @@
 //! The shipped dialog frontend: [`Dialog`], built on `inquire`.
 //!
 //! [`Prompter`] is the seam a frontend plugs into, and this module is the framework's
-//! own second implementation of it: the same two questions [`Terminal`] asks, drawn as
-//! a dialog with a cursor, a help line and bracketed paste, instead of read as a line
-//! of text.
+//! own second implementation of it: the same questions [`Terminal`] asks, drawn as a
+//! dialog with a cursor, a help line and bracketed paste, instead of read as a line of
+//! text — a choice drawn as a list to move through, instead of a number to type, and a
+//! secret typed blind, which a line-reading terminal cannot offer at all.
 //!
 //! What it deliberately does *not* do is decide anything. A dialog is still only
 //! built when the resolved [`Plan`](crate::policy::Plan) asks the user something, so a
@@ -17,10 +18,10 @@
 
 use std::io::IsTerminal;
 
-use inquire::{Confirm, InquireError, Text};
+use inquire::{Confirm, InquireError, Password, PasswordDisplayMode, Select, Text};
 
 use crate::failure::Failure;
-use crate::prompt::Prompter;
+use crate::prompt::{Choice, Prompter};
 
 /// A dialog on the terminal, drawn by `inquire`.
 ///
@@ -70,6 +71,43 @@ impl Prompter for Dialog {
             .prompt()
             .map_err(failure)
     }
+
+    fn choose(&mut self, question: &str, choices: &[Choice]) -> Result<usize, Failure> {
+        if !can_ask() {
+            return Err(no_terminal());
+        }
+        select(question, choices)
+            .raw_prompt()
+            .map(|picked| picked.index)
+            .map_err(failure)
+    }
+
+    fn ask_secret(&mut self, question: &str) -> Result<String, Failure> {
+        if !can_ask() {
+            return Err(no_terminal());
+        }
+        password(question).prompt().map_err(failure)
+    }
+}
+
+/// The question a secret is asked with: typed blind, asked once.
+///
+/// Hidden rather than masked, so not even its length is on screen, and without the
+/// toggle that would reveal it. There is no "type it again" field: that guards a
+/// secret being *chosen*, and this asks for one that already exists.
+fn password(question: &str) -> Password<'_> {
+    Password::new(question)
+        .with_display_mode(PasswordDisplayMode::Hidden)
+        .without_confirmation()
+}
+
+/// The selectable list a choice is drawn as: one line per choice, in the order offered.
+///
+/// `inquire` reports the position of the line picked in this original order, even
+/// when the list was filtered by typing, so the position maps straight back to the
+/// choice without matching labels.
+fn select<'a>(question: &'a str, choices: &[Choice]) -> Select<'a, String> {
+    Select::new(question, choices.iter().map(Choice::line).collect())
 }
 
 /// Whether this process has an input device a dialog can read keys from.
@@ -111,8 +149,11 @@ mod tests {
 
     use inquire::InquireError;
 
-    use super::failure;
+    use inquire::PasswordDisplayMode;
+
+    use super::{failure, password, select};
     use crate::failure::{Failure, FailureKind};
+    use crate::prompt::Choice;
 
     /// Every error `inquire` can report, and the category it means.
     fn cases() -> Vec<(InquireError, FailureKind)> {
@@ -138,6 +179,38 @@ mod tests {
 
             assert_eq!(reported.kind(), expected, "{}", reported.message());
         }
+    }
+
+    /// A choice is drawn as `inquire`'s selectable list: every label, in the order it
+    /// was offered, with its help beside it, and the cursor on the first.
+    #[test]
+    fn a_choice_is_offered_as_a_selectable_list_of_its_labels() {
+        let choices = [
+            Choice::new("to do"),
+            Choice::new("done").with_help("finished and verified"),
+        ];
+
+        let offered = select("Which status?", &choices);
+
+        assert_eq!(offered.message, "Which status?");
+        assert_eq!(offered.options, ["to do", "done — finished and verified"]);
+        assert_eq!(offered.starting_cursor, 0);
+    }
+
+    /// A secret is typed blind — not even masked, so its length does not show — and
+    /// asked once: a second "confirm it" field belongs to choosing a new secret, not to
+    /// supplying an existing one.
+    #[test]
+    fn a_secret_is_asked_hidden_and_once() {
+        let asked = password("API token?");
+
+        assert_eq!(asked.message, "API token?");
+        assert_eq!(asked.display_mode, PasswordDisplayMode::Hidden);
+        assert!(!asked.enable_confirmation);
+        assert!(
+            !asked.enable_display_toggle,
+            "it cannot be revealed on screen"
+        );
     }
 
     #[test]

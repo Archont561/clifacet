@@ -150,21 +150,24 @@ same session rules below, applied per declared field.
 - **A missing value is asked for only when the plan permits.** `Session::start`
   builds the frontend through `Plan::with_frontend`, so a non-interactive run has
   no frontend at all and a question is never asked, let alone answered.
-- **`--yes` answers confirmations and nothing else.** `Session::confirm` returns
-  `true` without asking; a confirmation with nothing able to ask returns `false`,
-  so a caller that forgets to check the plan fails safe instead of proceeding.
+- **`--yes` answers confirmations and nothing else.** `Session::confirm` settles a
+  confirmation as `Confirmation::Assumed` without asking, and one with nothing able to
+  ask as `Confirmation::Unavailable`. `is_confirmed()` is the fail-safe boolean: only
+  `Confirmed` and `Assumed` proceed, so a caller that does not care *how* still fails
+  safe, and one that does — "pass `--yes`" is a better message than "declined" —
+  matches on the outcome instead of inspecting the plan.
 - **Collection precedes execution.** `Session::run` collects and then executes, so
   a cancelled question, a bad answer or an exhausted script returns before the
   command is reachable.
 
-Three adapters ship, all of them implementations of the same two-method
-`Prompter` seam:
+Three adapters ship, all of them implementations of the same `Prompter` seam — two
+required methods, `ask` and `confirm`, and provided ones a frontend may override:
 
 | Adapter | Feature | What it is |
 | --- | --- | --- |
-| `Terminal` | none | a question written to the *diagnostic* stream and a line read from `stdin`; end of input is a cancellation rather than an empty answer |
-| `Dialog` | `interactive` | the same two questions as an `inquire` dialog — a cursor, a help line, bracketed paste — drawn on `stderr` |
-| `Scripted` | none | answers from a list; the seam every test uses, so a flow is driven end to end without a terminal and cannot reach one by accident |
+| `Terminal` | none | a question written to the *diagnostic* stream and a line read from `stdin`; end of input is a cancellation rather than an empty answer; a choice is a numbered list that takes a number or a name and re-asks on anything else |
+| `Dialog` | `interactive` | the same questions as an `inquire` dialog — a cursor, a help line, bracketed paste — drawn on `stderr`, with a choice as a list to move through |
+| `Scripted` | none | answers from a list, a choice by its exact label; the seam every test uses, so a flow is driven end to end without a terminal and cannot reach one by accident |
 
 `Dialog` is the one a real process usually wants, and it changes nothing else: the
 session still decides whether a question may be asked, a supplied value is still
@@ -176,8 +179,9 @@ the platform's business — one `isatty` makes "no terminal" a reported failure
 everywhere instead of a wait on some platforms.
 
 Because presentation is a seam and not a setting, an application can ship its own.
-Implement `Prompter` — two methods, `ask` and `confirm` — and hand it to
-`Session::start`:
+Implement `Prompter` — `ask` and `confirm` are the two it requires; `choose` is provided
+as a numbered list read through `ask`, so a frontend written before choices existed
+keeps compiling — and hand it to `Session::start`:
 
 ```rust
 use clifacet::policy::{Capabilities, Mode, Policy, Request};
@@ -211,8 +215,80 @@ process uses `dialog_frontend()` and keeps `terminal_frontend()` beside it to sh
 choice is the application's.
 
 `FailureKind::Cancelled` is how "the user changed their mind" travels. Answering a
-confirmation with `no` is a *decision* (`Ok(false)`); dismissing the question, or
-end of input, is a *cancellation*. Only the second costs exit `130`.
+confirmation with `no` is a *decision* (`Confirmation::Declined`); dismissing the
+question, or end of input, is a *cancellation*. Only the second costs exit `130`.
+
+### Questions beyond text and yes/no
+
+`Session::choose` asks the user to pick one of a fixed set of values. Each value is
+shown by its `Display` text, and the value itself is what comes back — never its label
+read back and parsed — so the set of choices and the type they produce cannot drift. It
+keeps the session's rule: a supplied value is returned untouched, even one that is not
+among the choices, because checking it is the parser's job and prompting never changes
+an explicit choice.
+
+```rust
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Answer, Scripted, Session};
+
+let plan = Policy::up_to(Mode::Interactive)
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("prompts are permitted here");
+let mut session = Session::start(plan, || {
+    // A script picks by label, exactly as offered.
+    Box::new(Scripted::new([Answer::Text(String::from("in progress"))]))
+});
+
+let statuses = ["to do", "in progress", "done"];
+assert_eq!(
+    session.choose(None, "Which status?", statuses).expect("one was picked"),
+    Some("in progress"),
+);
+assert_eq!(
+    session.choose(Some("done"), "Which status?", statuses).expect("never asked"),
+    Some("done"),
+);
+```
+
+A frontend sees only `Choice` labels, with optional help, and answers with a position;
+the session maps it back, and a position it never offered is the frontend's failure.
+
+`Session::ask_secret` asks for a credential without echoing it. The answer is a
+`Secret` from the moment it arrives, and the session's provenance records *that* it was
+prompted for, flagged secret — never what it was:
+
+```rust
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Answer, Scripted, Session};
+use clifacet::provenance::Source;
+
+let plan = Policy::up_to(Mode::Interactive)
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("prompts are permitted here");
+let mut session = Session::start(plan, || {
+    Box::new(Scripted::new([Answer::Text(String::from("s3cret"))]))
+});
+
+let token = session
+    .ask_secret(None, "token", "API token?")
+    .expect("answered")
+    .expect("asked");
+assert_eq!(token.expose(), "s3cret");
+assert_eq!(token.to_string(), "[redacted]");
+assert_eq!(session.provenance().source_of("token"), Some(Source::Prompt));
+assert!(session.provenance().is_secret("token"));
+```
+
+Hiding input is the frontend's job, and a frontend that cannot do it refuses: the
+provided `Prompter::ask_secret` fails rather than fall back to `ask`, so neither
+`Terminal` nor a frontend written before secrets existed can echo one by accident.
+Every answered `ask_for` is recorded the same way, unflagged, under its argument's id.
+
+`Session::collect_values` asks one question repeatedly to build a list, and an empty
+or blank answer ends it — the session does not reword the question, so the question
+should say so. Stopping part-way is not finishing: a dismissal, or a frontend that
+breaks, after two of three values returns the failure and discards the two, so a
+partially collected list is never handed back as the list the user meant.
 
 ## The full-screen form
 
@@ -422,9 +498,10 @@ application's, and is listed so absence is not mistaken for oversight:
 - **Environment variables are readable by the same user,** through
   `/proc/<pid>/environ` and through any crash dump or core file. They are safer than
   argv, not safe.
-- **A prompted secret is echoed.** `prompt::Terminal` reads a line from stdin, so a
-  terminal shows what is typed and keeps it in scrollback. A no-echo prompt is not
-  implemented.
+- **A line terminal cannot hide a secret, so it does not ask for one.**
+  `prompt::Terminal` reads a line from stdin and has no way to switch echo off;
+  `Session::ask_secret` through it fails with an execution error rather than show what
+  is typed and leave it in scrollback. `Dialog` (feature `interactive`) asks blind.
 - **Plain values are not protected.** A credential held as a `String` prints as usual;
   the guarantee starts at `Secret<T>`.
 - **Errors from outside the framework** — a `clap` value parser's message, an I/O
@@ -505,6 +582,8 @@ Documented so nobody reads absence as oversight:
 - **Canonical argv replay.** The derive proves the command that was parsed; it
   does not rebuild argv or re-parse it, so constructs `clap` cannot re-validate
   stay out of scope.
-- **Secret-aware prompting.** A credential cannot be asked for without echo, and
-  `Provenance` is recorded by the application rather than inferred. Redaction itself
+- **Secret-aware prompting through the derive.** `Session::ask_secret` asks without
+  echo and records the prompt in the session's provenance, but the derive still refuses
+  `ask` on a `secret` field, and where a *supplied* value came from — argv or the
+  environment — is recorded by the application rather than inferred. Redaction itself
   is covered; see "What this cannot do" above for the boundaries.

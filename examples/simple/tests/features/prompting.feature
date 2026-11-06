@@ -13,3 +13,8 @@ Feature: Prompting shares the command core
     When the user asks to explode and declines the confirmation
     Then nothing is written to the data stream
     And the exit code says the run was cancelled
+
+  Scenario: A list stopped part-way is not a list
+    Given an application that may prompt
+    When the user gives two labels and then dismisses the question
+    Then no list comes back, only the cancellation

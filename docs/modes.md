@@ -164,7 +164,7 @@ the test suite asserts so the overlap reads as a decision.
 
 `FailureKind::Cancelled` exists so a frontend can say "the user changed their mind"
 without pretending the input was invalid. Answering a confirmation with *no* is a
-decision (`Ok(false)`); dismissing the question, or the end of input, is a
+decision (`Confirmation::Declined`); dismissing the question, or the end of input, is a
 cancellation — and only the second costs exit 130.
 
 What a mode may not do is guess: a cancelled form runs nothing, and a refused mode

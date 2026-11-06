@@ -371,6 +371,39 @@ fn asking_for_an_argument_that_cannot_be_asked_for_is_a_declaration_mistake(
     assert_eq!(slot, None, "nothing is filled in");
 }
 
+/// An answered question is recorded as coming from the prompt, under its argument's id:
+/// the same record a secret or a list of values gets, so where a value came from does
+/// not depend on which kind of question produced it.
+#[test]
+fn an_answered_question_is_recorded_as_prompted() {
+    let mut slot: Option<u8> = None;
+    let mut session = answering("3");
+
+    session
+        .ask_for(&mut slot, &command(), "count", "How many?")
+        .expect("3 is a u8");
+
+    assert_eq!(slot, Some(3));
+    assert_eq!(
+        session.provenance().source_of("count"),
+        Some(clifacet::provenance::Source::Prompt)
+    );
+    assert!(!session.provenance().is_secret("count"));
+}
+
+/// A rejected answer fills nothing, so it records nothing either.
+#[test]
+fn a_rejected_answer_is_not_recorded() {
+    let mut slot: Option<u8> = None;
+    let mut session = answering("many");
+
+    session
+        .ask_for(&mut slot, &command(), "count", "How many?")
+        .expect_err("not a u8");
+
+    assert!(session.provenance().is_empty());
+}
+
 #[test]
 fn an_answer_that_parses_to_another_type_than_the_field_is_a_declaration_mistake() {
     // The argument's parser yields `u8`; the slot says `String`.

@@ -12,11 +12,24 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### ⚠ BREAKING CHANGE
 
+* Session::confirm returns Confirmation instead of bool; call
+.is_confirmed() where a boolean is wanted.
+
 * the json feature is removed; enable serde instead and
 depend on serde_json in the application.
 
 ### Added
 
+* **backlog-lite:** ask which status a bare --status filter means
+([ab39746](https://github.com/Archont561/clifacet/commit/ab39746157fad24ea6a0d9ca8b777f41f0215f75))
+* **prompt:** collect a list by repeating one question until the user stops
+([dcc080f](https://github.com/Archont561/clifacet/commit/dcc080fffa5c895b3be2c01f0e54914713521d29))
+* **prompt:** ask for a secret without echo, and record prompted answers
+([91383e7](https://github.com/Archont561/clifacet/commit/91383e724a6636a5468dc3929b7d89adcf5f47fa))
+* **prompt:** ask the user to pick one of a fixed set of values
+([222318e](https://github.com/Archont561/clifacet/commit/222318e027ec92970e5435c5cb660a423eda4faf))
+* **prompt:** say how a confirmation was settled
+([f6cdc44](https://github.com/Archont561/clifacet/commit/f6cdc44705d9f5f58431340d09d20cb26d808981))
 * retire the reserved json feature in favour of serde
 ([80e330e](https://github.com/Archont561/clifacet/commit/80e330e90f31203ea0698aeef8b0f885a3bf4c93))
 * **failure:** serialise failures and redacted secrets behind an optional serde feature

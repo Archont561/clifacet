@@ -37,6 +37,7 @@ mod dialog;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::fmt::{self, Write as _};
 use std::io::{BufRead, Write};
 use std::rc::Rc;
 
@@ -47,6 +48,8 @@ use crate::command::Command;
 use crate::facet::describe_argument;
 use crate::failure::Failure;
 use crate::policy::Plan;
+use crate::provenance::{Provenance, Source};
+use crate::secret::Secret;
 
 /// Somewhere to ask the user a question.
 ///
@@ -72,6 +75,158 @@ pub trait Prompter {
     ///
     /// As [`Prompter::ask`].
     fn confirm(&mut self, question: &str) -> Result<bool, Failure>;
+
+    /// Asks the user to pick one of `choices`, and returns its position.
+    ///
+    /// The provided implementation works for any frontend that can [`ask`](Self::ask):
+    /// it lists the choices, numbered, and accepts a number or a label in any case. It
+    /// asks once, because a frontend written before choices existed may not be able
+    /// to ask again; a frontend that can — [`Terminal`] does — re-asks instead.
+    ///
+    /// # Errors
+    ///
+    /// As [`Prompter::ask`], plus [`Failure::validation`](crate::Failure::validation)
+    /// when the answer names none of the choices.
+    fn choose(&mut self, question: &str, choices: &[Choice]) -> Result<usize, Failure> {
+        let answer = self.ask(&menu(question, choices))?;
+        pick(&answer, choices).ok_or_else(|| {
+            Failure::validation(format!(
+                "{answer:?} is not one of the choices for {question:?}: {}",
+                labels(choices)
+            ))
+        })
+    }
+
+    /// Asks for a secret without echoing what is typed.
+    ///
+    /// The provided implementation refuses: a frontend that cannot hide its input must
+    /// not fall back to [`ask`](Self::ask), because a secret shown on screen — and in
+    /// the scrollback, and in a recorded session — is worse than a question not asked.
+    /// [`Dialog`] overrides it; [`Terminal`] reads plain lines and keeps the refusal.
+    ///
+    /// # Errors
+    ///
+    /// As [`Prompter::ask`]; the provided implementation always returns
+    /// [`Failure::execution`](crate::Failure::execution), saying it cannot hide input.
+    fn ask_secret(&mut self, question: &str) -> Result<String, Failure> {
+        Err(Failure::execution(format!(
+            "this frontend cannot ask {question:?} without echoing the answer, so it does \
+             not ask at all: supply the value instead, or use a frontend that hides input"
+        )))
+    }
+}
+
+/// One option of a multiple-choice question, as a frontend shows it.
+///
+/// A frontend sees labels, never values, which is what keeps [`Prompter`] usable
+/// behind `dyn`: [`Session::choose`] keeps the values and maps the position a
+/// frontend returns back to one of them.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Choice {
+    label: String,
+    help: Option<String>,
+}
+
+impl Choice {
+    /// A choice called `label`.
+    #[must_use]
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            help: None,
+        }
+    }
+
+    /// The same choice, with a line saying what picking it means.
+    #[must_use]
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
+
+    /// What the choice is called.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// What picking it means, when that was said.
+    #[must_use]
+    pub fn help(&self) -> Option<&str> {
+        self.help.as_deref()
+    }
+
+    /// The one line a list shows for this choice: its label, then its help.
+    pub(crate) fn line(&self) -> String {
+        match &self.help {
+            Some(help) => format!("{} — {help}", self.label),
+            None => self.label.clone(),
+        }
+    }
+}
+
+/// A question followed by its choices, numbered from one, ready to be read as text.
+fn menu(question: &str, choices: &[Choice]) -> String {
+    let mut menu = String::from(question);
+    for (number, choice) in (1..).zip(choices) {
+        let _ = write!(menu, "\n  {number}. {}", choice.line());
+    }
+    menu.push_str("\nNumber or name:");
+    menu
+}
+
+/// The choice an answer names: its number, counted from one, or its label in any case.
+fn pick(answer: &str, choices: &[Choice]) -> Option<usize> {
+    let answer = answer.trim();
+    if let Ok(number) = answer.parse::<usize>() {
+        return number.checked_sub(1).filter(|&index| index < choices.len());
+    }
+    let answer = answer.to_lowercase();
+    choices
+        .iter()
+        .position(|choice| choice.label.to_lowercase() == answer)
+}
+
+/// The labels of `choices`, quoted, for a message that says what was on offer.
+fn labels(choices: &[Choice]) -> String {
+    choices
+        .iter()
+        .map(|choice| format!("{:?}", choice.label))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// How a confirmation was settled.
+///
+/// "Not confirmed" has two very different causes — the user said no, or nobody could be
+/// asked — and an application usually answers them differently: the first is a decision
+/// to cancel, the second is a reason to say "pass `--yes`". Keeping them apart here is
+/// what lets a caller stop inspecting the [`Plan`] itself.
+///
+/// [`Confirmation::is_confirmed`] is the fail-safe boolean for a caller that does not
+/// care how: only a yes, or `--yes`, proceeds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[must_use = "an unread confirmation is a question nobody acted on"]
+pub enum Confirmation {
+    /// The user was asked and said yes.
+    Confirmed,
+    /// The user was asked and said no.
+    Declined,
+    /// Nobody was asked: `--yes` answered for them.
+    Assumed,
+    /// Nobody was asked, and nothing could be: the plan asks the user nothing.
+    Unavailable,
+}
+
+impl Confirmation {
+    /// Whether the run may proceed: confirmed by the user, or assumed by `--yes`.
+    ///
+    /// An unanswerable confirmation is *not* a confirmation, so this is `false` when
+    /// nothing could ask — a caller that only reads the boolean fails safe.
+    #[must_use]
+    pub const fn is_confirmed(self) -> bool {
+        matches!(self, Self::Confirmed | Self::Assumed)
+    }
 }
 
 /// What a scripted frontend answers.
@@ -167,6 +322,35 @@ impl Prompter for Scripted {
             ))),
         }
     }
+
+    /// A script chooses by label, exactly as offered: a test names what it picks,
+    /// and a label the question does not offer is a broken script, not a typo to
+    /// forgive.
+    fn choose(&mut self, question: &str, choices: &[Choice]) -> Result<usize, Failure> {
+        match self.next(question)? {
+            Answer::Text(label) => choices
+                .iter()
+                .position(|choice| choice.label == label)
+                .ok_or_else(|| {
+                    Failure::execution(format!(
+                        "the script chose {label:?} for {question:?}, which offers only {}",
+                        labels(choices)
+                    ))
+                }),
+            Answer::Cancel => Err(Failure::cancelled(format!(
+                "the user dismissed {question:?}"
+            ))),
+            answer => Err(Failure::execution(format!(
+                "the script answered {question:?} with {answer:?} where one of {} was needed",
+                labels(choices)
+            ))),
+        }
+    }
+
+    /// A script has no screen to echo on, so a secret is answered like any text.
+    fn ask_secret(&mut self, question: &str) -> Result<String, Failure> {
+        self.ask(question)
+    }
 }
 
 /// A frontend that asks a person on a terminal.
@@ -229,6 +413,17 @@ impl<R: BufRead, W: Write> Prompter for Terminal<R, W> {
                 // Re-ask rather than guess: a confirmation that defaults on a typo
                 // is worse than one more question.
                 _ => (),
+            }
+        }
+    }
+
+    fn choose(&mut self, question: &str, choices: &[Choice]) -> Result<usize, Failure> {
+        let menu = menu(question, choices);
+        loop {
+            // The same rule as a confirmation: an answer that names nothing is asked
+            // again, with the list shown again, rather than resolved to a guess.
+            if let Some(index) = pick(&self.line(&menu)?, choices) {
+                return Ok(index);
             }
         }
     }
@@ -298,6 +493,7 @@ pub trait Collect: Sized {
 pub struct Session {
     plan: Plan,
     prompter: Option<Box<dyn Prompter>>,
+    provenance: Provenance,
 }
 
 impl Session {
@@ -309,6 +505,7 @@ impl Session {
         Self {
             plan,
             prompter: plan.with_frontend(build),
+            provenance: Provenance::default(),
         }
     }
 
@@ -316,6 +513,18 @@ impl Session {
     #[must_use]
     pub const fn plan(&self) -> Plan {
         self.plan
+    }
+
+    /// Where the values this session's own questions produced came from.
+    ///
+    /// Every answered [`ask_for`](Self::ask_for), [`ask_secret`](Self::ask_secret) and
+    /// [`collect_values`](Self::collect_values) is recorded here as
+    /// [`Source::Prompt`] under the name it was asked for — a secret with the secret
+    /// flag set, so it can be reported without its value. A value that was *supplied*
+    /// is not: where it came from is known where it was parsed.
+    #[must_use]
+    pub const fn provenance(&self) -> &Provenance {
+        &self.provenance
     }
 
     /// Takes the supplied value, or asks for one when the plan permits.
@@ -342,23 +551,142 @@ impl Session {
         }
     }
 
-    /// Confirms, unless `--yes` already answered or nothing may ask.
+    /// Confirms, unless `--yes` already answered or nothing may ask, and says which.
     ///
-    /// When the plan asks nothing this returns `Ok(false)`: an unanswerable
-    /// confirmation is *not* a confirmation, so a caller that forgets to check the
-    /// plan fails safe instead of proceeding.
+    /// `--yes` settles it as [`Confirmation::Assumed`] without asking; a plan that asks
+    /// nothing settles it as [`Confirmation::Unavailable`], which
+    /// [`Confirmation::is_confirmed`] reads as *no* — an unanswerable confirmation is
+    /// not consent, so a caller that only wants the boolean fails safe.
     ///
     /// # Errors
     ///
-    /// Returns the frontend's failure, including cancellation.
-    pub fn confirm(&mut self, question: &str) -> Result<bool, Failure> {
+    /// Returns the frontend's failure, including cancellation — dismissing the
+    /// question is not the same answer as declining it.
+    pub fn confirm(&mut self, question: &str) -> Result<Confirmation, Failure> {
         if self.plan.assumes_yes() {
-            return Ok(true);
+            return Ok(Confirmation::Assumed);
         }
         match self.prompter.as_mut() {
-            Some(prompter) => prompter.confirm(question),
-            None => Ok(false),
+            Some(prompter) => Ok(if prompter.confirm(question)? {
+                Confirmation::Confirmed
+            } else {
+                Confirmation::Declined
+            }),
+            None => Ok(Confirmation::Unavailable),
         }
+    }
+
+    /// Takes the supplied choice, or asks the user to pick one of `options`.
+    ///
+    /// Each option is shown by its [`Display`](fmt::Display) text, and the option
+    /// itself — not its label read back and parsed — is what comes back. As with
+    /// [`Session::value`], a supplied value is returned untouched, even one that is not
+    /// among `options`: checking it is the parser's job, and prompting never changes an
+    /// explicit choice. `None` means it was missing and nothing may ask.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::execution`](crate::Failure::execution) when `options` is
+    /// empty — a declaration mistake, reported before anything is asked — or when the
+    /// frontend answers with a position it was not offered, and the frontend's
+    /// failure, including cancellation, when the question is not answered.
+    pub fn choose<T: fmt::Display>(
+        &mut self,
+        supplied: Option<T>,
+        question: &str,
+        options: impl IntoIterator<Item = T>,
+    ) -> Result<Option<T>, Failure> {
+        if supplied.is_some() {
+            return Ok(supplied);
+        }
+        let mut options: Vec<T> = options.into_iter().collect();
+        if options.is_empty() {
+            return Err(Failure::execution(format!(
+                "{question:?} offers nothing to choose from"
+            )));
+        }
+        let Some(prompter) = self.prompter.as_mut() else {
+            return Ok(None);
+        };
+        let choices: Vec<Choice> = options
+            .iter()
+            .map(|option| Choice::new(option.to_string()))
+            .collect();
+        let index = prompter.choose(question, &choices)?;
+        if index >= options.len() {
+            return Err(Failure::execution(format!(
+                "the frontend chose position {} for {question:?}, which offers {}",
+                index + 1,
+                options.len()
+            )));
+        }
+        Ok(Some(options.swap_remove(index)))
+    }
+
+    /// Takes the supplied secret, or asks for one without echoing it.
+    ///
+    /// The answer is wrapped in a [`Secret`] the moment it arrives, so it is reachable
+    /// only through [`Secret::expose`]: the session keeps no copy, and its provenance
+    /// records `name` as a secret from the prompt — that a value was asked for, never
+    /// what it was. A supplied secret is returned untouched and is not recorded.
+    ///
+    /// # Errors
+    ///
+    /// Returns the frontend's failure, including cancellation, and
+    /// [`Failure::execution`](crate::Failure::execution) from a frontend that cannot
+    /// hide what is typed — [`Terminal`] among them — rather than asking in the clear.
+    pub fn ask_secret(
+        &mut self,
+        supplied: Option<Secret<String>>,
+        name: &str,
+        question: &str,
+    ) -> Result<Option<Secret<String>>, Failure> {
+        if supplied.is_some() {
+            return Ok(supplied);
+        }
+        let Some(prompter) = self.prompter.as_mut() else {
+            return Ok(None);
+        };
+        let secret = Secret::new(prompter.ask_secret(question)?);
+        self.provenance.record_secret(name, Source::Prompt);
+        Ok(Some(secret))
+    }
+
+    /// Takes the supplied values, or asks one question repeatedly to collect a list.
+    ///
+    /// The same `question` is asked again after every answer, and an empty — or blank —
+    /// answer ends the list; say so in the question, because the session does not
+    /// reword it. A non-empty `supplied` list is returned untouched, and when nothing
+    /// may ask the (empty) supplied list comes back as it was. A finished list is
+    /// recorded in the session's provenance as [`Source::Prompt`] under `name`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the frontend's failure when any answer is not given — including
+    /// cancellation part-way through. The values gathered before it are discarded:
+    /// a partially collected list is never returned as success.
+    pub fn collect_values(
+        &mut self,
+        supplied: Vec<String>,
+        name: &str,
+        question: &str,
+    ) -> Result<Vec<String>, Failure> {
+        if !supplied.is_empty() {
+            return Ok(supplied);
+        }
+        let Some(prompter) = self.prompter.as_mut() else {
+            return Ok(supplied);
+        };
+        let mut values = Vec::new();
+        loop {
+            let answer = prompter.ask(question)?;
+            if answer.trim().is_empty() {
+                break;
+            }
+            values.push(answer);
+        }
+        self.provenance.record(name, Source::Prompt);
+        Ok(values)
     }
 
     /// Fills an optional argument by asking, when no flag supplied it.
@@ -394,6 +722,7 @@ impl Session {
             return Ok(());
         };
         *slot = Some(parse_answer(command, id, &answer)?);
+        self.provenance.record(id, Source::Prompt);
         Ok(())
     }
 
@@ -414,7 +743,9 @@ impl Session {
         id: &str,
         question: &str,
     ) -> Result<(), Failure> {
-        if !set || !self.plan.asks_the_user() || self.confirm(question)? {
+        // Only a refusal stops the run: a flag nobody could be asked about is the
+        // unattended request it was typed as.
+        if !set || self.confirm(question)? != Confirmation::Declined {
             return Ok(());
         }
         Err(Failure::cancelled(format!(
@@ -522,12 +853,13 @@ fn clap_wording(error: &clap::Error) -> String {
         .to_owned()
 }
 
-impl std::fmt::Debug for Session {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Session {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Session")
             .field("plan", &self.plan)
             .field("prompter", &self.prompter.as_ref().map(|_| "constructed"))
+            .field("provenance", &self.provenance)
             .finish()
     }
 }

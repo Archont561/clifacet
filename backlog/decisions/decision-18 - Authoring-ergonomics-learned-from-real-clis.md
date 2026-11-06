@@ -2,7 +2,7 @@
 id: decision-18
 title: Authoring ergonomics, learned from Backlog.md, citty and typer
 date: '2026-11-02 00:40'
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -123,3 +123,49 @@ application can *ask* and *show*.
 - The wrapper itself stays an example crate (`publish = false`, a workspace member), so it is
   compiled and tested by CI but never published; it is the second worked example the project
   has and the first that wraps somebody else's CLI.
+
+## Acceptance note (2026-11-06)
+
+Accepted by the maintainer on 2026-11-06 "as suggested". The Decision above is left as it
+was proposed; this note records the verdict per item.
+
+- **Items 1, 2, 3, 4 and 7 are accepted.** Items 1–3 (`choose`, `ask_secret` with
+  `collect_values`, the classified confirmation) are CLI-30; items 4 and 7
+  (`Provenance::from_matches`, `report::render`) are CLI-31.
+- **Item 5 (`Command::plan` for `--dry-run`) is accepted but built last**, after the rest of
+  CLI-31, because it is the only item that changes how a run is executed.
+- **Item 6 (parity-test shorthand) is deferred.** The parity tests it would shorten are few
+  and readable as they are; it can be proposed again if a third worked example repeats the
+  pattern.
+
+## Implementation note for items 1–3 (2026-11-06, CLI-30)
+
+Where the shipped API differs from the Decision above, and why:
+
+- **`Prompter::choose` returns a position, and `Choice` carries no value.** A value-carrying
+  `Choice<T>` would make the method generic, and a generic method cannot be called through
+  the `Box<dyn Prompter>` a `Session` holds. So a frontend sees `Choice` labels (with
+  optional help) and returns an index; `Session::choose<T: Display>(supplied, question,
+  options)` keeps the values, labels them by `Display`, and maps the index back, failing
+  on one it never offered. Passing help through `Session::choose` is not offered yet.
+- **New `Prompter` methods are provided, so existing frontends keep compiling.** `choose`
+  defaults to a numbered list read through `ask`. `ask_secret` defaults to a *refusal*:
+  falling back to `ask` would echo the credential. `Terminal` keeps the refusal, because
+  a line reader cannot switch echo off; `Dialog` asks with a hidden `inquire::Password`.
+- **The enum is `Confirmation`, with four variants.** "Asked" has to carry the answer, so
+  it is `Confirmed`/`Declined` beside `Assumed` and `Unavailable`; `Confirm` would also
+  collide with `inquire::Confirm` where the dialog uses both. Changing the return type of
+  `Session::confirm` is breaking, which the proposal implied despite its "public API
+  addition" framing; `is_confirmed()` is the migration.
+- **The session keeps its own `Provenance`.** Answered `ask_for`, `ask_secret` (flagged
+  secret) and `collect_values` record `Source::Prompt`; a supplied value is not recorded,
+  because where it came from is item 4's job (`Provenance::from_matches`, CLI-31).
+- **`collect_values` collects strings.** An empty or blank answer ends the list, and the
+  question is not reworded, so it should say how to finish. A failure part-way discards
+  what was gathered.
+- **backlog-lite's status filter asks only for a bare `--status`.** `bl list` is the
+  default verb and must not grow a question; `--status` with no value asks, and is
+  refused as incomplete where nothing can ask.
+- **Not in CLI-30:** the `tui` form's choice field (a Consequence above), `ask` on a
+  `secret` field in the derive, and typed `collect_values`.
+

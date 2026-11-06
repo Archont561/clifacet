@@ -178,6 +178,15 @@ fn yes_answers_the_confirmation_without_asking() {
     clifacet_backlog_lite::confirm_status("CLI-20", Status::Done, &mut session).expect("confirmed");
 }
 
+/// `--yes` is the answer a pipe gives in advance, so a run with no terminal that passed
+/// it must proceed rather than be told to pass the flag it already passed.
+#[test]
+fn yes_settles_the_confirmation_even_when_nothing_can_ask() {
+    let mut session = Session::start(headless_with_yes(), || Box::new(Scripted::default()));
+    clifacet_backlog_lite::confirm_status("CLI-20", Status::Done, &mut session)
+        .expect("--yes said so in advance");
+}
+
 #[test]
 fn a_state_change_nothing_can_confirm_asks_for_yes_instead_of_declining() {
     let mut session = Session::start(headless(), || Box::new(Scripted::default()));
@@ -205,8 +214,101 @@ fn interactive_with_yes() -> clifacet::policy::Plan {
         .expect("resolves")
 }
 
+fn headless_with_yes() -> clifacet::policy::Plan {
+    Policy::up_to(Mode::Interactive)
+        .resolve(
+            ModeRequest::none().assuming_yes(true),
+            Capabilities::headless(),
+        )
+        .expect("resolves")
+}
+
 fn headless() -> clifacet::policy::Plan {
     Policy::non_interactive()
         .resolve(ModeRequest::none(), Capabilities::headless())
         .expect("resolves")
+}
+
+/// Runs `bl --dry-run …` and returns its exit code, what it printed, and what it asked.
+fn dry_run(
+    arguments: &[&str],
+    capabilities: Capabilities,
+    answers: impl IntoIterator<Item = Answer>,
+) -> (i32, String, String, Vec<String>) {
+    let script = Scripted::new(answers);
+    let probe = script.clone();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut argv = vec!["--dry-run"];
+    argv.extend_from_slice(arguments);
+    let code = clifacet_backlog_lite::app(
+        cli(&argv),
+        capabilities,
+        move || Box::new(probe),
+        &mut out,
+        &mut err,
+    );
+    (
+        code,
+        String::from_utf8(out).expect("UTF-8"),
+        String::from_utf8(err).expect("UTF-8"),
+        script.asked(),
+    )
+}
+
+/// `--status` with no value asks which one, offering exactly the statuses there are.
+#[test]
+fn a_bare_status_filter_is_a_choice() {
+    let (code, out, err, asked) = dry_run(
+        &["list", "--status"],
+        Capabilities::terminal(),
+        [Answer::Text(String::from("In Progress"))],
+    );
+
+    assert_eq!(code, clifacet_backlog_lite::EXIT.success(), "{err}");
+    assert_eq!(asked, ["Which status?"]);
+    assert!(
+        out.contains("backlog task list --status 'In Progress'"),
+        "{out}"
+    );
+}
+
+/// The common flow stays a plain list: no flag, no question.
+#[test]
+fn listing_without_a_status_asks_nothing() {
+    let (code, out, err, asked) = dry_run(&["list"], Capabilities::terminal(), []);
+
+    assert_eq!(code, clifacet_backlog_lite::EXIT.success(), "{err}");
+    assert_eq!(asked, [""; 0]);
+    assert!(out.contains("backlog task list"), "{out}");
+}
+
+#[test]
+fn a_named_status_is_never_asked_about() {
+    let (code, out, _, asked) =
+        dry_run(&["list", "--status", "done"], Capabilities::terminal(), []);
+
+    assert_eq!(code, clifacet_backlog_lite::EXIT.success());
+    assert_eq!(asked, [""; 0]);
+    assert!(out.contains("--status Done"), "{out}");
+}
+
+/// Nothing can ask in a pipe, so a bare `--status` is an incomplete command, named as
+/// such — not a silently unfiltered list.
+#[test]
+fn a_bare_status_filter_nothing_can_ask_about_is_refused() {
+    let (code, out, err, asked) = dry_run(&["list", "--status"], Capabilities::headless(), []);
+
+    assert_eq!(code, clifacet_backlog_lite::EXIT.validation(), "{out}");
+    assert_eq!(asked, [""; 0]);
+    assert!(
+        err.contains("--status") && err.contains("In Progress"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_bare_status_filter_without_a_session_is_refused() {
+    let failure = Request::try_from(cli(&["list", "--status"])).expect_err("incomplete");
+
+    assert_eq!(failure.kind(), clifacet::FailureKind::Validation);
 }
