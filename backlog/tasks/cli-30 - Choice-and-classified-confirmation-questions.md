@@ -1,9 +1,10 @@
 ---
 id: CLI-30
 title: Choice and classified-confirmation questions
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-01 22:34'
+updated_date: '2026-11-06 09:41'
 labels: []
 milestone: m-6
 dependencies: []

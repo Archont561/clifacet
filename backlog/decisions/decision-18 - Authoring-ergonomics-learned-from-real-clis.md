@@ -2,7 +2,7 @@
 id: decision-18
 title: Authoring ergonomics, learned from Backlog.md, citty and typer
 date: '2026-11-02 00:40'
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -123,3 +123,17 @@ application can *ask* and *show*.
 - The wrapper itself stays an example crate (`publish = false`, a workspace member), so it is
   compiled and tested by CI but never published; it is the second worked example the project
   has and the first that wraps somebody else's CLI.
+
+## Acceptance note (2026-11-06)
+
+Accepted by the maintainer on 2026-11-06 "as suggested". The Decision above is left as it
+was proposed; this note records the verdict per item.
+
+- **Items 1, 2, 3, 4 and 7 are accepted.** Items 1–3 (`choose`, `ask_secret` with
+  `collect_values`, the classified confirmation) are CLI-30; items 4 and 7
+  (`Provenance::from_matches`, `report::render`) are CLI-31.
+- **Item 5 (`Command::plan` for `--dry-run`) is accepted but built last**, after the rest of
+  CLI-31, because it is the only item that changes how a run is executed.
+- **Item 6 (parity-test shorthand) is deferred.** The parity tests it would shorten are few
+  and readable as they are; it can be proposed again if a third worked example repeats the
+  pattern.
