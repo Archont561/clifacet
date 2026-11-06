@@ -1,10 +1,10 @@
 ---
 id: CLI-36
 title: Make serde optional behind a feature that serialises failures
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01 22:46'
-updated_date: '2026-11-04 15:25'
+updated_date: '2026-11-06 09:05'
 labels: []
 milestone: m-9
 dependencies: []
@@ -38,4 +38,6 @@ serde is a non-optional dependency of clifacet that the crate never references, 
 - **AC#5.** `docs/getting-started.md#features` has a table of what each feature adds and what it costs, named by the crates it pulls in rather than by counts that would rot; README, development.md, command-core.md and the crate docs link to it. Measured on Linux from the lock: `interactive` +28 crates, `tui` +54, `serde` +3.
 - **BDD narrowing, stated.** No scenario. The library writes no JSON (decision-3), so there is no user-visible workflow in the crate to describe: the promise is the serialised *shape*, which is an API property proven by the rstest tables above. A scenario would only restate them. The existing `secret.feature` scenarios cover redaction in diagnostics and provenance, not serialisation; that half is proven only by the tests above.
 - `test-local` is green. All ACs are checked; the task stays In Progress until the maintainer accepts it.
+
+- 2026-11-06: merged in PR #47 (`ca0865de`), as `d644a0e9` (serde feature) and `80e330e9` (`json` retired, breaking). All five ACs are checked; closed with maintainer approval.
 <!-- SECTION:NOTES:END -->
