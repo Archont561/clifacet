@@ -721,3 +721,111 @@ fn a_frontend_without_a_secret_question_refuses_instead_of_asking_in_the_clear()
     assert_eq!(failure.kind(), FailureKind::Execution);
     assert!(session.provenance().is_empty());
 }
+
+// --- Lists: one question repeated until the user stops; never a partial success ---
+
+fn texts(answers: &[&str]) -> Vec<Answer> {
+    answers
+        .iter()
+        .map(|answer| Answer::Text((*answer).to_owned()))
+        .collect()
+}
+
+fn owned(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| (*value).to_owned()).collect()
+}
+
+#[rstest]
+#[case::until_an_empty_answer(interactive(), &[], &["cli", "docs", ""], &["cli", "docs"], 3)]
+#[case::a_blank_answer_also_stops(interactive(), &[], &["cli", "   "], &["cli"], 2)]
+#[case::stopping_at_once_is_an_empty_list(interactive(), &[], &[""], &[], 1)]
+#[case::supplied_is_not_re_asked(interactive(), &["ops"], &["cli", ""], &["ops"], 0)]
+#[case::nothing_can_ask(non_interactive(), &[], &["cli", ""], &[], 0)]
+fn a_list_is_collected_only_when_missing(
+    #[case] plan: Plan,
+    #[case] supplied: &[&str],
+    #[case] answers: &[&str],
+    #[case] expected: &[&str],
+    #[case] expected_asks: usize,
+) {
+    let script = Scripted::new(texts(answers));
+    let probe = script.clone();
+    let mut session = Session::start(plan, move || Box::new(probe));
+
+    let collected = session
+        .collect_values(owned(supplied), "label", "Label (empty to finish)?")
+        .expect("the list was finished");
+
+    assert_eq!(collected, owned(expected));
+    assert_eq!(
+        script.asked().len(),
+        expected_asks,
+        "asked: {:?}",
+        script.asked()
+    );
+    assert!(
+        script
+            .asked()
+            .iter()
+            .all(|asked| asked == "Label (empty to finish)?"),
+        "the same question each time: {:?}",
+        script.asked()
+    );
+}
+
+/// Stopping part-way is not finishing: the values gathered so far are discarded, so a
+/// caller can never mistake two of three labels for the list the user meant.
+#[rstest]
+#[case::dismissed_part_way(&[Answer::Text(String::from("cli")), Answer::Cancel], FailureKind::Cancelled)]
+#[case::script_runs_out_part_way(&[Answer::Text(String::from("cli"))], FailureKind::Execution)]
+#[case::wrong_kind_of_answer_part_way(&[Answer::Text(String::from("cli")), Answer::Yes], FailureKind::Execution)]
+fn a_list_stopped_part_way_is_never_a_success(
+    #[case] answers: &[Answer],
+    #[case] kind: FailureKind,
+) {
+    let script = Scripted::new(answers.to_vec());
+    let mut session = Session::start(interactive(), move || Box::new(script));
+
+    let failure = session
+        .collect_values(Vec::new(), "label", "Label?")
+        .expect_err("a partial list is not returned");
+
+    assert_eq!(failure.kind(), kind, "{}", failure.message());
+    assert!(
+        session.provenance().is_empty(),
+        "an unfinished list records nothing"
+    );
+}
+
+#[test]
+fn a_finished_list_is_recorded_as_prompted() {
+    let mut session = Session::start(interactive(), || {
+        Box::new(Scripted::new(texts(&["cli", ""])))
+    });
+
+    session
+        .collect_values(Vec::new(), "label", "Label?")
+        .expect("finished");
+
+    assert_eq!(
+        session.provenance().source_of("label"),
+        Some(Source::Prompt)
+    );
+    assert!(!session.provenance().is_secret("label"));
+}
+
+#[test]
+fn a_supplied_or_unaskable_list_is_not_recorded() {
+    let mut supplied = Session::start(interactive(), || Box::new(Scripted::default()));
+    supplied
+        .collect_values(owned(&["ops"]), "label", "Label?")
+        .expect("never asked");
+
+    let mut unaskable = Session::start(non_interactive(), || Box::new(Scripted::default()));
+    unaskable
+        .collect_values(Vec::new(), "label", "Label?")
+        .expect("nothing may ask");
+
+    assert!(supplied.provenance().is_empty());
+    assert!(unaskable.provenance().is_empty());
+}

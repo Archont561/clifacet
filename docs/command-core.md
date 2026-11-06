@@ -284,6 +284,12 @@ provided `Prompter::ask_secret` fails rather than fall back to `ask`, so neither
 `Terminal` nor a frontend written before secrets existed can echo one by accident.
 Every answered `ask_for` is recorded the same way, unflagged, under its argument's id.
 
+`Session::collect_values` asks one question repeatedly to build a list, and an empty
+or blank answer ends it — the session does not reword the question, so the question
+should say so. Stopping part-way is not finishing: a dismissal, or a frontend that
+breaks, after two of three values returns the failure and discards the two, so a
+partially collected list is never handed back as the list the user meant.
+
 ## The full-screen form
 
 The `tui` feature adds a full-screen frontend, and the components it draws with are

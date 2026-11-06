@@ -652,6 +652,43 @@ impl Session {
         Ok(Some(secret))
     }
 
+    /// Takes the supplied values, or asks one question repeatedly to collect a list.
+    ///
+    /// The same `question` is asked again after every answer, and an empty — or blank —
+    /// answer ends the list; say so in the question, because the session does not
+    /// reword it. A non-empty `supplied` list is returned untouched, and when nothing
+    /// may ask the (empty) supplied list comes back as it was. A finished list is
+    /// recorded in the session's provenance as [`Source::Prompt`] under `name`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the frontend's failure when any answer is not given — including
+    /// cancellation part-way through. The values gathered before it are discarded:
+    /// a partially collected list is never returned as success.
+    pub fn collect_values(
+        &mut self,
+        supplied: Vec<String>,
+        name: &str,
+        question: &str,
+    ) -> Result<Vec<String>, Failure> {
+        if !supplied.is_empty() {
+            return Ok(supplied);
+        }
+        let Some(prompter) = self.prompter.as_mut() else {
+            return Ok(supplied);
+        };
+        let mut values = Vec::new();
+        loop {
+            let answer = prompter.ask(question)?;
+            if answer.trim().is_empty() {
+                break;
+            }
+            values.push(answer);
+        }
+        self.provenance.record(name, Source::Prompt);
+        Ok(values)
+    }
+
     /// Fills an optional argument by asking, when no flag supplied it.
     ///
     /// The answer is parsed by the argument's own `clap` parser — its value parser,
