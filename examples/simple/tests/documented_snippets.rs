@@ -99,6 +99,30 @@ fn command_core_snippet_2() {
     );
 }
 
+/// `command-core.md`, line 260.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_3() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    use clifacet::prompt::{Answer, Scripted, Session};
+    use clifacet::provenance::Source;
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("prompts are permitted here");
+    let mut session = Session::start(plan, || {
+        Box::new(Scripted::new([Answer::Text(String::from("s3cret"))]))
+    });
+    let token = session
+        .ask_secret(None, "token", "API token?")
+        .expect("answered")
+        .expect("asked");
+    assert_eq!(token.expose(), "s3cret");
+    assert_eq!(token.to_string(), "[redacted]");
+    assert_eq!(session.provenance().source_of("token"), Some(Source::Prompt));
+    assert!(session.provenance().is_secret("token"));
+}
+
 /// `derive.md`, line 7.
 #[rustfmt::skip]
 #[test]
@@ -200,7 +224,7 @@ fn derive_snippet_3() {
     assert_eq!(input.name, "grace");
 }
 
-/// `derive.md`, line 201.
+/// `derive.md`, line 202.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_4() {
@@ -238,7 +262,7 @@ fn derive_snippet_4() {
     assert_eq!(Cli::form_fields(), ["name", "seats"]);
 }
 
-/// `derive.md`, line 267.
+/// `derive.md`, line 268.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_5() {

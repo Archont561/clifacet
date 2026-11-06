@@ -48,6 +48,8 @@ use crate::command::Command;
 use crate::facet::describe_argument;
 use crate::failure::Failure;
 use crate::policy::Plan;
+use crate::provenance::{Provenance, Source};
+use crate::secret::Secret;
 
 /// Somewhere to ask the user a question.
 ///
@@ -93,6 +95,24 @@ pub trait Prompter {
                 labels(choices)
             ))
         })
+    }
+
+    /// Asks for a secret without echoing what is typed.
+    ///
+    /// The provided implementation refuses: a frontend that cannot hide its input must
+    /// not fall back to [`ask`](Self::ask), because a secret shown on screen — and in
+    /// the scrollback, and in a recorded session — is worse than a question not asked.
+    /// [`Dialog`] overrides it; [`Terminal`] reads plain lines and keeps the refusal.
+    ///
+    /// # Errors
+    ///
+    /// As [`Prompter::ask`]; the provided implementation always returns
+    /// [`Failure::execution`](crate::Failure::execution), saying it cannot hide input.
+    fn ask_secret(&mut self, question: &str) -> Result<String, Failure> {
+        Err(Failure::execution(format!(
+            "this frontend cannot ask {question:?} without echoing the answer, so it does \
+             not ask at all: supply the value instead, or use a frontend that hides input"
+        )))
     }
 }
 
@@ -326,6 +346,11 @@ impl Prompter for Scripted {
             ))),
         }
     }
+
+    /// A script has no screen to echo on, so a secret is answered like any text.
+    fn ask_secret(&mut self, question: &str) -> Result<String, Failure> {
+        self.ask(question)
+    }
 }
 
 /// A frontend that asks a person on a terminal.
@@ -468,6 +493,7 @@ pub trait Collect: Sized {
 pub struct Session {
     plan: Plan,
     prompter: Option<Box<dyn Prompter>>,
+    provenance: Provenance,
 }
 
 impl Session {
@@ -479,6 +505,7 @@ impl Session {
         Self {
             plan,
             prompter: plan.with_frontend(build),
+            provenance: Provenance::default(),
         }
     }
 
@@ -486,6 +513,18 @@ impl Session {
     #[must_use]
     pub const fn plan(&self) -> Plan {
         self.plan
+    }
+
+    /// Where the values this session's own questions produced came from.
+    ///
+    /// Every answered [`ask_for`](Self::ask_for), [`ask_secret`](Self::ask_secret) and
+    /// [`collect_values`](Self::collect_values) is recorded here as
+    /// [`Source::Prompt`] under the name it was asked for — a secret with the secret
+    /// flag set, so it can be reported without its value. A value that was *supplied*
+    /// is not: where it came from is known where it was parsed.
+    #[must_use]
+    pub const fn provenance(&self) -> &Provenance {
+        &self.provenance
     }
 
     /// Takes the supplied value, or asks for one when the plan permits.
@@ -584,6 +623,35 @@ impl Session {
         Ok(Some(options.swap_remove(index)))
     }
 
+    /// Takes the supplied secret, or asks for one without echoing it.
+    ///
+    /// The answer is wrapped in a [`Secret`] the moment it arrives, so it is reachable
+    /// only through [`Secret::expose`]: the session keeps no copy, and its provenance
+    /// records `name` as a secret from the prompt — that a value was asked for, never
+    /// what it was. A supplied secret is returned untouched and is not recorded.
+    ///
+    /// # Errors
+    ///
+    /// Returns the frontend's failure, including cancellation, and
+    /// [`Failure::execution`](crate::Failure::execution) from a frontend that cannot
+    /// hide what is typed — [`Terminal`] among them — rather than asking in the clear.
+    pub fn ask_secret(
+        &mut self,
+        supplied: Option<Secret<String>>,
+        name: &str,
+        question: &str,
+    ) -> Result<Option<Secret<String>>, Failure> {
+        if supplied.is_some() {
+            return Ok(supplied);
+        }
+        let Some(prompter) = self.prompter.as_mut() else {
+            return Ok(None);
+        };
+        let secret = Secret::new(prompter.ask_secret(question)?);
+        self.provenance.record_secret(name, Source::Prompt);
+        Ok(Some(secret))
+    }
+
     /// Fills an optional argument by asking, when no flag supplied it.
     ///
     /// The answer is parsed by the argument's own `clap` parser — its value parser,
@@ -617,6 +685,7 @@ impl Session {
             return Ok(());
         };
         *slot = Some(parse_answer(command, id, &answer)?);
+        self.provenance.record(id, Source::Prompt);
         Ok(())
     }
 
@@ -753,6 +822,7 @@ impl fmt::Debug for Session {
             .debug_struct("Session")
             .field("plan", &self.plan)
             .field("prompter", &self.prompter.as_ref().map(|_| "constructed"))
+            .field("provenance", &self.provenance)
             .finish()
     }
 }

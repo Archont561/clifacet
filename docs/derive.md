@@ -169,8 +169,9 @@ file:
   cannot be asked for, and only a flag that is set can be confirmed.
 - **`ask` and `form` need a named option.** An answer is parsed as the flag's value, and
   a form submits each field as its flag; a positional argument can be neither.
-- **No `ask` on a `secret`.** No frontend hides an answer yet, so the credential would be
-  echoed as it is typed.
+- **No `ask` on a `secret`.** The generated `collect` asks through `Session::ask_for`,
+  which shows what is typed; a secret is asked for by hand with `Session::ask_secret`,
+  which refuses on a frontend that cannot hide input instead of echoing it.
 - **A rule names the types it fits.** `trim` on a number or `secret` on a `String` says
   so, in those words.
 - **A declared `bridge = …` builds the whole input.** A `fill`/`trim`/`non_empty`/

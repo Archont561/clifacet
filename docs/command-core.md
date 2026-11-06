@@ -253,6 +253,37 @@ assert_eq!(
 A frontend sees only `Choice` labels, with optional help, and answers with a position;
 the session maps it back, and a position it never offered is the frontend's failure.
 
+`Session::ask_secret` asks for a credential without echoing it. The answer is a
+`Secret` from the moment it arrives, and the session's provenance records *that* it was
+prompted for, flagged secret — never what it was:
+
+```rust
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Answer, Scripted, Session};
+use clifacet::provenance::Source;
+
+let plan = Policy::up_to(Mode::Interactive)
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("prompts are permitted here");
+let mut session = Session::start(plan, || {
+    Box::new(Scripted::new([Answer::Text(String::from("s3cret"))]))
+});
+
+let token = session
+    .ask_secret(None, "token", "API token?")
+    .expect("answered")
+    .expect("asked");
+assert_eq!(token.expose(), "s3cret");
+assert_eq!(token.to_string(), "[redacted]");
+assert_eq!(session.provenance().source_of("token"), Some(Source::Prompt));
+assert!(session.provenance().is_secret("token"));
+```
+
+Hiding input is the frontend's job, and a frontend that cannot do it refuses: the
+provided `Prompter::ask_secret` fails rather than fall back to `ask`, so neither
+`Terminal` nor a frontend written before secrets existed can echo one by accident.
+Every answered `ask_for` is recorded the same way, unflagged, under its argument's id.
+
 ## The full-screen form
 
 The `tui` feature adds a full-screen frontend, and the components it draws with are
@@ -461,9 +492,10 @@ application's, and is listed so absence is not mistaken for oversight:
 - **Environment variables are readable by the same user,** through
   `/proc/<pid>/environ` and through any crash dump or core file. They are safer than
   argv, not safe.
-- **A prompted secret is echoed.** `prompt::Terminal` reads a line from stdin, so a
-  terminal shows what is typed and keeps it in scrollback. A no-echo prompt is not
-  implemented.
+- **A line terminal cannot hide a secret, so it does not ask for one.**
+  `prompt::Terminal` reads a line from stdin and has no way to switch echo off;
+  `Session::ask_secret` through it fails with an execution error rather than show what
+  is typed and leave it in scrollback. `Dialog` (feature `interactive`) asks blind.
 - **Plain values are not protected.** A credential held as a `String` prints as usual;
   the guarantee starts at `Secret<T>`.
 - **Errors from outside the framework** — a `clap` value parser's message, an I/O
@@ -544,6 +576,8 @@ Documented so nobody reads absence as oversight:
 - **Canonical argv replay.** The derive proves the command that was parsed; it
   does not rebuild argv or re-parse it, so constructs `clap` cannot re-validate
   stay out of scope.
-- **Secret-aware prompting.** A credential cannot be asked for without echo, and
-  `Provenance` is recorded by the application rather than inferred. Redaction itself
+- **Secret-aware prompting through the derive.** `Session::ask_secret` asks without
+  echo and records the prompt in the session's provenance, but the derive still refuses
+  `ask` on a `secret` field, and where a *supplied* value came from — argv or the
+  environment — is recorded by the application rather than inferred. Redaction itself
   is covered; see "What this cannot do" above for the boundaries.

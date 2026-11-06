@@ -10,6 +10,8 @@ use std::io::Cursor;
 
 use clifacet::policy::{Capabilities, Mode, Plan, Policy, Request};
 use clifacet::prompt::{Answer, Choice, Confirmation, Prompter, Scripted, Session, Terminal};
+use clifacet::provenance::Source;
+use clifacet::secret::Secret;
 use clifacet::{Command, Failure, FailureKind};
 use rstest::rstest;
 
@@ -580,4 +582,142 @@ fn a_choice_carries_a_label_and_optional_help() {
 
     assert_eq!((plain.label(), plain.help()), ("done", None));
     assert_eq!(explained.help(), Some("finished and verified"));
+}
+
+// --- Secrets: asked without echo, recorded as secret, reachable only through `Secret` ---
+
+const TOKEN: &str = "hunter2-correct-horse";
+
+#[rstest]
+#[case::prompted(interactive(), None, Some(TOKEN), 1)]
+#[case::supplied_is_not_re_asked(interactive(), Some("from-the-flag"), Some("from-the-flag"), 0)]
+#[case::nothing_can_ask(non_interactive(), None, None, 0)]
+fn a_secret_is_asked_only_when_missing(
+    #[case] plan: Plan,
+    #[case] supplied: Option<&str>,
+    #[case] expected: Option<&str>,
+    #[case] expected_asks: usize,
+) {
+    let script = Scripted::new([Answer::Text(TOKEN.to_owned())]);
+    let probe = script.clone();
+    let mut session = Session::start(plan, move || Box::new(probe));
+
+    let secret = session
+        .ask_secret(
+            supplied.map(|value| Secret::new(value.to_owned())),
+            "token",
+            "API token?",
+        )
+        .expect("this answer is usable");
+
+    assert_eq!(
+        secret.as_ref().map(|secret| secret.expose().as_str()),
+        expected
+    );
+    assert_eq!(
+        script.asked().len(),
+        expected_asks,
+        "asked: {:?}",
+        script.asked()
+    );
+}
+
+#[test]
+fn a_prompted_secret_is_recorded_as_a_secret_from_the_prompt() {
+    let mut session = Session::start(interactive(), || {
+        Box::new(Scripted::new([Answer::Text(TOKEN.to_owned())]))
+    });
+
+    session
+        .ask_secret(None, "token", "API token?")
+        .expect("answered");
+
+    assert_eq!(
+        session.provenance().source_of("token"),
+        Some(Source::Prompt)
+    );
+    assert!(session.provenance().is_secret("token"));
+}
+
+/// Where a supplied secret came from — argv or the environment — is known where it was
+/// parsed, not here; the session records only what its own questions produced.
+#[test]
+fn a_supplied_secret_is_not_attributed_to_the_prompt() {
+    let mut session = Session::start(interactive(), || Box::new(Scripted::default()));
+
+    session
+        .ask_secret(Some(Secret::new(TOKEN.to_owned())), "token", "API token?")
+        .expect("never asked");
+
+    assert_eq!(session.provenance().source_of("token"), None);
+}
+
+/// The value exists in one place, `Secret`; every other way to look at the session
+/// sees its name and where it came from, never the text.
+#[test]
+fn a_prompted_secret_is_reachable_only_through_secret() {
+    let mut session = Session::start(interactive(), || {
+        Box::new(Scripted::new([Answer::Text(TOKEN.to_owned())]))
+    });
+
+    let secret = session
+        .ask_secret(None, "token", "API token?")
+        .expect("answered")
+        .expect("asked");
+
+    assert_eq!(secret.expose(), TOKEN);
+    for shown in [
+        format!("{secret:?}"),
+        format!("{session:?}"),
+        format!("{}", session.provenance()),
+        format!("{:?}", session.provenance()),
+    ] {
+        assert!(!shown.contains(TOKEN), "the secret leaked into {shown:?}");
+    }
+}
+
+#[test]
+fn a_dismissed_secret_is_a_cancellation_and_records_nothing() {
+    let mut session = Session::start(interactive(), || Box::new(Scripted::new([Answer::Cancel])));
+
+    let failure = session
+        .ask_secret(None, "token", "API token?")
+        .expect_err("a cancel produces no value");
+
+    assert_eq!(failure.kind(), FailureKind::Cancelled);
+    assert!(session.provenance().is_empty());
+}
+
+/// A line-reading terminal cannot switch echo off, and echoing a secret is worse than
+/// not asking: it refuses before showing the question or reading a byte.
+#[test]
+fn a_line_terminal_refuses_to_ask_for_a_secret_rather_than_echo_it() {
+    let mut prompt = Vec::new();
+    let mut input = Cursor::new(format!("{TOKEN}\n"));
+    let failure = {
+        let mut terminal = Terminal::new(&mut input, &mut prompt);
+        terminal
+            .ask_secret("API token?")
+            .expect_err("it cannot hide what is typed")
+    };
+
+    assert_eq!(failure.kind(), FailureKind::Execution);
+    assert!(failure.message().contains("echo"), "{}", failure.message());
+    assert_eq!(prompt, b"", "the question was never shown");
+    assert_eq!(input.position(), 0, "nothing was read");
+}
+
+/// The provided `ask_secret` refuses too, so a frontend written before secrets existed
+/// cannot be tricked into echoing one through its `ask`.
+#[test]
+fn a_frontend_without_a_secret_question_refuses_instead_of_asking_in_the_clear() {
+    // `ask` would panic on the empty list: the refusal must come first.
+    let mut session = Session::start(interactive(), || Box::new(TextOnly(Vec::new())));
+
+    let failure = session
+        .ask_secret(None, "token", "API token?")
+        .expect_err("this frontend cannot hide input");
+
+    assert_eq!(failure.kind(), FailureKind::Execution);
+    assert!(session.provenance().is_empty());
 }

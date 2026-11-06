@@ -86,6 +86,22 @@ fn a_choice_without_a_terminal_fails_the_same_way() {
 }
 
 #[test]
+fn a_secret_without_a_terminal_fails_the_same_way() {
+    if !headless() {
+        return;
+    }
+
+    let failure = the_failure_it_reports(|| Dialog::new().ask_secret("API token?").map(drop));
+
+    assert_eq!(failure.kind(), FailureKind::Execution);
+    assert!(
+        failure.message().contains("terminal"),
+        "{}",
+        failure.message()
+    );
+}
+
+#[test]
 fn the_dialog_is_what_a_session_asks_through() {
     if !headless() {
         return;
