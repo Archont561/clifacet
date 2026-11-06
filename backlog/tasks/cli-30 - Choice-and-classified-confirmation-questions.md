@@ -1,10 +1,10 @@
 ---
 id: CLI-30
 title: Choice and classified-confirmation questions
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01 22:34'
-updated_date: '2026-11-06 09:59'
+updated_date: '2026-11-06 14:01'
 labels: []
 milestone: m-6
 dependencies: []
@@ -50,3 +50,9 @@ Narrowings (stated, not silent):
 
 Tests: prompting.rs 69 (choices, terminal menu, default-method fallback, out-of-range frontend, secrets incl. leak checks, lists incl. partial failure); declared_fields +2 (ask_for records prompt / rejected answer records nothing); dialog lib +2, dialog integration +2; backlog-lite flows 19 (+6) and questions_bdd 5 scenarios (new feature file; rstest-bdd added as a dev-dep, lockfile entry only); example secret_bdd +2 and prompting_bdd +1 scenarios. test-local exit 0: 67 + 393 nextest, 319 pytest.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed on maintainer authorisation (2026-11-06). All six ACs met and merged in PR #49 (`9a44d440`): `Choice`, `Prompter::choose`/`ask_secret`, `Session::{choose, ask_secret, collect_values, confirm -> Confirmation, provenance}`, and backlog-lite's status filter as a choice prompt. Narrowings recorded in the notes: inquire prompts are not key-driven in tests, only a bare `--status` prompts, and `collect_values` is untyped.
+<!-- SECTION:FINAL_SUMMARY:END -->

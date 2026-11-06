@@ -173,3 +173,72 @@ fn a_generated_form_submits_each_field_under_its_flag() {
         .validate()
         .expect("what the form submits, clap parses");
 }
+
+/// A command whose credential is both a form field and secret.
+#[clifacet::command(input = Login)]
+struct LoginCli {
+    /// Who signs in
+    #[clifacet(long, form)]
+    user: Option<String>,
+
+    /// The API token
+    #[clifacet(long, secret, form)]
+    token: Option<clifacet::secret::Secret<String>>,
+}
+
+struct Login {
+    user: Option<String>,
+    token: Option<clifacet::secret::Secret<String>>,
+}
+
+#[test]
+fn the_secret_fields_are_listed_in_declaration_order() {
+    assert_eq!(<LoginCli as Facet>::secret_fields(), ["token"]);
+    assert_eq!(
+        <Cli as Facet>::secret_fields(),
+        [""; 0],
+        "nothing declared secret"
+    );
+}
+
+/// A form built from the declarations masks a `secret` field by itself: forgetting a
+/// `mark_secret` call must not be how a token ends up on the screen.
+#[cfg(feature = "tui")]
+#[test]
+fn a_form_built_from_the_declarations_masks_its_secret_fields() {
+    use clifacet::tui::{FormState, Key};
+
+    let mut form = FormState::of::<LoginCli>().expect("the declared fields are the command's");
+    form.handle(Key::Tab);
+    for character in "s3cret".chars() {
+        form.handle(Key::Char(character));
+    }
+
+    let token = form.field("token").expect("the token is a form field");
+    assert!(token.is_secret(), "declared secret, so drawn as the marker");
+    assert!(!form.field("user").expect("a form field").is_secret());
+    assert_eq!(
+        form.arguments(),
+        ["--token", "s3cret"],
+        "masking is presentation only"
+    );
+    let login = LoginCli::try_parse_from(
+        std::iter::once("login").chain(form.arguments().iter().map(String::as_str)),
+    )
+    .expect("what the form submits, clap parses")
+    .validate()
+    .expect("valid");
+    assert_eq!(login.token.expect("submitted").expose(), "s3cret");
+    assert_eq!(login.user, None);
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_form_built_from_the_declarations_is_the_generated_form_otherwise() {
+    use clifacet::tui::FormState;
+
+    assert_eq!(
+        FormState::of::<Cli>().expect("declared"),
+        FormState::generated(&<Cli as Facet>::command(), Cli::form_fields()).expect("declared")
+    );
+}

@@ -332,3 +332,237 @@ fn a_generated_field_is_submitted_under_the_flag_clap_knows_it_by() {
         ("yes", "ada", "high")
     );
 }
+
+// --- Field kinds: what the grammar says a field is decides what a key does to it ---
+
+use clifacet::FailureKind;
+use clifacet::clap::ArgAction;
+use clifacet::tui::FieldState;
+
+/// A command with every kind of argument a form meets.
+#[derive(Debug, Parser)]
+#[command(name = "settings")]
+struct Settings {
+    /// Colour
+    #[arg(long, value_parser = ["red", "green", "grey"])]
+    colour: Option<String>,
+
+    /// Size
+    #[arg(long, value_parser = ["small", "large"], default_value = "small")]
+    size: String,
+
+    /// Shape
+    #[arg(long, value_parser = ["round", "square"])]
+    shape: String,
+
+    /// Dry run
+    #[arg(long)]
+    dry_run: bool,
+
+    /// Colour output
+    #[arg(long = "no-color", action = ArgAction::SetFalse)]
+    color: bool,
+
+    /// Tags
+    #[arg(long)]
+    tags: Vec<String>,
+
+    /// Verbosity
+    #[arg(short, action = ArgAction::Count)]
+    verbose: u8,
+}
+
+/// A form over every single-valued argument of `Settings`.
+fn settings() -> FormState {
+    FormState::generated(
+        &Settings::command(),
+        &["colour", "size", "shape", "dry_run", "color"],
+    )
+    .expect("these are single-valued arguments of the command")
+}
+
+/// Presses `keys` on the field at `focus`, and returns the form.
+fn pressing(focus: usize, keys: &[Key]) -> FormState {
+    let mut form = settings();
+    for _ in 0..focus {
+        form.handle(Key::Tab);
+    }
+    for key in keys {
+        form.handle(*key);
+    }
+    form
+}
+
+fn field(form: &FormState, name: &str) -> FieldState {
+    form.field(name).expect("a field of the form").clone()
+}
+
+#[test]
+fn the_grammar_decides_each_fields_kind() {
+    let form = settings();
+
+    assert_eq!(field(&form, "colour").choices(), ["red", "green", "grey"]);
+    assert_eq!(
+        field(&form, "colour").value(),
+        "",
+        "optional, no default: (none)"
+    );
+    assert_eq!(
+        field(&form, "size").value(),
+        "small",
+        "the default is chosen"
+    );
+    assert_eq!(field(&form, "shape").choices(), ["round", "square"]);
+    assert!(field(&form, "dry_run").is_toggle());
+    assert!(
+        !field(&form, "dry_run").is_on(),
+        "a SetTrue flag starts off"
+    );
+    assert!(field(&form, "color").is_on(), "a SetFalse flag starts on");
+    assert_eq!(field(&form, "dry_run").choices(), [""; 0].map(String::from));
+    assert!(!field(&form, "colour").is_toggle());
+}
+
+const SPACE: Key = Key::Char(' ');
+
+#[rstest]
+#[case::untouched(&[], "")]
+#[case::space_picks_the_first(&[SPACE], "red")]
+#[case::space_moves_on(&[SPACE, SPACE, SPACE], "grey")]
+#[case::past_the_last_is_none_again(&[SPACE, SPACE, SPACE, SPACE], "")]
+#[case::a_letter_jumps(&[Key::Char('g')], "green")]
+#[case::the_same_letter_jumps_again(&[Key::Char('g'), Key::Char('g')], "grey")]
+#[case::and_wraps(&[Key::Char('g'), Key::Char('g'), Key::Char('g')], "green")]
+#[case::in_any_case(&[Key::Char('R')], "red")]
+#[case::a_letter_nothing_starts_with_changes_nothing(&[SPACE, Key::Char('x')], "red")]
+#[case::backspace_clears_an_optional_choice(&[SPACE, Key::Backspace], "")]
+fn an_optional_choice_moves_through_its_options(#[case] keys: &[Key], #[case] expected: &str) {
+    assert_eq!(field(&pressing(0, keys), "colour").value(), expected);
+}
+
+#[rstest]
+#[case::space_picks_the_first(&[SPACE], "round")]
+#[case::and_wraps_without_a_none(&[SPACE, SPACE, SPACE], "round")]
+#[case::backspace_cannot_clear_it(&[SPACE, Key::Backspace], "round")]
+fn a_required_choice_never_returns_to_none(#[case] keys: &[Key], #[case] expected: &str) {
+    assert_eq!(field(&pressing(2, keys), "shape").value(), expected);
+}
+
+#[test]
+fn a_choice_with_a_default_moves_on_from_it() {
+    assert_eq!(field(&pressing(1, &[SPACE]), "size").value(), "large");
+}
+
+#[rstest]
+#[case::space_flips_it(&[SPACE], true)]
+#[case::twice_flips_it_back(&[SPACE, SPACE], false)]
+#[case::a_letter_is_not_an_answer(&[Key::Char('y')], false)]
+#[case::backspace_is_not_an_answer(&[Key::Backspace], false)]
+fn space_flips_a_toggle(#[case] keys: &[Key], #[case] on: bool) {
+    assert_eq!(field(&pressing(3, keys), "dry_run").is_on(), on);
+}
+
+/// Parses what the form submits with the command's own parser.
+fn submitted(form: &FormState) -> Settings {
+    Settings::try_parse_from(std::iter::once(String::from("settings")).chain(form.arguments()))
+        .expect("what the form submits, clap parses")
+}
+
+#[test]
+fn an_untouched_form_submits_only_what_it_must() {
+    let mut form = pressing(2, &[SPACE]);
+    assert_eq!(form.arguments(), ["--size", "small", "--shape", "round"]);
+    form.handle(Key::Tab);
+
+    let parsed = submitted(&form);
+    assert_eq!(parsed.colour, None);
+    assert!(!parsed.dry_run && parsed.color, "the flags' own defaults");
+}
+
+/// A toggle submits the bare flag, and only when it differs from what absence means —
+/// `--dry-run yes` is not something clap accepts.
+#[test]
+fn a_toggle_submits_its_bare_flag_when_it_differs_from_the_default() {
+    let mut form = pressing(0, &[Key::Char('g')]);
+    for key in [Key::Tab, Key::Tab, SPACE, Key::Tab, SPACE, Key::Tab, SPACE] {
+        form.handle(key);
+    }
+    let arguments = form.arguments();
+
+    assert!(
+        arguments.contains(&String::from("--dry-run")),
+        "{arguments:?}"
+    );
+    assert!(
+        arguments.contains(&String::from("--no-color")),
+        "{arguments:?}"
+    );
+    let parsed = submitted(&form);
+    assert_eq!(parsed.colour.as_deref(), Some("green"));
+    assert_eq!(parsed.shape, "round");
+    assert!(parsed.dry_run, "on");
+    assert!(!parsed.color, "the SetFalse flag was switched off");
+}
+
+#[rstest]
+#[case::a_repeatable_value("tags", "--tags")]
+#[case::a_counter("verbose", "-v")]
+fn a_list_is_refused_rather_than_cut_to_one_value(#[case] name: &str, #[case] flag: &str) {
+    let failure = FormState::generated(&Settings::command(), &[name])
+        .expect_err("a form field holds one value");
+
+    assert_eq!(failure.kind(), FailureKind::Execution);
+    assert!(failure.message().contains(flag), "{}", failure.message());
+}
+
+#[test]
+fn a_hand_built_form_can_ask_a_choice_and_a_toggle() {
+    let mut form = FormState::new(vec![
+        FieldState::new("level", "Level", "").with_choices(["basic", "verbose"]),
+        FieldState::toggle("loud", "Loud", false),
+    ]);
+    for key in [Key::Char('v'), Key::Tab, SPACE] {
+        form.handle(key);
+    }
+
+    assert_eq!(form.arguments(), ["--level", "verbose", "--loud"]);
+}
+
+#[test]
+fn a_choice_and_a_toggle_are_drawn_as_what_they_are() {
+    let untouched = rendered(&settings(), 40, 6);
+    assert!(untouched.contains("Colour: ‹(none)›"), "{untouched}");
+    assert!(untouched.contains("Size: ‹small›"), "{untouched}");
+    assert!(untouched.contains("Dry run: [ ]"), "{untouched}");
+    assert!(untouched.contains("Colour output: [x]"), "{untouched}");
+
+    let chosen = rendered(
+        &pressing(0, &[Key::Char('g'), Key::Tab, Key::Tab, Key::Tab, SPACE]),
+        40,
+        6,
+    );
+    assert!(chosen.contains("Colour: ‹green›"), "{chosen}");
+    assert!(chosen.contains("Dry run: [x]"), "{chosen}");
+}
+
+#[test]
+fn an_action_that_takes_no_value_is_refused_for_what_it_is() {
+    let command = clifacet::clap::Command::new("manual").arg(
+        clifacet::clap::Arg::new("manual")
+            .long("manual")
+            .action(ArgAction::Help),
+    );
+
+    let failure = FormState::generated(&command, &["manual"]).expect_err("help is not an answer");
+
+    assert!(
+        failure.message().contains("--manual"),
+        "{}",
+        failure.message()
+    );
+    assert!(
+        !failure.message().contains("more than one"),
+        "{}",
+        failure.message()
+    );
+}

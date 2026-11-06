@@ -68,7 +68,7 @@ fn a_custom_value_parser_decides_what_is_valid_before_validation() {
     assert_eq!(input.level, Level::Verbose);
 
     let error = Cli::try_parse_from(["example", "--level", "chatty"])
-        .expect_err("the custom parser rejects an unknown level");
+        .expect_err("clap rejects a level that is not one of the possible values");
     assert!(
         error.to_string().contains("chatty") || error.to_string().contains("level"),
         "the parser's own message must reach the user: {error}"

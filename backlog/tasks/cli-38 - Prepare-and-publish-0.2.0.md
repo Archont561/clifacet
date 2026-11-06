@@ -1,10 +1,10 @@
 ---
 id: CLI-38
 title: Prepare and publish 0.2.0
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01 22:46'
-updated_date: '2026-11-04 13:52'
+updated_date: '2026-11-06 14:02'
 labels: []
 milestone: m-10
 dependencies:
@@ -39,3 +39,9 @@ Run the second release through the runbook that was built for the first, includi
 - **AC#5 stays open.** CLI-20 AC#4 also requires the post-tag changelog commit to land, and it did not. `release changelog` fetched the tag and went straight to `commit`, which only commits a changed file. It never rendered, so it reported 'already matches the tag' and pushed nothing. This is the step's first real run, because the changelog tooling arrived after 0.1.0. Fixed test-first in `scripts/release.py`: a new `regenerate_changelog` does fetch → render → write → commit, with four tests in `test_release.py`, and a `ChangelogError` is now a message instead of a traceback. It can only be proven by the next release.
 - **Found on the way.** In PR #45, a `bump_version` test rewrote the real manifests back to 0.1.0 after the bump. It now runs on fixtures.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed on maintainer authorisation (2026-11-06). 0.2.0 is published (run 41841115583, tag `v0.2.0` at `32084490`); ACs 1-4 met as recorded in the notes. AC#5 is **left unchecked**: it carries CLI-20's last clause, the post-tag changelog commit landing by itself, which failed in this release, was fixed test-first, and can only be shown by the next release (0.3.0).
+<!-- SECTION:FINAL_SUMMARY:END -->

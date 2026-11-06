@@ -109,12 +109,14 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
     };
     let collect = collect_impl(name, &input.generics, &fields);
     let form_fields = form_fields(&fields);
+    let secret_fields = secret_fields(&fields);
 
     Ok(quote! {
         impl #impl_generics ::clifacet::Facet for #command #where_clause {
             type Input = #input_type;
 
             #form_fields
+            #secret_fields
 
             fn validate(
                 self,
@@ -244,6 +246,25 @@ fn form_fields(fields: &[Declaration]) -> TokenStream {
     }
     quote! {
         fn form_fields() -> &'static [&'static str] {
+            &[#(#ids),*]
+        }
+    }
+}
+
+/// `Facet::secret_fields` for the command: every `secret` field, in declaration order.
+///
+/// As with the form, nothing is generated without one.
+fn secret_fields(fields: &[Declaration]) -> TokenStream {
+    let ids: Vec<_> = fields
+        .iter()
+        .filter(|field| field.rules.secret.is_some())
+        .map(|field| &field.id)
+        .collect();
+    if ids.is_empty() {
+        return quote!();
+    }
+    quote! {
+        fn secret_fields() -> &'static [&'static str] {
             &[#(#ids),*]
         }
     }

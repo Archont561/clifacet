@@ -52,11 +52,21 @@ impl<'a> Field<'a> {
         };
         // A secret is drawn as the marker every other redacted thing uses, and its
         // length is not reported either: a mask of the right width would be a fact
-        // about the value.
-        let shown = if self.field.is_empty() {
-            String::from("…")
-        } else if self.field.is_secret() {
+        // about the value. A choice is drawn between ‹ › so it reads as something to
+        // move through rather than to type into, and a toggle as a box.
+        let shown = if self.field.is_toggle() {
+            String::from(if self.field.is_on() { "[x]" } else { "[ ]" })
+        } else if self.field.is_secret() && !self.field.is_empty() {
             String::from(crate::secret::REDACTED)
+        } else if !self.field.choices().is_empty() {
+            let chosen = if self.field.is_empty() {
+                "(none)"
+            } else {
+                self.field.value()
+            };
+            format!("‹{chosen}›")
+        } else if self.field.is_empty() {
+            String::from("…")
         } else {
             self.field.value().to_owned()
         };

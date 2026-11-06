@@ -20,6 +20,12 @@ depend on serde_json in the application.
 
 ### Added
 
+* **example:** offer the level as a choice in the full-screen form
+([526dcb6](https://github.com/Archont561/clifacet/commit/526dcb661e383a3f2eaaf4e59a4d787d1468ca1e))
+* **macros:** refuse `form` on a list field
+([15aebfe](https://github.com/Archont561/clifacet/commit/15aebfe58d6d2097085824f70ce29dc91966fff0))
+* **tui:** draw each form field as what its grammar says it is
+([be444ff](https://github.com/Archont561/clifacet/commit/be444ff45f1287d1327abdc4ad3c9f94614f2abd))
 * **backlog-lite:** ask which status a bare --status filter means
 ([ab39746](https://github.com/Archont561/clifacet/commit/ab39746157fad24ea6a0d9ca8b777f41f0215f75))
 * **prompt:** collect a list by repeating one question until the user stops
@@ -39,6 +45,10 @@ depend on serde_json in the application.
 
 ### Fixed
 
+* **tui:** name an action field for what it is when a form refuses it
+([524917a](https://github.com/Archont561/clifacet/commit/524917acd111711684d39943e17b6f345fa4b3f7))
+* **tui:** mask a declared secret in a form built from the declarations
+([55a118d](https://github.com/Archont561/clifacet/commit/55a118d9fbd0682707bbc0743d8980ea9d354410))
 * **release:** render the changelog before committing it in the release step
 ([65b9cbd](https://github.com/Archont561/clifacet/commit/65b9cbd8b5d464d978c6bad90c19a54a9a9457b5))
 
