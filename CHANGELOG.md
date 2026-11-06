@@ -20,6 +20,12 @@ depend on serde_json in the application.
 
 ### Added
 
+* **command:** plan a command's work so a dry run and a real run share a path
+([1093668](https://github.com/Archont561/clifacet/commit/1093668433e4b63cbd55afadfbaed420201d47ce))
+* **report:** write a failure or clap's verdict and answer with its code
+([10a64d6](https://github.com/Archont561/clifacet/commit/10a64d6328fddb773ce46c22fcb80cd939192ce3))
+* **provenance:** derive where each value came from from the parse
+([ce343f2](https://github.com/Archont561/clifacet/commit/ce343f261d6d1684de7ae89a0630731c3a373e37))
 * **example:** offer the level as a choice in the full-screen form
 ([526dcb6](https://github.com/Archont561/clifacet/commit/526dcb661e383a3f2eaaf4e59a4d787d1468ca1e))
 * **macros:** refuse `form` on a list field
