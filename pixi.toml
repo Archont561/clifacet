@@ -106,6 +106,9 @@ release = "python scripts/release.py"
 # The `commit-messages` job: which commits this run introduced, and the convco call for
 # them. Two branches that used to be a step output and a second shell step.
 commit-range = "python scripts/commit_range.py"
+# The `changes` job: whether this change is documentation only, and so which lane of CI
+# it takes. Run it with EVENT/PR_BASE/PUSH_BASE set to see what CI would decide.
+change-scope = "python scripts/change_scope.py"
 # The RustSec database cache: its ISO week key, and resetting whatever the cache restored.
 advisory-cache = "python scripts/advisory_cache.py"
 # The offline, no-install subset worth running before every commit; `quality`
