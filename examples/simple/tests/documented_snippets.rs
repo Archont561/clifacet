@@ -309,7 +309,7 @@ fn derive_snippet_3() {
     assert_eq!(input.name, "grace");
 }
 
-/// `derive.md`, line 205.
+/// `derive.md`, line 206.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_4() {
@@ -349,10 +349,114 @@ fn derive_snippet_4() {
     assert_eq!(Cli::secret_fields(), [""; 0]);
 }
 
-/// `derive.md`, line 273.
+/// `derive.md`, line 278.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_5() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::clap::Parser as _;
+    use clifacet::{Command, Facet, Failure};
+    #[clifacet::command(input = CastInput)]
+    #[command(name = "cast")]
+    struct Cast {
+        #[clifacet(subcommands)]
+        command: Option<Commands>,
+    }
+    struct CastInput {
+        command: Option<Request>,
+    }
+    /// The first level: two subcommands, one of them a node.
+    #[clifacet::subcommands(input = Request, output = String)]
+    #[derive(Clone)]
+    enum Commands {
+        /// Say hello.
+        #[clifacet(alias = "hi")]
+        Greet(Greet),
+        /// Work on the database.
+        Db(Db),
+    }
+    enum Request {
+        Greet(GreetInput),
+        Db(DbInput),
+    }
+    #[clifacet::command(input = GreetInput)]
+    #[derive(Clone)]
+    struct Greet {
+        #[clifacet(long, fill = "world", trim)]
+        name: Option<String>,
+    }
+    struct GreetInput {
+        name: String,
+    }
+    /// An inner node: a leaf above, a tree below.
+    #[clifacet::command(input = DbInput)]
+    #[derive(Clone)]
+    struct Db {
+        #[clifacet(subcommands)]
+        command: DbCommands,
+    }
+    struct DbInput {
+        command: DbRequest,
+    }
+    #[clifacet::subcommands(input = DbRequest, output = String)]
+    #[derive(Clone)]
+    enum DbCommands {
+        /// Apply the pending migrations.
+        Migrate(Migrate),
+    }
+    enum DbRequest {
+        Migrate(MigrateInput),
+    }
+    #[clifacet::command(input = MigrateInput)]
+    #[derive(Clone)]
+    struct Migrate {
+        /// Stop after this many.
+        #[clifacet(long)]
+        steps: Option<u8>,
+    }
+    struct MigrateInput {
+        steps: Option<u8>,
+    }
+    impl Command for Greet {
+        type Input = GreetInput;
+        type Output = String;
+        fn execute(&self, input: GreetInput) -> Result<String, Failure> {
+            Ok(format!("hello, {}", input.name))
+        }
+    }
+    impl Command for Db {
+        type Input = DbInput;
+        type Output = String;
+        fn execute(&self, input: DbInput) -> Result<String, Failure> {
+            self.command.execute(input.command)
+        }
+    }
+    impl Command for Migrate {
+        type Input = MigrateInput;
+        type Output = String;
+        fn execute(&self, input: MigrateInput) -> Result<String, Failure> {
+            Ok(format!("migrated {}", input.steps.unwrap_or(1)))
+        }
+    }
+    // Three levels down, clap still parses, and the help names the whole path.
+    let help = <Cast as Facet>::command()
+        .try_get_matches_from(["cast", "db", "migrate", "--help"])
+        .expect_err("help is clap's");
+    assert!(help.to_string().contains("Usage: cast db migrate"));
+    // The tree that runs is a clone; the request is the same parse, validated.
+    let cast = Cast::try_parse_from(["cast", "db", "migrate", "--steps", "2"]).expect("parses");
+    let tree = cast.command.clone().expect("a subcommand was given");
+    let request = cast.validate().expect("valid").command.expect("so it converted");
+    assert_eq!(tree.execute(request).expect("runs"), "migrated 2");
+    // No subcommand reaches the application, which picks its own default.
+    let bare = Cast::try_parse_from(["cast"]).expect("parses").validate().expect("valid");
+    assert!(bare.command.is_none());
+}
+
+/// `derive.md`, line 445.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_6() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::clap::Parser as _;
     use clifacet::Facet;

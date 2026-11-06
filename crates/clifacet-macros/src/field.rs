@@ -8,8 +8,8 @@
 //! bridge and prompt collection do with the same field.
 //!
 //! This module is a forwarder and nothing else. Grammar keys become one `#[arg(..)]`;
-//! derive keys (`ask`, `confirm`, `fill`, `trim`, `non_empty`, `secret`, `skip`, `form`)
-//! become one field-level `#[facet(..)]`, which the `Facet` derive reads —
+//! derive keys (`ask`, `confirm`, `fill`, `trim`, `non_empty`, `secret`, `skip`, `form`,
+//! `subcommands`) become one field-level `#[facet(..)]`, which the `Facet` derive reads —
 //! so there is still exactly one generator of the bridge and of collection, and this
 //! attribute cannot drift from it. Tokens are forwarded, never reinterpreted: the
 //! value of `short`, `range` or `value_parser` reaches clap exactly as written, so clap
@@ -78,6 +78,10 @@ pub(crate) const EITHER_KEYS: &[&str] = &[
     "value_parser",
 ];
 
+/// The key that makes the field a command tree: clap's `#[command(subcommand)]`, and the
+/// derive's `subcommands` rule. It has no grammar of its own, so it stands alone.
+const SUBCOMMANDS: &str = "subcommands";
+
 /// The one key that is not clap's: `range = 1..=8` becomes clap's ranged value parser
 /// for the field's own type, which clap's derive has no attribute for.
 const RANGE: &str = "range";
@@ -88,6 +92,8 @@ pub(crate) struct Declared {
     arguments: Vec<Meta>,
     /// The forwarded field-level `#[facet(..)]` entries, in declaration order.
     rules: Vec<Meta>,
+    /// Whether the field is a command tree, which clap reads from `#[command(subcommand)]`.
+    subcommand: bool,
 }
 
 impl Declared {
@@ -100,6 +106,9 @@ impl Declared {
     pub(crate) fn attributes(&self) -> Vec<Attribute> {
         let (arguments, rules) = (&self.arguments, &self.rules);
         let mut attributes: Vec<Attribute> = Vec::new();
+        if self.subcommand {
+            attributes.push(syn::parse_quote!(#[command(subcommand)]));
+        }
         if !arguments.is_empty() {
             attributes.push(syn::parse_quote!(#[arg(#(#arguments),*)]));
         }
@@ -154,9 +163,20 @@ pub(crate) fn parse(attribute: &Attribute, ty: &Type) -> syn::Result<Declared> {
         }
     }
 
+    let subcommand = rules.iter().any(|entry| entry.path().is_ident(SUBCOMMANDS));
+    if subcommand && let Some(argument) = declared.first() {
+        return Err(syn::Error::new_spanned(
+            argument,
+            "a `subcommands` field is a command tree, not an argument, so it takes no \
+             grammar key: declare the arguments on the leaf structs, or a raw \
+             `#[command(..)]` on the field for anything clap's subcommand field accepts",
+        ));
+    }
+
     Ok(Declared {
         arguments: ranged(declared, ty)?,
         rules,
+        subcommand,
     })
 }
 
