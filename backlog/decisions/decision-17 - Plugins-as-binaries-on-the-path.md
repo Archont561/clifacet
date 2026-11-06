@@ -2,7 +2,7 @@
 id: decision-17
 title: Plugins as `<cli>-<name>` binaries on PATH
 date: '2026-11-01 23:05'
-status: proposed
+status: rejected
 ---
 ## Context
 
@@ -106,3 +106,21 @@ let cli = Cli::from_arg_matches(&matches)?;
 - **It pairs with decision-15 but does not depend on it.** Plugins can be added to the
   current single-command CLI with a `Command` built by hand; the declarative tree simply
   gives them something to hang off.
+
+## Rejection note (2026-11-06)
+
+**Rejected as a library API** by the maintainer on 2026-11-06; **a documented recipe is
+accepted instead.** The measurements above stand and are what the recipe is built from.
+
+- **Why not an API.** By this decision's own account a plugin's arguments are not
+  validated, it is outside the mode contract and it takes no part in parity — everything
+  clifacet exists to provide. What would remain in the crate is a process launcher with
+  Windows `PATHEXT` and `.cmd` handling and the `clap/string` feature. That is the same
+  shape as decision-18's refusals (watch mode, completion generation, config layering):
+  work that `clap` and a few lines of application code already do.
+- **What is kept.** A section of the authoring guide with a compiled snippet: discovery
+  over directories the application names, one passthrough subcommand per plugin with its
+  path in the help, routing before the derive converts, the forwarding table (`--` consumed
+  once, `--help` belonging to the plugin, verbatim arguments, exit status passed through),
+  and refusing to launch a plugin when the plan is headless. CLI-29 carries it; clifacet
+  gains no `plugins` module, feature or dependency.

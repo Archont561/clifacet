@@ -2,7 +2,7 @@
 id: decision-16
 title: How declarative and procedural macros layer
 date: '2026-11-01 22:40'
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -103,3 +103,22 @@ The rules that make the layers composable:
   are where misuse is diagnosed), and doctests plus one integration test per macro for the
   declarative layer, since `check-docs` compiles doctests and a macro with no doctest is a
   macro nobody documented.
+
+## Acceptance note (2026-11-06)
+
+Accepted by the maintainer on 2026-11-06, **narrowed to the rule**. The Decision above is
+left as it was proposed.
+
+- **The three-layer rule is accepted as a guide principle:** `macro_rules!` for the shape
+  of an application, the attribute proc macro for one item's declaration, the derive for a
+  contract on a type; a declarative macro never re-implements procedural work; every public
+  macro says which layer it belongs to and what it expands to.
+- **The rules about shipped declarative macros wait for one.** Raw-token forwarding, `$crate`
+  paths and `#[doc(hidden)]` helpers apply to the first exported `macro_rules!`; with
+  decision-15's `commands!` deferred, none exists yet.
+- **The first Consequence is done for `input`.** `input = …` is parsed as a `syn::Type`
+  (`parse_type` in `clifacet-macros/src/facet.rs`), so a type reaches it in any spelling.
+  `bridge` and `check` still take an expression path; widening them is part of whichever
+  task ships the first declarative macro.
+- **CLI-34 is folded into CLI-33**, the task that would ship that macro, instead of being a
+  standalone card.

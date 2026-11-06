@@ -2,7 +2,7 @@
 id: decision-14
 title: Nested commands as a declarative tree
 date: '2026-11-01 21:45'
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -169,3 +169,30 @@ afterwards; all six assertions passed:
 4. A bare invocation with a required subcommand yields
    `DisplayHelpOnMissingArgumentOrSubcommand`, not `MissingSubcommand`; `clap`'s
    `use_stderr()` sends that kind to stderr with status 2.
+
+## Acceptance note (2026-11-06)
+
+Accepted by the maintainer on 2026-11-06, with four amendments. The Decision above is
+left as it was proposed; where the amendments differ, they win.
+
+1. **The subcommand may be optional.** A root may hold `Option<Commands>`; choosing a
+   default leaf when it is absent stays the application's, as `examples/backlog-lite` does
+   with `list`. A required subcommand keeps clap's bare-invocation behaviour described
+   under *Consequences*.
+2. **Every variant wraps one leaf struct** (`Greet(Greet)`). An inline-field variant
+   (`Show { id }`) or a unit variant (`Doctor`) is out of scope and a compile error that
+   says to write a struct; `backlog-lite`, which has both today, measures the cost when it
+   moves to the tree.
+3. **The subcommand picker stays out of this decision, but is no longer expensive.** The
+   *Form* section's "that is the picker below" contradicted the out-of-scope list; the
+   list wins. Its stated cost — a new `Prompter::choose` — has since shipped with CLI-30
+   (`Session::choose`), so a picker is a cheap follow-up, proposed on its own.
+4. **`Request` is hand-written, and the generated code checks it.** decision-15's
+   measured macro generated `Request`, which contradicts *A generated `Request` enum* above;
+   this decision's rule stands. The generated conversion and dispatch match every variant
+   of both enums, so a missing, extra or mistyped `Request` variant fails to compile.
+
+Sequencing: after CLI-31 and the 0.3.0 release, because CLI-31 adds `Command::plan` and
+the tree's generated `Command` impl delegates every method of the trait. CLI-32 carries
+it, and moves `examples/backlog-lite` — the repository's only tree — rather than
+`examples/simple`, which has no subcommands.
