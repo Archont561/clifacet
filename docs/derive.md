@@ -154,6 +154,7 @@ naming the supported keys, rather than an argument that quietly means nothing:
 | normalising | `secret` | the field must be a `Secret<_>`, so the credential cannot be printed |
 | input | `skip` | the bridge leaves the field out of the input; clap still parses it (not clap's `#[arg(skip)]`) |
 | form | `form` | the field is listed in `Facet::form_fields`, in declaration order, for a generated TUI form |
+| tree | `subcommands` | the field holds a [command tree](#nested-commands-a-tree-declared-where-its-commands-live), or an `Option` of one: clap's `#[command(subcommand)]`, the bridge converts the chosen leaf, `collect` lets it ask; it takes no other key |
 
 The bridge applies its rules in one order — `fill`, `trim`, `non_empty`, `secret` —
 whatever order they were written in, because trimming after the blank check would let
@@ -249,6 +250,177 @@ assert_eq!(Cli::secret_fields(), [""; 0]);
 A generated form submits each field under the flag clap knows it by — `--dry-run` for
 a field `dry_run`, `-l` for a short-only one — so the answers parse exactly as typed
 flags would.
+
+## Nested commands: a tree declared where its commands live
+
+A command with subcommands is a tree, and decision-14 makes it a declaration rather
+than a hand-written enum plus a hand-written `match` that has to agree with it. The rule
+is one sentence: **every level is an enum of leaf structs, and every leaf is a command.**
+
+- The tree is an enum with `#[clifacet::subcommands(input = Request)]`, one variant per
+  subcommand, each written `Name(Leaf)`. It is still clap's `Subcommand` — clap parses,
+  and renders the help with the full path — and variant doc comments are the help text.
+- Each leaf is an ordinary `#[clifacet::command(input = …)]` struct, with its own field
+  declarations and rules. A subcommand that takes nothing is an empty `struct Leaf {}`.
+- `Request` is written by the application: an enum with one variant per subcommand, of
+  the same name, holding that leaf's input. The tree generates `TryFrom<Tree> for
+  Request`, which validates the chosen leaf by its own `Facet`.
+- The parent holds the tree in a field declared `#[clifacet(subcommands)]`. As an
+  `Option`, an absent subcommand reaches the application as `None`, and the application
+  picks a default leaf itself — the library never guesses one.
+- Depth is a leaf that holds a tree of its own: the inner node is a leaf to the level
+  above and a parent to the one below, so `cast db migrate` needs nothing new.
+- With `output = Type`, the tree implements `Command` by running the chosen leaf with its
+  input and converting the leaf's output with `Into`; with `planned` as well, it
+  implements `Planned` instead, so a `--dry-run` describes the chosen leaf's plan.
+  Validation consumes the parsed value, so a tree that runs keeps a `clone` of itself.
+
+```rust
+use clifacet::clap::Parser as _;
+use clifacet::{Command, Facet, Failure};
+
+#[clifacet::command(input = CastInput)]
+#[command(name = "cast")]
+struct Cast {
+    #[clifacet(subcommands)]
+    command: Option<Commands>,
+}
+
+struct CastInput {
+    command: Option<Request>,
+}
+
+/// The first level: two subcommands, one of them a node.
+#[clifacet::subcommands(input = Request, output = String)]
+#[derive(Clone)]
+enum Commands {
+    /// Say hello.
+    #[clifacet(alias = "hi")]
+    Greet(Greet),
+    /// Work on the database.
+    Db(Db),
+}
+
+enum Request {
+    Greet(GreetInput),
+    Db(DbInput),
+}
+
+#[clifacet::command(input = GreetInput)]
+#[derive(Clone)]
+struct Greet {
+    #[clifacet(long, fill = "world", trim)]
+    name: Option<String>,
+}
+
+struct GreetInput {
+    name: String,
+}
+
+/// An inner node: a leaf above, a tree below.
+#[clifacet::command(input = DbInput)]
+#[derive(Clone)]
+struct Db {
+    #[clifacet(subcommands)]
+    command: DbCommands,
+}
+
+struct DbInput {
+    command: DbRequest,
+}
+
+#[clifacet::subcommands(input = DbRequest, output = String)]
+#[derive(Clone)]
+enum DbCommands {
+    /// Apply the pending migrations.
+    Migrate(Migrate),
+}
+
+enum DbRequest {
+    Migrate(MigrateInput),
+}
+
+#[clifacet::command(input = MigrateInput)]
+#[derive(Clone)]
+struct Migrate {
+    /// Stop after this many.
+    #[clifacet(long)]
+    steps: Option<u8>,
+}
+
+struct MigrateInput {
+    steps: Option<u8>,
+}
+
+impl Command for Greet {
+    type Input = GreetInput;
+    type Output = String;
+
+    fn execute(&self, input: GreetInput) -> Result<String, Failure> {
+        Ok(format!("hello, {}", input.name))
+    }
+}
+
+impl Command for Db {
+    type Input = DbInput;
+    type Output = String;
+
+    fn execute(&self, input: DbInput) -> Result<String, Failure> {
+        self.command.execute(input.command)
+    }
+}
+
+impl Command for Migrate {
+    type Input = MigrateInput;
+    type Output = String;
+
+    fn execute(&self, input: MigrateInput) -> Result<String, Failure> {
+        Ok(format!("migrated {}", input.steps.unwrap_or(1)))
+    }
+}
+
+// Three levels down, clap still parses, and the help names the whole path.
+let help = <Cast as Facet>::command()
+    .try_get_matches_from(["cast", "db", "migrate", "--help"])
+    .expect_err("help is clap's");
+assert!(help.to_string().contains("Usage: cast db migrate"));
+
+// The tree that runs is a clone; the request is the same parse, validated.
+let cast = Cast::try_parse_from(["cast", "db", "migrate", "--steps", "2"]).expect("parses");
+let tree = cast.command.clone().expect("a subcommand was given");
+let request = cast.validate().expect("valid").command.expect("so it converted");
+assert_eq!(tree.execute(request).expect("runs"), "migrated 2");
+
+// No subcommand reaches the application, which picks its own default.
+let bare = Cast::try_parse_from(["cast"]).expect("parses").validate().expect("valid");
+assert!(bare.command.is_none());
+```
+
+A variant takes `#[clifacet(name = "…", alias = "…", visible_alias = "…", hide)]`, which
+become clap's `#[command(..)]`; a raw `#[command(..)]` passes through for anything else.
+A leaf whose questions the field declarations cannot describe — a choice, or a
+confirmation that names the task — declares `collect = path` on its struct: a
+`fn(Leaf, &mut Session) -> Result<Leaf, Failure>` that replaces the generated
+questions, and the tree calls it when that leaf is chosen.
+`examples/backlog-lite` is built this way.
+
+What a tree gets wrong is a compile error, each with a golden `trybuild` file:
+
+- **A leaf is a struct.** A variant with inline fields, a unit variant, or one holding
+  two values says to write `Name(Name)` with a `#[clifacet::command]` struct instead.
+- **`Request` matches the tree.** A missing variant is reported at the subcommand
+  without one, a variant holding another input at the leaf, and a variant no subcommand
+  produces at the tree's `input = …`.
+- **One name, one subcommand.** A name or alias two variants answer to — a default name
+  is clap's kebab-case of the variant — is reported at the second, naming it.
+- **Known keys only.** An unknown key on the tree or on a variant is named in the error;
+  so is `planned` without `output`.
+- **A `subcommands` field holds a tree.** Its type has to come from
+  `#[clifacet::subcommands]`, and the field takes no other key.
+- **A leaf converts.** A leaf without a `Facet`, or whose output does not convert into
+  the tree's `output`, is reported at that leaf.
+- **A declared `collect = …` asks every question.** A field's `ask` or `confirm` beside
+  it is an error, because it would never be asked.
 
 ## Three ways to build the input
 

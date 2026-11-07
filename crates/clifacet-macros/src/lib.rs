@@ -13,6 +13,7 @@ mod facet;
 mod field;
 mod input_type;
 mod rules;
+mod subcommands;
 
 use proc_macro::{Literal, TokenStream, TokenTree};
 
@@ -26,7 +27,7 @@ use proc_macro::{Literal, TokenStream, TokenTree};
 ///
 /// Expands to the item exactly as written, preceded by
 /// `#[derive(::clap::Parser, ::clifacet::Facet)]` and `#[facet(…)]`. It takes the same
-/// keys as `#[facet(…)]` — `input`, `bridge`, `check` — and exists because a derive cannot add
+/// keys as `#[facet(…)]` — `input`, `bridge`, `check`, `collect` — and exists because a derive cannot add
 /// another derive to the same item.
 ///
 /// `clap` still has to be a direct dependency of the calling crate: `clap`'s derive
@@ -39,6 +40,44 @@ use proc_macro::{Literal, TokenStream, TokenTree};
 #[proc_macro_attribute]
 pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
     command::expand(&attribute.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Declares a command tree: clap's subcommand enum, and the conversion, collection and
+/// dispatch that go with it.
+///
+/// ```ignore
+/// #[clifacet::subcommands(input = Request, output = Report)]
+/// enum Commands { Add(Add), Remove(Remove) }
+///
+/// enum Request { Add(AddInput), Remove(RemoveInput) }
+/// ```
+///
+/// Each variant is `Name(Leaf)`, where `Leaf` is a `#[clifacet::command(input = …)]`
+/// struct; inline fields and unit variants are compile errors that say so. Expands to the
+/// enum with `#[derive(::clap::Subcommand)]`, plus:
+///
+/// - `TryFrom<Tree> for Request`: the chosen leaf validated by its own `Facet`, wrapped in
+///   the `Request` variant of the same name — so a missing, extra or mistyped `Request`
+///   variant fails to compile;
+/// - `clifacet::prompt::Collect`: the chosen leaf asks its own questions;
+/// - with `output = Type`, `clifacet::Command`: the chosen leaf runs, its output converted
+///   with `Into`;
+/// - with `planned` as well, `clifacet::command::Planned` instead, delegating `plan`, so
+///   `Command` comes from the library's blanket impl.
+///
+/// On a variant, `#[clifacet(name = "…", alias = "…", visible_alias = "…", hide)]` become
+/// clap's `#[command(..)]`; a raw `#[command(..)]` passes through. A name or alias used
+/// twice, or an unknown key, is a compile error naming it. A struct field holding the
+/// tree is declared `#[clifacet(subcommands)]`, as the tree or an `Option` of it.
+///
+/// # Panics
+///
+/// Panics only if Rust cannot parse fixed, compiler-generated tokens.
+#[proc_macro_attribute]
+pub fn subcommands(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    subcommands::expand(attribute.into(), item.into())
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
@@ -59,6 +98,10 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 /// - `#[facet(bridge = path)]` — optional. Called as `path(cli) -> Result<Type,
 ///   Failure>` instead of the generated `TryFrom`, for input the declarations cannot
 ///   describe. `check` beside it is a compile error: the bridge runs its own checks.
+/// - `#[facet(collect = path)]` — optional. Called as `path(self, session) ->
+///   Result<Self, Failure>` instead of the generated `Collect`, for questions the
+///   declarations cannot describe. A field's `ask` or `confirm` beside it is a compile
+///   error: the function asks every question.
 ///
 /// On a field, `#[facet(..)]` says how that one value is asked for and normalised:
 ///
@@ -72,6 +115,9 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 ///   parses it. It takes no rule, and a declared `bridge` makes it a compile error.
 /// - `form` — the field is listed in `Facet::form_fields`, in declaration order, for a
 ///   generated TUI form. Like `ask`, it needs a `long` or `short` option.
+/// - `subcommands` — the field holds a command tree declared with
+///   `#[clifacet::subcommands]`, or an `Option` of one: the generated `TryFrom` converts
+///   the chosen leaf, `Collect` lets it ask its questions. It takes no other key.
 ///
 /// Without a `bridge`, the derive implements `TryFrom<Self> for Type` and
 /// `validate` delegates to it; fields with no rule are copied by name.

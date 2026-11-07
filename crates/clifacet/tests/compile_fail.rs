@@ -56,3 +56,26 @@ fn an_input_type_the_generated_impls_cannot_name_is_rejected_at_its_tokens() {
     cases.compile_fail("tests/ui/input_not_a_struct.rs");
     cases.compile_fail("tests/ui/input_not_a_type.rs");
 }
+
+#[test]
+fn a_command_tree_is_declared_where_its_commands_live_and_says_what_it_cannot_declare() {
+    let cases = trybuild::TestCases::new();
+    cases.pass("tests/ui/tree_valid.rs");
+    // The tree's own surface: shapes and keys it cannot honour.
+    cases.compile_fail("tests/ui/tree_inline_variant.rs");
+    cases.compile_fail("tests/ui/tree_unit_variant.rs");
+    cases.compile_fail("tests/ui/tree_repeated_name.rs");
+    cases.compile_fail("tests/ui/tree_unknown_key.rs");
+    cases.compile_fail("tests/ui/tree_variant_unknown_key.rs");
+    cases.compile_fail("tests/ui/tree_planned_without_output.rs");
+    // `Request` is the application's: what it gets wrong fails to compile.
+    cases.compile_fail("tests/ui/tree_request_missing_variant.rs");
+    cases.compile_fail("tests/ui/tree_request_extra_variant.rs");
+    cases.compile_fail("tests/ui/tree_request_mistyped_variant.rs");
+    // The leaves and the fields that hold a tree.
+    cases.compile_fail("tests/ui/tree_leaf_without_input.rs");
+    cases.compile_fail("tests/ui/tree_output_not_convertible.rs");
+    cases.compile_fail("tests/ui/field_subcommands_not_a_tree.rs");
+    cases.compile_fail("tests/ui/field_subcommands_with_rule.rs");
+    cases.compile_fail("tests/ui/facet_collect_beside_ask.rs");
+}

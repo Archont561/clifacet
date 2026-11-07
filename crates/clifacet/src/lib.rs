@@ -143,6 +143,89 @@ pub use clifacet_macros::version;
 /// module without either shadowing the other.
 pub use clifacet_macros::command;
 
+/// Declares a command tree where its commands live (decision-14).
+///
+/// The enum stays clap's `Subcommand`, one variant per subcommand and one leaf struct per
+/// variant; the attribute generates the conversion to the application's `Request`, the
+/// collection, and — with `output = …` — the dispatch to the chosen leaf. Validation
+/// consumes the parsed command, so a tree that runs keeps a clone of itself to run with:
+///
+/// ```
+/// use clifacet::{Command, Facet, Failure};
+///
+/// #[clifacet::command(input = Input)]
+/// #[command(name = "todo")]
+/// struct Cli {
+///     #[clifacet(subcommands)]
+///     command: Option<Commands>,
+/// }
+///
+/// struct Input {
+///     command: Option<Request>,
+/// }
+///
+/// #[clifacet::subcommands(input = Request, output = String)]
+/// #[derive(Clone)]
+/// enum Commands {
+///     /// Add a task.
+///     Add(Add),
+///     /// Mark a task done.
+///     #[clifacet(alias = "finish")]
+///     Done(Done),
+/// }
+///
+/// enum Request {
+///     Add(AddInput),
+///     Done(DoneInput),
+/// }
+///
+/// #[clifacet::command(input = AddInput)]
+/// #[derive(Clone)]
+/// struct Add {
+///     #[clifacet(trim, non_empty)]
+///     title: String,
+/// }
+///
+/// struct AddInput {
+///     title: String,
+/// }
+///
+/// #[clifacet::command(input = DoneInput)]
+/// #[derive(Clone)]
+/// struct Done {
+///     id: u32,
+/// }
+///
+/// struct DoneInput {
+///     id: u32,
+/// }
+///
+/// impl Command for Add {
+///     type Input = AddInput;
+///     type Output = String;
+///
+///     fn execute(&self, input: AddInput) -> Result<String, Failure> {
+///         Ok(format!("added {}", input.title))
+///     }
+/// }
+///
+/// impl Command for Done {
+///     type Input = DoneInput;
+///     type Output = String;
+///
+///     fn execute(&self, input: DoneInput) -> Result<String, Failure> {
+///         Ok(format!("finished #{}", input.id))
+///     }
+/// }
+///
+/// let cli = <Cli as clifacet::clap::Parser>::try_parse_from(["todo", "finish", "7"]).unwrap();
+/// let tree = cli.command.clone().expect("a subcommand was given");
+/// let request = cli.validate().unwrap().command.expect("so it converted");
+///
+/// assert_eq!(tree.execute(request).unwrap(), "finished #7");
+/// ```
+pub use clifacet_macros::subcommands;
+
 /// Derives [`Facet`], the companion derive for a clap command.
 ///
 /// Re-exported so an application depends on `clifacet` alone; the trait and the

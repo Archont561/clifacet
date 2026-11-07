@@ -473,6 +473,12 @@ fn read_failed(error: &std::io::Error) -> Failure {
 /// ```
 ///
 /// [`Facet::validate`]: crate::Facet::validate
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot collect its missing values: it does not implement `Collect`",
+    label = "nothing collects this",
+    note = "`#[clifacet::command(input = …)]` and `#[derive(clifacet::Facet)]` generate it, \
+            and `#[clifacet::subcommands]` for a tree; implement it by hand otherwise"
+)]
 pub trait Collect: Sized {
     /// Asks for what is missing and confirms what needs confirming, as the plan permits.
     ///

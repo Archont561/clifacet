@@ -26,11 +26,12 @@ use std::io::Write;
 use std::process::Command as Process;
 
 use clap::Parser;
+use clifacet::Facet;
 use clifacet::command::{Plan, Planned};
 use clifacet::contract::ExitPolicy;
 use clifacet::failure::Failure;
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
-use clifacet::prompt::{Confirmation, Prompter, Session, Terminal};
+use clifacet::prompt::{Collect, Confirmation, Prompter, Session, Terminal};
 
 /// The program the wrapper runs, overridable so a test never spawns the real tool.
 ///
@@ -97,8 +98,11 @@ impl std::str::FromStr for Status {
 ///
 /// The global flags are global on purpose: Backlog.md repeats `--json` on every leaf,
 /// so a user who wants one machine-readable call has to remember which level it sits
-/// at. Here it is accepted anywhere and forwarded where it belongs.
-#[derive(Debug, Parser)]
+/// at. Here it is accepted anywhere and forwarded where it belongs. `--dry-run` and
+/// `--yes` decide how the run goes rather than what it asks for, so they stay out of
+/// the [`Request`].
+#[clifacet::command(input = Request)]
+#[derive(Debug)]
 #[command(
     name = "bl",
     version,
@@ -110,92 +114,126 @@ impl std::str::FromStr for Status {
 )]
 pub struct Cli {
     /// Print versioned machine-readable JSON instead of the human output.
-    #[arg(long, global = true)]
+    #[clifacet(long)]
+    #[arg(global = true)]
     pub json: bool,
 
     /// Print the command that would run, and run nothing.
-    #[arg(long, global = true)]
+    #[clifacet(long, skip)]
+    #[arg(global = true)]
     pub dry_run: bool,
 
     /// Answer confirmations with yes.
-    #[arg(long, global = true)]
+    #[clifacet(long, skip)]
+    #[arg(global = true)]
     pub yes: bool,
 
     /// The subcommand; none means `list`.
-    #[command(subcommand)]
+    #[clifacet(subcommands)]
     pub command: Option<Verb>,
 }
 
-/// One leaf of the wrapper's tree.
+/// The wrapper's tree, declared where its leaves live (decision-14).
 ///
-/// The tree is written out by hand, which is what clifacet supports today (decision-14
-/// accepts a declarative spelling for it, which CLI-32 builds and moves this tree to).
-/// Adding a leaf is one variant, one struct and one arm — no registry, no macro,
-/// nothing global.
-#[derive(Debug, clap::Subcommand)]
+/// Adding a leaf is one variant here, one struct below and one arm in
+/// [`invocation_of`] — and a missing [`Action`] variant is a compile error, not a
+/// forgotten arm. The conversion, the questions and their order are generated.
+#[clifacet::subcommands(input = Action)]
+#[derive(Debug)]
 pub enum Verb {
     /// List tasks, grouped by status.
     List(ListArgs),
     /// Show one task.
-    Show {
-        /// The task ID, for example CLI-20.
-        id: String,
-    },
+    Show(Show),
     /// Create a task. The title is asked for when it is missing.
     New(NewArgs),
     /// Move a task to In Progress.
-    Start {
-        /// The task ID.
-        id: String,
-    },
+    Start(Start),
     /// Move a task to Done.
-    Done {
-        /// The task ID.
-        id: String,
-    },
+    Done(Done),
     /// Search tasks, documents and decisions.
-    Search {
-        /// What to look for.
-        query: String,
-    },
+    Search(Search),
     /// Check the backlog for duplicate IDs and broken dependencies.
-    Doctor,
+    Doctor(Doctor),
 }
 
 /// Filters for `bl list`, named the way a person asks the question.
-#[derive(Debug, Default, clap::Args)]
+#[clifacet::command(input = Filter, bridge = filter, collect = choose_status)]
+#[derive(Debug, Default)]
 pub struct ListArgs {
     /// Only tasks in this status; with no value, it is asked for as a choice.
-    #[arg(long, value_parser = parse_status)]
+    #[clifacet(long, value_parser = parse_status)]
     pub status: Option<Option<Status>>,
 
     /// Only tasks whose dependencies are all done.
-    #[arg(long)]
+    #[clifacet(long)]
     pub ready: bool,
 
     /// Print at most this many.
-    #[arg(long)]
+    #[clifacet(long)]
     pub limit: Option<u32>,
 }
 
+/// `bl show`.
+#[clifacet::command(input = TaskRef)]
+#[derive(Debug)]
+pub struct Show {
+    /// The task ID, for example CLI-20.
+    #[clifacet(trim, non_empty)]
+    pub id: String,
+}
+
 /// The fields of a new task.
-#[derive(Debug, clap::Args)]
+#[clifacet::command(input = NewTask, bridge = new_task, collect = ask_title)]
+#[derive(Debug)]
 pub struct NewArgs {
     /// The title. Omitted, it is asked for; with nothing able to answer, the run fails.
     pub title: Option<String>,
 
     /// An acceptance criterion; repeat for more.
-    #[arg(long = "ac")]
+    #[clifacet(long = "ac")]
     pub acceptance: Vec<String>,
 
     /// The milestone ID or title.
-    #[arg(long)]
+    #[clifacet(long)]
     pub milestone: Option<String>,
 
     /// The status the task starts in.
-    #[arg(long, value_parser = parse_status)]
+    #[clifacet(long, value_parser = parse_status)]
     pub status: Option<Status>,
 }
+
+/// `bl start`: confirmed before anything moves.
+#[clifacet::command(input = TaskRef, collect = confirm_start)]
+#[derive(Debug)]
+pub struct Start {
+    /// The task ID.
+    #[clifacet(trim, non_empty)]
+    pub id: String,
+}
+
+/// `bl done`: confirmed before anything moves.
+#[clifacet::command(input = TaskRef, collect = confirm_done)]
+#[derive(Debug)]
+pub struct Done {
+    /// The task ID.
+    #[clifacet(trim, non_empty)]
+    pub id: String,
+}
+
+/// `bl search`.
+#[clifacet::command(input = Query)]
+#[derive(Debug)]
+pub struct Search {
+    /// What to look for.
+    #[clifacet(trim, non_empty)]
+    pub query: String,
+}
+
+/// `bl doctor`, which takes nothing.
+#[clifacet::command(input = Checkup)]
+#[derive(Debug)]
+pub struct Doctor {}
 
 fn parse_status(value: &str) -> Result<Status, String> {
     value.parse()
@@ -204,55 +242,72 @@ fn parse_status(value: &str) -> Result<Status, String> {
 /// A validated instruction: everything the wrapper decided, and nothing it did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Request {
-    /// What to ask the wrapped CLI for.
-    pub verb: Action,
     /// Whether to ask for machine-readable output.
     pub json: bool,
+    /// What to ask the wrapped CLI for; none means `list`, which [`invocation_of`] picks.
+    pub command: Option<Action>,
 }
 
-/// What a [`Request`] asks for, with every value already validated.
+/// What a [`Request`] asks for: one variant per leaf of [`Verb`], every value validated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// List tasks.
-    List {
-        /// A status filter.
-        status: Option<Status>,
-        /// Only unblocked tasks.
-        ready: bool,
-        /// A display limit.
-        limit: Option<u32>,
-    },
+    List(Filter),
     /// Show one task.
-    Show {
-        /// The task ID.
-        id: String,
-    },
+    Show(TaskRef),
     /// Create one task.
-    New {
-        /// The title, never empty: it was asked for or supplied.
-        title: String,
-        /// The acceptance criteria.
-        acceptance: Vec<String>,
-        /// The milestone, if one was named.
-        milestone: Option<String>,
-        /// The status the task starts in.
-        status: Option<Status>,
-    },
-    /// Move a task to another status.
-    SetStatus {
-        /// The task ID.
-        id: String,
-        /// Where to move it.
-        status: Status,
-    },
+    New(NewTask),
+    /// Move a task to In Progress.
+    Start(TaskRef),
+    /// Move a task to Done.
+    Done(TaskRef),
     /// Search the backlog.
-    Search {
-        /// The query.
-        query: String,
-    },
+    Search(Query),
     /// Check the backlog's health.
-    Doctor,
+    Doctor(Checkup),
 }
+
+/// Which tasks to list.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Filter {
+    /// A status filter.
+    pub status: Option<Status>,
+    /// Only unblocked tasks.
+    pub ready: bool,
+    /// A display limit.
+    pub limit: Option<u32>,
+}
+
+/// One task, by ID: never blank, already trimmed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskRef {
+    /// The task ID.
+    pub id: String,
+}
+
+/// A task to create.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewTask {
+    /// The title, never empty: it was asked for or supplied.
+    pub title: String,
+    /// The acceptance criteria.
+    pub acceptance: Vec<String>,
+    /// The milestone, if one was named.
+    pub milestone: Option<String>,
+    /// The status the task starts in.
+    pub status: Option<Status>,
+}
+
+/// A search, never blank.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Query {
+    /// The query.
+    pub query: String,
+}
+
+/// A health check, which needs nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Checkup {}
 
 /// The exit codes this application gives its outcomes.
 pub const EXIT: ExitPolicy = ExitPolicy::standard();
@@ -270,65 +325,30 @@ pub fn task_id(id: &str) -> Result<String, Failure> {
     Ok(trimmed.to_owned())
 }
 
-impl TryFrom<Cli> for Request {
-    type Error = Failure;
+/// `bl list`'s input: a bare `--status` is refused unless it was asked about.
+fn filter(
+    ListArgs {
+        status,
+        ready,
+        limit,
+    }: ListArgs,
+) -> Result<Filter, Failure> {
+    let status = status
+        .map(|named| named.ok_or_else(unnamed_status))
+        .transpose()?;
+    Ok(Filter {
+        status,
+        ready,
+        limit,
+    })
+}
 
-    /// Validates the parsed wrapper arguments.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Failure::validation`] for an empty task ID or an empty title; a
-    /// blank title is the one thing that has to be caught here rather than by the
-    /// wrapped tool, because the tool would happily create an untitled task.
-    fn try_from(cli: Cli) -> Result<Self, Self::Error> {
-        let json = cli.json;
-        let verb = match cli
-            .command
-            .unwrap_or_else(|| Verb::List(ListArgs::default()))
-        {
-            Verb::List(args) => Action::List {
-                status: args
-                    .status
-                    .map(|named| named.ok_or_else(unnamed_status))
-                    .transpose()?,
-                ready: args.ready,
-                limit: args.limit,
-            },
-            Verb::Show { id } => Action::Show { id: task_id(&id)? },
-            Verb::New(args) => {
-                let title = args.title.unwrap_or_default();
-                if title.trim().is_empty() {
-                    return Err(Failure::validation(
-                        "a task title is required: pass one, or run somewhere it can be asked for",
-                    ));
-                }
-                Action::New {
-                    title: title.trim().to_owned(),
-                    acceptance: args.acceptance,
-                    milestone: args.milestone,
-                    status: args.status,
-                }
-            }
-            Verb::Start { id } => Action::SetStatus {
-                id: task_id(&id)?,
-                status: Status::InProgress,
-            },
-            Verb::Done { id } => Action::SetStatus {
-                id: task_id(&id)?,
-                status: Status::Done,
-            },
-            Verb::Search { query } => {
-                if query.trim().is_empty() {
-                    return Err(Failure::validation("a search query is required"));
-                }
-                Action::Search {
-                    query: query.trim().to_owned(),
-                }
-            }
-            Verb::Doctor => Action::Doctor,
-        };
-        Ok(Self { verb, json })
+/// Asks which status a bare `--status` meant; still bare when nothing may ask.
+fn choose_status(mut args: ListArgs, session: &mut Session) -> Result<ListArgs, Failure> {
+    if args.status == Some(None) {
+        args.status = Some(session.choose(None, "Which status?", Status::ALL)?);
     }
+    Ok(args)
 }
 
 /// The refusal for a bare `--status` nothing could ask about.
@@ -340,15 +360,10 @@ fn unnamed_status() -> Failure {
     ))
 }
 
-/// Asks for the title a bare `bl new` did not get.
-///
-/// # Errors
-///
-/// Returns [`Failure::validation`] when nothing may ask and no title was supplied,
-/// and whatever the frontend reports for a cancelled or broken question.
-pub fn collect_new(args: NewArgs, session: &mut Session) -> Result<Request, Failure> {
-    let title = session.value(args.title.clone(), "Task title?")?;
-    let Some(title) = title else {
+/// `bl new`'s input. A blank title is the one thing that has to be caught here rather
+/// than by the wrapped tool, because the tool would happily create an untitled task.
+fn new_task(args: NewArgs) -> Result<NewTask, Failure> {
+    let Some(title) = args.title else {
         return Err(Failure::validation(
             "a task title is required: pass one, or run somewhere it can be asked for",
         ));
@@ -357,15 +372,42 @@ pub fn collect_new(args: NewArgs, session: &mut Session) -> Result<Request, Fail
     if title.is_empty() {
         return Err(Failure::validation("a task title must not be blank"));
     }
-    Ok(Request {
-        verb: Action::New {
-            title,
-            acceptance: args.acceptance,
-            milestone: args.milestone,
-            status: args.status,
-        },
-        json: false,
+    Ok(NewTask {
+        title,
+        acceptance: args.acceptance,
+        milestone: args.milestone,
+        status: args.status,
     })
+}
+
+/// Asks for the title a bare `bl new` did not get; a positional cannot be `ask`ed.
+fn ask_title(mut args: NewArgs, session: &mut Session) -> Result<NewArgs, Failure> {
+    args.title = session.value(args.title, "Task title?")?;
+    Ok(args)
+}
+
+/// The `new` leaf on its own: asks for what is missing, then validates.
+///
+/// # Errors
+///
+/// Returns [`Failure::validation`] when nothing may ask and no title was supplied,
+/// and whatever the frontend reports for a cancelled or broken question.
+pub fn collect_new(args: NewArgs, session: &mut Session) -> Result<Request, Failure> {
+    let task = args.collect(session).and_then(Facet::validate)?;
+    Ok(Request {
+        json: false,
+        command: Some(Action::New(task)),
+    })
+}
+
+fn confirm_start(start: Start, session: &mut Session) -> Result<Start, Failure> {
+    confirm_status(&task_id(&start.id)?, Status::InProgress, session)?;
+    Ok(start)
+}
+
+fn confirm_done(done: Done, session: &mut Session) -> Result<Done, Failure> {
+    confirm_status(&task_id(&done.id)?, Status::Done, session)?;
+    Ok(done)
 }
 
 /// Confirms a state change, or fails without running anything.
@@ -448,12 +490,15 @@ fn push_args(argv: &mut Vec<String>, values: &[&str]) {
 #[must_use]
 pub fn invocation_of(request: Request) -> Invocation {
     let mut argv = program();
-    let explain = match request.verb {
-        Action::List {
+    let action = request
+        .command
+        .unwrap_or_else(|| Action::List(Filter::default()));
+    let explain = match action {
+        Action::List(Filter {
             status,
             ready,
             limit,
-        } => {
+        }) => {
             push_args(&mut argv, &["task", "list"]);
             if let Some(status) = status {
                 argv.push(String::from("--status"));
@@ -468,7 +513,7 @@ pub fn invocation_of(request: Request) -> Invocation {
             }
             String::from("list tasks")
         }
-        Action::Show { id } => {
+        Action::Show(TaskRef { id }) => {
             push_args(&mut argv, &["task", "view"]);
             argv.push(id.clone());
             if !request.json {
@@ -476,12 +521,12 @@ pub fn invocation_of(request: Request) -> Invocation {
             }
             format!("show {id}")
         }
-        Action::New {
+        Action::New(NewTask {
             title,
             acceptance,
             milestone,
             status,
-        } => {
+        }) => {
             push_args(&mut argv, &["task", "create"]);
             argv.push(title.clone());
             for criterion in &acceptance {
@@ -498,19 +543,14 @@ pub fn invocation_of(request: Request) -> Invocation {
             }
             format!("create a task titled \u{201c}{title}\u{201d}")
         }
-        Action::SetStatus { id, status } => {
-            push_args(&mut argv, &["task", "edit"]);
-            argv.push(id.clone());
-            push_args(&mut argv, &["--status"]);
-            argv.push(status.as_str().to_owned());
-            format!("move {id} to {status}")
-        }
-        Action::Search { query } => {
+        Action::Start(TaskRef { id }) => set_status(&mut argv, &id, Status::InProgress),
+        Action::Done(TaskRef { id }) => set_status(&mut argv, &id, Status::Done),
+        Action::Search(Query { query }) => {
             push_args(&mut argv, &["search"]);
             argv.push(query.clone());
             format!("search for \u{201c}{query}\u{201d}")
         }
-        Action::Doctor => {
+        Action::Doctor(Checkup {}) => {
             push_args(&mut argv, &["doctor"]);
             String::from("check the backlog for duplicate IDs and broken dependencies")
         }
@@ -519,6 +559,12 @@ pub fn invocation_of(request: Request) -> Invocation {
         argv.push(String::from("--json"));
     }
     Invocation { argv, explain }
+}
+
+/// `backlog task edit ID --status S`, and the sentence for it.
+fn set_status(argv: &mut Vec<String>, id: &str, status: Status) -> String {
+    push_args(argv, &["task", "edit", id, "--status", status.as_str()]);
+    format!("move {id} to {status}")
 }
 
 /// The command to run: the environment's override, or `backlog`.
@@ -587,13 +633,14 @@ pub fn app(
             return EXIT.execution();
         }
     };
-    let json = cli.json;
     let dry_run = cli.dry_run;
     let mut session = Session::start(plan, build_frontend);
-    let planned = collect(cli, &mut session).and_then(|mut request| {
-        request.json = json;
-        Backlog.plan(request)
-    });
+    // The chosen leaf asks its own questions, then validates by its own rules; an
+    // absent subcommand asks nothing and reaches `invocation_of` as `None`.
+    let planned = cli
+        .collect(&mut session)
+        .and_then(Facet::validate)
+        .and_then(|request| Backlog.plan(request));
     // The dry run describes the plan and the real run executes it: one value, so the
     // printed line is the line that runs.
     let outcome = match planned {
@@ -632,61 +679,6 @@ impl Planned for Backlog {
         ];
         let plan = Plan::new(move || run(&invocation));
         Ok(steps.into_iter().fold(plan, Plan::step))
-    }
-}
-
-/// Collects whatever the leaves need asking for, then validates.
-fn collect(cli: Cli, session: &mut Session) -> Result<Request, Failure> {
-    let json = cli.json;
-    let command = cli
-        .command
-        .unwrap_or_else(|| Verb::List(ListArgs::default()));
-    match command {
-        Verb::New(args) => {
-            let mut request = collect_new(args, session)?;
-            request.json = json;
-            Ok(request)
-        }
-        Verb::Start { id } => {
-            let id = task_id(&id)?;
-            confirm_status(&id, Status::InProgress, session)?;
-            Ok(Request {
-                verb: Action::SetStatus {
-                    id,
-                    status: Status::InProgress,
-                },
-                json,
-            })
-        }
-        Verb::Done { id } => {
-            let id = task_id(&id)?;
-            confirm_status(&id, Status::Done, session)?;
-            Ok(Request {
-                verb: Action::SetStatus {
-                    id,
-                    status: Status::Done,
-                },
-                json,
-            })
-        }
-        Verb::List(mut args) => {
-            if args.status == Some(None) {
-                // Still `None` when nothing may ask, which `Request::try_from` refuses.
-                args.status = Some(session.choose(None, "Which status?", Status::ALL)?);
-            }
-            Request::try_from(Cli {
-                json,
-                dry_run: false,
-                yes: false,
-                command: Some(Verb::List(args)),
-            })
-        }
-        command => Request::try_from(Cli {
-            json,
-            dry_run: false,
-            yes: false,
-            command: Some(command),
-        }),
     }
 }
 
