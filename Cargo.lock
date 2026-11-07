@@ -349,6 +349,8 @@ dependencies = [
  "inquire",
  "ratatui",
  "rstest",
+ "rstest-bdd",
+ "rstest-bdd-macros",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
