@@ -43,7 +43,7 @@ CODE = [
     "crates/clifacet/src/lib.rs",
     # A guide's snippet is compiled from here, so regenerating it is a code change.
     "examples/simple/tests/documented_snippets.rs",
-    "examples/backlog-lite/tests/features/plan.feature",
+    "examples/backlog-lite/features/plan.feature",
     ".github/workflows/ci.yml",
     "pixi.toml",
     "pixi.lock",

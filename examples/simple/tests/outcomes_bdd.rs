@@ -167,7 +167,7 @@ impl World {
 }
 
 #[scenario(
-    path = "tests/features/outcomes.feature",
+    path = "features/outcomes.feature",
     name = "A successful run writes data and nothing else"
 )]
 #[test]
@@ -175,17 +175,14 @@ fn a_successful_run(world: World) {
     let _ = world;
 }
 
-#[scenario(
-    path = "tests/features/outcomes.feature",
-    name = "A question is never data"
-)]
+#[scenario(path = "features/outcomes.feature", name = "A question is never data")]
 #[test]
 fn a_question_is_never_data(world: World) {
     let _ = world;
 }
 
 #[scenario(
-    path = "tests/features/outcomes.feature",
+    path = "features/outcomes.feature",
     name = "A failure writes a diagnostic and no data"
 )]
 #[test]

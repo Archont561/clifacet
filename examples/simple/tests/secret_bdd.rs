@@ -205,7 +205,7 @@ fn it_refuses_before_asking(world: &World) {
 }
 
 #[scenario(
-    path = "tests/features/secret.feature",
+    path = "features/secret.feature",
     name = "A prompted secret is recorded, never shown"
 )]
 #[test]
@@ -214,7 +214,7 @@ fn a_prompted_secret_is_recorded_never_shown(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/secret.feature",
+    path = "features/secret.feature",
     name = "A frontend that cannot hide input does not ask for a secret"
 )]
 #[test]
@@ -223,7 +223,7 @@ fn a_frontend_that_cannot_hide_input_refuses(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/secret.feature",
+    path = "features/secret.feature",
     name = "A rejected credential is redacted"
 )]
 #[test]
@@ -232,7 +232,7 @@ fn a_rejected_credential_is_redacted(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/secret.feature",
+    path = "features/secret.feature",
     name = "Provenance names the source of an answer"
 )]
 #[test]

@@ -142,7 +142,7 @@ fn nothing_planned_and_cancelled(world: &World) {
 }
 
 #[scenario(
-    path = "tests/features/questions.feature",
+    path = "features/questions.feature",
     name = "A bare status filter is chosen from a list"
 )]
 #[test]
@@ -151,7 +151,7 @@ fn a_bare_status_filter_is_chosen(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/questions.feature",
+    path = "features/questions.feature",
     name = "A bare status filter nothing can ask about is refused"
 )]
 #[test]
@@ -160,7 +160,7 @@ fn a_bare_status_filter_is_refused_headless(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/questions.feature",
+    path = "features/questions.feature",
     name = "--yes moves a task even without a terminal"
 )]
 #[test]
@@ -169,7 +169,7 @@ fn yes_moves_a_task_headless(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/questions.feature",
+    path = "features/questions.feature",
     name = "A move nobody could confirm asks for --yes"
 )]
 #[test]
@@ -178,7 +178,7 @@ fn an_unconfirmable_move_asks_for_yes(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/questions.feature",
+    path = "features/questions.feature",
     name = "A declined move cancels the run"
 )]
 #[test]

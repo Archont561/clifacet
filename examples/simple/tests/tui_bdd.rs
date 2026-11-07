@@ -129,7 +129,7 @@ impl World {
 }
 
 #[scenario(
-    path = "tests/features/tui.feature",
+    path = "features/tui.feature",
     name = "A typed answer produces the same data as the flag"
 )]
 #[test]
@@ -137,17 +137,14 @@ fn a_typed_answer_matches_the_flag(world: World) {
     let _ = world;
 }
 
-#[scenario(
-    path = "tests/features/tui.feature",
-    name = "Leaving the form runs nothing"
-)]
+#[scenario(path = "features/tui.feature", name = "Leaving the form runs nothing")]
 #[test]
 fn leaving_the_form_runs_nothing(world: World) {
     let _ = world;
 }
 
 #[scenario(
-    path = "tests/features/tui.feature",
+    path = "features/tui.feature",
     name = "Choosing a level produces the same data as the flag"
 )]
 #[test]

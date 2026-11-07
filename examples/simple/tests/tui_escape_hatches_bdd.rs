@@ -182,7 +182,7 @@ fn the_run_succeeded(world: &World) {
 }
 
 #[scenario(
-    path = "tests/features/tui_escape_hatches.feature",
+    path = "features/tui_escape_hatches.feature",
     name = "A custom field draws inside the generated form"
 )]
 #[test]
@@ -191,7 +191,7 @@ fn a_custom_field_draws_inside_the_form(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/tui_escape_hatches.feature",
+    path = "features/tui_escape_hatches.feature",
     name = "A custom screen submits to the same command"
 )]
 #[test]

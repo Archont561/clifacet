@@ -148,7 +148,7 @@ fn the_exit_code_says_the_run_succeeded(run: &Run) {
 }
 
 #[scenario(
-    path = "tests/features/interaction_policy.feature",
+    path = "features/interaction_policy.feature",
     name = "A request for a TUI is refused before anything runs"
 )]
 #[test]
@@ -157,7 +157,7 @@ fn a_refused_mode_runs_nothing(run: Run) {
 }
 
 #[scenario(
-    path = "tests/features/interaction_policy.feature",
+    path = "features/interaction_policy.feature",
     name = "An application that prefers prompts asks instead of drawing a screen"
 )]
 #[test]
@@ -166,7 +166,7 @@ fn a_preference_for_prompts_asks_rather_than_draws(run: Run) {
 }
 
 #[scenario(
-    path = "tests/features/interaction_policy.feature",
+    path = "features/interaction_policy.feature",
     name = "--yes answers confirmations and leaves the mode alone"
 )]
 #[test]

@@ -54,7 +54,7 @@ The application states both halves of that policy in one line:
 pub const POLICY: Policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
 ```
 
-The dialog is the application's choice, not the framework's: `src/lib.rs` names
+The dialog is the application's choice, not the framework's: `src/entry.rs` names
 `dialog_frontend()` for the process and keeps `terminal_frontend()` beside it, a plain
 question-and-line-reader built on the same two-method `Prompter` seam. Swapping them
 changes no other line, because the session decides *whether* a question may be asked
@@ -80,21 +80,30 @@ diagnostic goes to `stderr`, in every mode.
 | the command ran and failed (`--explode`) | `1` |
 
 The numbers are the application's; `clifacet::contract::ExitPolicy::standard()` is the
-mapping in one place, and `EXIT` in `src/lib.rs` is that policy named.
+mapping in one place, and `EXIT` in `src/exit.rs` is that policy named.
 
 ## Layout
 
+One file per command, and one file per concern of the application around it:
+
 ```text
-src/lib.rs     the three layers, and the application that joins them
-src/main.rs    the `main` a real binary writes: args in, streams, exit code
-tests/         what proves each promise — the tables, the scenarios, the properties
-examples/      two runnable demos: `parity_report` and `tui_custom_screen`
+src/commands/mod.rs      the registry: one `mod` line per command
+src/commands/example.rs  the command: `Cli`, `ExampleInput`, `Example`
+src/interaction.rs       the interaction flags and the mode `POLICY`
+src/exit.rs              the exit codes, and the one place an outcome is written
+src/entry.rs             `run`, `main` and the scriptable entry points
+src/form.rs              the full-screen form and its submission
+src/lib.rs               the crate docs, the module list and the re-exports
+src/main.rs              the `main` a real binary writes: args in, streams, exit code
+tests/                   what proves each promise — the tables, the scenarios, the properties
 ```
 
-`src/lib.rs`, top to bottom: `Cli` (the `clap` surface), `ExampleInput` (validated
-input, built by the `TryFrom` bridge the derive calls), `Example` (the command, which
-touches no stream), then `run`, `main` and the TUI entry points that own the streams
-and the exit codes. Copy that shape; the rest of the file is documentation of it.
+`src/commands/example.rs`, top to bottom: `Cli` (the `clap` surface), `ExampleInput`
+(validated input, built by the `TryFrom` bridge the derive calls), then `Example` (the
+command, which touches no stream). Nothing in it knows about streams, modes or exit
+codes; those are the files beside `commands/`. A second command would be a second
+file in `commands/` and a tree in `commands/mod.rs`, the way `examples/backlog-lite`
+does it. `lib.rs` re-exports everything public, so a caller never names a module.
 
 ## What tests it
 
@@ -109,7 +118,7 @@ and the exit codes. Copy that shape; the rest of the file is documentation of it
 | `tests/tui_*.rs` | the form, its escape hatches and cross-mode parity |
 | `tests/parity_bdd.rs`, `tests/harness_parity.rs` | every mode reaches the command with the same input |
 | `tests/properties.rs` | the invariants no table would enumerate |
-| `tests/features/*.feature` | the same promises as Given/When/Then |
+| `features/*.feature` | the same promises as Given/When/Then |
 
 Run them with `pixi run --frozen test` from the repository root. The scenarios are
 written against the public entry points — `main`, `main_with`, `run_tui` — never

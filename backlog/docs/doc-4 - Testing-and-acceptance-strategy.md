@@ -3,15 +3,30 @@ id: doc-4
 title: Testing and acceptance strategy
 type: other
 created_date: '2026-10-29 15:28'
-updated_date: '2026-10-29 15:28'
+updated_date: '2026-11-08 00:30'
 ---
 # Test layers
 
 - rstest: public-seam fixtures, policy tables, validation, errors and output.
-- rstest-bdd: representative workflows in `tests/features/*.feature` with steps bound to public harnesses.
+- rstest-bdd: representative workflows in each crate's `features/*.feature`, with steps in `tests/*_bdd.rs` bound to public harnesses.
 - proptest: determinism, supported non-secret canonical-argv round trips, redaction and documented mode equivalence. Preserve meaningful regression seeds.
 - trybuild: derive acceptance and useful compile-failure diagnostics.
 - Headless ratatui TestBackend and a scripted framework-owned prompt plan; do not assume inquire offers public backend injection.
+
+# Where scenarios live
+
+Each scenario sits with the crate whose promise it describes (CLI-42):
+
+- `crates/clifacet/features/`: the library's own promises, driven through its
+  public seams without an application. These are the command tree, planned commands
+  and provenance, and `cargo test -p clifacet` runs them.
+- `examples/*/features/`: workflows of an application built on the library. Mode
+  policy, prompting, parity, the TUI, secrets and outcomes moved there with the
+  reference application (CLI-21), because their steps drive its entry points.
+- `clifacet-macros` has no scenarios. Its generated code names `::clifacet`, so it is
+  exercised end to end by the library's scenarios. Its diagnostics are compile-time
+  promises pinned by trybuild in `crates/clifacet/tests/ui/`. A scenario would only
+  restate those snapshots.
 
 # First behavior scenarios
 
