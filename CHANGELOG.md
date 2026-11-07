@@ -10,10 +10,20 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### Added
+
+* **macros:** declare a command tree where its commands live
+([b6e9691](https://github.com/Archont561/clifacet/commit/b6e9691e1eb5f3fdd24a09450fb34085d15b3899))
+
 ### Fixed
 
 * **release:** commit the changelog as the workflow's bot
 ([4e2f139](https://github.com/Archont561/clifacet/commit/4e2f139e3a2c2d39c5561ac33d537cbddba3f4bf))
+
+### Changed
+
+* **backlog-lite:** declare the tree instead of hand-writing it
+([4581a0a](https://github.com/Archont561/clifacet/commit/4581a0a0f8c15457ad98c1363081361fa1fa8712))
 
 ## [0.3.0] - 2026-11-06
 
