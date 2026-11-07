@@ -2,8 +2,8 @@
 
 This is the M1 slice: `clap` parses, the application validates, a UI-free command
 runs, and the application decides which stream carries the data and what a
-failure costs. `examples/simple/src/lib.rs` is the whole thing in one
-place — the reference application, in a crate of its own — and
+failure costs. `examples/simple` is the whole thing — the reference application, in
+a crate of its own, its command in `src/commands/example.rs` — and
 `examples/simple/tests/example_command.rs` drives it through buffers
 rather than a terminal. Nothing in it reaches a private path: the crate depends
 on `clifacet` exactly as a caller does, so every seam it uses is a published
@@ -291,7 +291,7 @@ asks what the flags left out.
 
 What a custom frontend cannot change is the decision that allowed it: the builder is
 only called when the plan asks something, so a richer widget can never turn a piped
-run into an interactive one. `examples/simple/src/lib.rs` is the worked example — the
+run into an interactive one. `examples/simple/src/entry.rs` is the worked example — the
 process uses `dialog_frontend()` and keeps `terminal_frontend()` beside it to show the
 choice is the application's.
 
@@ -442,8 +442,8 @@ would show a stale answer; `run_with` replaces the drawing and nothing else — 
 keys, the refusals, the submission and the handler are the same loop, so a custom
 screen reaches the same validation as the generated form. `run_on_with` is the same
 hatch with the alternate screen, so a custom screen is not left to reimplement
-entering and leaving it. `examples/simple/examples/tui_custom_screen.rs` is
-both hatches in one runnable screen.
+entering and leaving it. `examples/simple/tests/tui_escape_hatches.rs` drives
+both hatches through the published API, from outside the library crate.
 
 The one thing a headless test cannot reach is the process's own terminal: the size
 probe, the raw-mode restore and the live event stream. Everything they wrap is
@@ -486,8 +486,8 @@ Three pieces, and deliberately no fourth:
   one names the question, the other names the form — so `Parity::comparing` names the
   subjects a scenario is actually about. Everything else compares all four.
 
-`examples/simple/examples/parity_report.rs` runs the example command three
-ways and prints whether the modes agree; it lives outside the library crate, so it
+`examples/simple/tests/harness_parity.rs` runs the example command three
+ways and asserts that the modes agree; it lives outside the library crate, so it
 can only use this published surface, which is the point.
 
 | Case | Where |

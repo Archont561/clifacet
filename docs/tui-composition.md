@@ -130,5 +130,5 @@ What no test can reach is the process's own terminal: the size probe, the raw-mo
 restore and the live event stream. Everything they wrap is covered, which is why the
 coverage report has five uncovered lines rather than a list of them.
 
-The runnable versions of both hatches are in
-`examples/simple/examples/tui_custom_screen.rs`.
+Both hatches are driven end to end, through the published API, in
+`examples/simple/tests/tui_escape_hatches.rs`.
