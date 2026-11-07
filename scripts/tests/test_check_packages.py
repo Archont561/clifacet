@@ -46,7 +46,7 @@ def test_a_required_file_that_is_absent_is_a_finding():
 
 
 def test_a_bdd_feature_is_repository_only():
-    findings = contents("clifacet", [*REQUIRED_FILES, "tests/features/greeting.feature"])
+    findings = contents("clifacet", [*REQUIRED_FILES, "features/greeting.feature"])
 
     assert [finding.kind for finding in findings] == ["forbidden-file"], (
         "a scenario file is test scaffolding; it does not belong in the published crate"

@@ -140,7 +140,7 @@ fn fails_as_invalid_input(world: &World) {
 }
 
 #[scenario(
-    path = "tests/features/plan.feature",
+    path = "features/plan.feature",
     name = "A preview lists every step and changes nothing"
 )]
 #[test]
@@ -149,7 +149,7 @@ fn a_preview_changes_nothing(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/plan.feature",
+    path = "features/plan.feature",
     name = "A real run does exactly what the preview listed"
 )]
 #[test]
@@ -158,7 +158,7 @@ fn a_run_does_what_the_preview_listed(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/plan.feature",
+    path = "features/plan.feature",
     name = "A request refused while planning runs nothing"
 )]
 #[test]

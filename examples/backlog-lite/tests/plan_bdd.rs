@@ -93,7 +93,7 @@ fn succeeded_without_asking(world: &World) {
 }
 
 #[scenario(
-    path = "tests/features/plan.feature",
+    path = "features/plan.feature",
     name = "A dry run prints the plan, and only the plan"
 )]
 #[test]

@@ -87,7 +87,7 @@ fn the_command_runs_without_a_terminal(world: &mut AppWorld) {
 }
 
 #[scenario(
-    path = "tests/features/facet_bridge.feature",
+    path = "features/facet_bridge.feature",
     name = "An alias resolves to the same typed input"
 )]
 #[test]
@@ -198,7 +198,7 @@ fn the_declaration_parses_through_the_alias(_world: &mut AppWorld) {
 }
 
 #[scenario(
-    path = "tests/features/facet_bridge.feature",
+    path = "features/facet_bridge.feature",
     name = "A field declared once carries its own grammar"
 )]
 #[test]
@@ -265,7 +265,7 @@ fn the_user_was_asked_nothing(world: &mut AppWorld) {
 }
 
 #[scenario(
-    path = "tests/features/facet_bridge.feature",
+    path = "features/facet_bridge.feature",
     name = "A field declared once is asked for and normalised by the same declaration"
 )]
 #[test]
@@ -274,7 +274,7 @@ fn a_field_declared_once_is_asked_for_and_normalised(world: AppWorld) {
 }
 
 #[scenario(
-    path = "tests/features/facet_bridge.feature",
+    path = "features/facet_bridge.feature",
     name = "Without a terminal the declared default fills in and nothing is asked"
 )]
 #[test]
@@ -316,7 +316,7 @@ fn a_padded_name_reaches_the_check(_world: &mut AppWorld, message: String) {
 }
 
 #[scenario(
-    path = "tests/features/facet_bridge.feature",
+    path = "features/facet_bridge.feature",
     name = "The reference application checks its input after each field's own rule"
 )]
 #[test]
@@ -344,7 +344,7 @@ fn the_form_asks_for(world: &mut AppWorld, first: String, second: String, third:
 }
 
 #[scenario(
-    path = "tests/features/facet_bridge.feature",
+    path = "features/facet_bridge.feature",
     name = "The reference application's form is generated from its declarations"
 )]
 #[test]
@@ -415,7 +415,7 @@ fn the_declared_default_fills_the_generic_input(name: String) {
 }
 
 #[scenario(
-    path = "tests/features/facet_bridge.feature",
+    path = "features/facet_bridge.feature",
     name = "An input named through a trait the commands share is built from the declarations"
 )]
 #[test]

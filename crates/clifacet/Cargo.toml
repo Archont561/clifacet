@@ -10,7 +10,7 @@ description = "Composable command-line presentation modes"
 readme = "../../README.md"
 # Scenarios are repository-only (`scripts/check_packages.py`), and their step bindings
 # read the `.feature` files at compile time, so neither half ships.
-exclude = ["tests/features/", "tests/*_bdd.rs"]
+exclude = ["features/", "tests/*_bdd.rs"]
 
 [features]
 # Each frontend is a dependency boundary: an application enables the ones it uses and

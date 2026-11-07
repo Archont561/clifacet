@@ -324,7 +324,7 @@ fn nothing_was_asked(world: &World) {
 // --- scenarios ------------------------------------------------------------------
 
 #[scenario(
-    path = "tests/features/command_tree.feature",
+    path = "features/command_tree.feature",
     name = "Every level's values reach the chosen leaf"
 )]
 #[test]
@@ -333,7 +333,7 @@ fn every_level_reaches_the_leaf(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/command_tree.feature",
+    path = "features/command_tree.feature",
     name = "Only the chosen leaf asks its own question"
 )]
 #[test]
@@ -342,7 +342,7 @@ fn only_the_chosen_leaf_asks(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/command_tree.feature",
+    path = "features/command_tree.feature",
     name = "Running the tree runs only the chosen leaf"
 )]
 #[test]
@@ -351,7 +351,7 @@ fn only_the_chosen_leaf_runs(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/command_tree.feature",
+    path = "features/command_tree.feature",
     name = "Without a subcommand the application decides"
 )]
 #[test]

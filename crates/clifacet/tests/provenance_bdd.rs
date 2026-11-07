@@ -148,7 +148,7 @@ fn the_record_holds_no_value(world: &World, value: String) {
 }
 
 #[scenario(
-    path = "tests/features/provenance.feature",
+    path = "features/provenance.feature",
     name = "Typed, defaulted and environment values are told apart"
 )]
 #[test]
@@ -157,7 +157,7 @@ fn typed_defaulted_and_environment_values(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/provenance.feature",
+    path = "features/provenance.feature",
     name = "A value nobody supplied has no source"
 )]
 #[test]
@@ -166,7 +166,7 @@ fn an_unsupplied_value_has_no_source(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/provenance.feature",
+    path = "features/provenance.feature",
     name = "An answer to a question is recorded as asked, not typed"
 )]
 #[test]

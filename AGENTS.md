@@ -63,7 +63,7 @@ production code is written**:
    then refactor without changing behavior.
 2. [`.agents/skills/bdd/SKILL.md`](.agents/skills/bdd/SKILL.md) — the workflow: a
    user-visible promise described as Given/When/Then with `rstest-bdd`, stored
-   with the crate's tests and driven through public seams.
+   in the crate's `features/` directory and driven through public seams.
 3. [`.agents/skills/clean-code-principles/SKILL.md`](.agents/skills/clean-code-principles/SKILL.md)
    — the design: clear names, cohesive modules, explicit errors, one source of
    truth, presentation separated from execution, no speculative abstraction.

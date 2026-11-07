@@ -153,7 +153,7 @@ fn both_fail_alike(world: &World) {
 }
 
 #[scenario(
-    path = "tests/features/parity.feature",
+    path = "features/parity.feature",
     name = "Every mode reaches the command with the same answer"
 )]
 #[test]
@@ -162,7 +162,7 @@ fn every_mode_reaches_the_command(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/parity.feature",
+    path = "features/parity.feature",
     name = "A rejected answer runs nothing"
 )]
 #[test]

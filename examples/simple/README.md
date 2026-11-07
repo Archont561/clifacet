@@ -118,7 +118,7 @@ does it. `lib.rs` re-exports everything public, so a caller never names a module
 | `tests/tui_*.rs` | the form, its escape hatches and cross-mode parity |
 | `tests/parity_bdd.rs`, `tests/harness_parity.rs` | every mode reaches the command with the same input |
 | `tests/properties.rs` | the invariants no table would enumerate |
-| `tests/features/*.feature` | the same promises as Given/When/Then |
+| `features/*.feature` | the same promises as Given/When/Then |
 
 Run them with `pixi run --frozen test` from the repository root. The scenarios are
 written against the public entry points — `main`, `main_with`, `run_tui` — never

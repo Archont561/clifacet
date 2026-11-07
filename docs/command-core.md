@@ -492,7 +492,7 @@ can only use this published surface, which is the point.
 
 | Case | Where |
 | --- | --- |
-| three modes reach the command with the same validated input | `clifacet-example/tests/harness_parity.rs`, `clifacet-example/tests/features/parity.feature` |
+| three modes reach the command with the same validated input | `clifacet-example/tests/harness_parity.rs`, `clifacet-example/features/parity.feature` |
 | a successful run is identical in every mode | `clifacet-example/tests/harness_parity.rs` |
 | a validation failure keeps the flags' words, and runs nothing in any mode | `clifacet-example/tests/harness_parity.rs` |
 | dismissing a question and leaving the form are the same outcome | `clifacet-example/tests/harness_parity.rs` |
@@ -541,7 +541,7 @@ validation's code, which is asserted too so the overlap reads as a decision.
 | --- | --- |
 | the policy maps each category, and the four outcomes are distinct | `clifacet-example/tests/outcomes.rs` |
 | a question, a screen and a diagnostic never reach the data stream | `clifacet-example/tests/outcomes.rs`, `clifacet-example/tests/harness_parity.rs` |
-| success, validation and a question-answered run, as scenarios | `clifacet-example/tests/features/outcomes.feature` |
+| success, validation and a question-answered run, as scenarios | `clifacet-example/features/outcomes.feature` |
 | help is data and a usage error is a diagnostic | `clifacet-example/tests/example_command.rs`, `clifacet-example/tests/outcomes.rs` |
 
 ## Secrets and provenance
@@ -688,7 +688,7 @@ key table and the compile errors are in [the derive guide](derive.md).
 
 | Case | Where |
 | --- | --- |
-| an alias (`--nickname`, `-n`) resolves to the same typed input as `--name` | `clifacet-example/tests/facet_bridge.rs`, `clifacet-example/tests/features/facet_bridge.feature` |
+| an alias (`--nickname`, `-n`) resolves to the same typed input as `--name` | `clifacet-example/tests/facet_bridge.rs`, `clifacet-example/features/facet_bridge.feature` |
 | the generated command is clap's own, help and aliases included | `clifacet-example/tests/facet_bridge.rs` |
 | a clap `default_value_t` survives the bridge | `clifacet-example/tests/facet_bridge.rs`, `clifacet-example/tests/example_command.rs` |
 | a custom `value_parser` (`--level`) rejects unknown values while parsing, in its own words | `clifacet-example/tests/facet_bridge.rs` |

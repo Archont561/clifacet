@@ -122,7 +122,7 @@ fn only_the_cancellation(world: &World) {
 }
 
 #[scenario(
-    path = "tests/features/prompting.feature",
+    path = "features/prompting.feature",
     name = "A list stopped part-way is not a list"
 )]
 #[test]
@@ -131,7 +131,7 @@ fn a_list_stopped_part_way_is_not_a_list(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/prompting.feature",
+    path = "features/prompting.feature",
     name = "A prompted answer produces the same data as the flag"
 )]
 #[test]
@@ -140,7 +140,7 @@ fn a_prompted_answer_matches_the_flag(world: World) {
 }
 
 #[scenario(
-    path = "tests/features/prompting.feature",
+    path = "features/prompting.feature",
     name = "A declined confirmation cancels the run"
 )]
 #[test]
