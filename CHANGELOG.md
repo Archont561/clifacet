@@ -22,6 +22,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Changed
 
+* **example:** lay out one file per command and drop the demos
+([e240d0e](https://github.com/Archont561/clifacet/commit/e240d0e07765eead656169d9284d8760af63e7db))
+* **backlog-lite:** lay out one file per command
+([e4a2366](https://github.com/Archont561/clifacet/commit/e4a2366639e9f1b3af3355dcb17de41a92aa98a0))
 * **backlog-lite:** declare the tree instead of hand-writing it
 ([4581a0a](https://github.com/Archont561/clifacet/commit/4581a0a0f8c15457ad98c1363081361fa1fa8712))
 
