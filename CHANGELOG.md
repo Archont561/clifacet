@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **backlog:** check that a task's status agrees with its criteria
+([98b833d](https://github.com/Archont561/clifacet/commit/98b833dc1139b3ae1651ab12fab6828aabf81ab4))
 * **check:** lint the prose with Vale, and make it pass
 ([6610272](https://github.com/Archont561/clifacet/commit/66102724b8ffe2fbf223aa13fa9bf3f7d30091ae))
 * **check:** annotate the prose finding on the line it is about

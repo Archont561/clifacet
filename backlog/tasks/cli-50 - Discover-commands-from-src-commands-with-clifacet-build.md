@@ -1,10 +1,10 @@
 ---
 id: CLI-50
 title: 'Discover commands from src/commands with clifacet::build'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08 01:59'
-updated_date: '2026-11-08 16:41'
+updated_date: '2026-11-08 18:41'
 labels: []
 milestone: m-13
 dependencies:
@@ -111,4 +111,6 @@ Documentation that came with the task: `docs/derive.md` (discovery section, macr
 **AC#2 is now complete rather than mechanism-only.** The msrv job passed with the new feature in its matrix, so `cargo +1.88 check --locked --all-targets -p clifacet --no-default-features --features build` — the row that carries `Span::local_file()` — compiles at the declared floor on a real 1.88 toolchain. That was the one thing the sandbox could not prove.
 
 The first run of the quality job failed on `changelog-check`: the feature commit added an Unreleased entry and the committed `CHANGELOG.md` had drifted. Fixed with `pixi run changelog` (which needs a full clone — the sandbox checkout is shallow, so `git fetch --unshallow --tags` first) and committed separately as `chore(release): regenerate the changelog`.
+
+2026-11-08: closed as Done. All six criteria were checked when the implementation landed (PR #70, run [42505760132](https://github.com/Archont561/clifacet/actions/runs/42505760132) green on every job including msrv), and the card stayed `In Progress` only because nothing prompted the status change — the same bookkeeping fault as CLI-49, found in the same sweep. No code changed here; the criteria were proven before this note was written.
 <!-- SECTION:NOTES:END -->

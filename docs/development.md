@@ -628,6 +628,27 @@ pixi run --frozen skills -- list --json
 pixi run --frozen skills-check
 ```
 
+`backlog-check` is two checks, because they answer different questions. `backlog
+doctor` validates the graph: duplicate ids, missing dependencies, cycles. The
+script after it, `scripts/check_backlog_status.py`, validates that a status is
+*true* — that a card in `Done` has every acceptance criterion checked, and that a
+card with every criterion checked is not still in `To Do` or `In Progress`.
+
+Neither check implies the other, and the tooling will never supply the second:
+`definition_of_done` in `backlog/config.yml` adds items to a new task, it does not
+compare them to the status later. Three cards drifted that way in one day —
+CLI-49 and CLI-50 finished and stayed open, CLI-38 stayed `Done` with a criterion
+unchecked because the proof was recorded on another card. A status a board shows
+is worth checking, or it is decoration.
+
+The guard counts only boxes inside the `AC:BEGIN`/`AC:END` block. A checked box
+in the notes is prose about the work, not a claim about done, and counting it
+would let a card pass by mentioning a tick. A card with no criteria is not
+checked at all: several are notes to self, and a rule for them would be a rule
+about the tool. When the guard fires, the answer is one of two things — fix the
+status because the work is finished, or leave it and say in the notes why the
+last criterion is not met yet.
+
 The **11 project-owned skills** under `.agents/skills/` are authored for this
 repository and versioned with its files; they are not generated or installed
 from a remote source. Their subject matter was informed by the upstream
