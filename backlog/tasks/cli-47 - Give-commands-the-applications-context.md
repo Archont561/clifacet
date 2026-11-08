@@ -1,10 +1,10 @@
 ---
 id: CLI-47
 title: Give commands the application's context
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08 01:59'
-updated_date: '2026-11-08 13:59'
+updated_date: '2026-11-08 14:35'
 labels: []
 milestone: m-12
 dependencies:

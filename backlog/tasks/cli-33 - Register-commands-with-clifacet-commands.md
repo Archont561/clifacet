@@ -1,10 +1,10 @@
 ---
 id: CLI-33
 title: Register one command per file
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01 22:46'
-updated_date: '2026-11-08 13:59'
+updated_date: '2026-11-08 14:35'
 labels: []
 milestone: m-7
 dependencies:
