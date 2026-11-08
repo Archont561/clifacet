@@ -20,7 +20,7 @@ pixi run coverage       # LCOV report plus a 90% source-line gate
 
 `quality` fetches Bun packages and the RustSec advisory database, so it is a CI
 command rather than a fast inner loop. Before each commit, run the offline subset
-through Pixi with `--no-install` (a restore already materialised the environment):
+through Pixi with `--no-install` (a restore already materialized the environment):
 
 ```sh
 pixi run --frozen --no-install test-local
@@ -51,6 +51,48 @@ The generated file is committed, so CI fails when a page was edited without
 regenerating it — a check that cannot silently pass by rewriting what it checks. It is
 marked `#[rustfmt::skip]`, because a verbatim copy of a page is not a file for the
 formatter to reflow.
+
+## The prose is checked too
+
+`check-docs` proves a page's links, snippets and API names. It cannot read a sentence, so a
+second tool does: [Vale](https://vale.sh), which lints `README.md`, `AGENTS.md` and
+`docs/**/*.md` for spelling, terminology and editorial style.
+
+```sh
+pixi run --frozen prose-check   # render check, then Vale
+pixi run --frozen prose-sync    # after editing vale.toml: render, then fetch the packages
+```
+
+Two tools, two questions, and a finding belongs to exactly one of them (decision-20).
+Vale checks how the guides read; `alint check` checks what the repository is — required
+files, workspace membership, pinned workflows, generated sandbox files. A wording
+preference in `.alint.yml` would be a check that cannot see a paragraph, and a
+file-existence rule in Vale would be one nobody could run.
+
+**`vale.toml` is authored; `.vale.ini` and `.vale/styles/` are generated.** Vale reads an
+INI file and a directory of YAML rules, and hand-edited configuration is where a rule with
+no stated reason comes from. `scripts/prose.py` renders both, `prose-check` fails when the
+committed copy has drifted, and the same pattern already governs `scripts/restore.sh` and
+the documented snippets.
+
+What the configuration holds:
+
+| Key in `vale.toml` | What it decides |
+| --- | --- |
+| `sources` | the pages Vale lints; `backlog/` and `CHANGELOG.md` are left to the checks that own them |
+| `packages` | the two styles, pinned to release URLs so an upstream update cannot change CI without a commit |
+| `accept` | the project's own words, so a spelling rule can read `clifacet`, `pixi` or `clap` |
+| `based_on` | `Vale`, the two packages, and this repository's own style |
+| `rules` | each rule the repository sets its own way, with the reason it is set that way |
+
+Two things it deliberately does not do. It does not enforce the case of a tool name:
+`Pixi` and `pixi run` are both correct where they appear, and `Vale.Terms` cannot tell them
+apart, so it is off. And it does not check code: a `rust` fence and an inline span are
+skipped, so an identifier is never "misspelled" and a guide may quote the API exactly.
+
+Adding a page is adding it to `docs/` — `sources` names the directory. Changing a rule
+means editing `vale.toml` and running `prose-sync`; switching a rule off means writing the
+reason beside it, because `prose-check` refuses a `NO` without one.
 
 ## Command core
 
@@ -147,7 +189,7 @@ calls a Pixi task, so a hook and the matching CI job cannot drift:
 
 | Hook         | Runs                                                                                                 | Why there                                                                                                            |
 | ------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `pre-commit` | `fmt` (re-staged), `lint`, `check-features`, `check-docs`, `alint`, `actionlint`, `sandbox-check`, `skills-check` | Seconds on a warm checkout, and a commit is the last moment a fix is still free.                                      |
+| `pre-commit` | `fmt` (re-staged), `lint`, `check-features`, `check-docs`, `prose-check`, `alint`, `actionlint`, `sandbox-check`, `skills-check` | Seconds on a warm checkout, and a commit is the last moment a fix is still free.                                      |
 | `pre-push`   | `audit-offline`, `deny-offline`, `test`, `test-doc`, `test-scripts`                                   | Minutes of work, and exactly what the push is about to hand to CI, so they run once per push instead of per commit.  |
 | `commit-msg` | `convco check --from-stdin --strip`                                                                   | The message is the input to the changelog, the version bump and the release notes.                                    |
 
@@ -196,7 +238,7 @@ request or push changed (the same range the commit-message check uses):
 On a documentation-only change, the four full jobs show as skipped, and a skipped job counts as
 passing for a required check. The rule fails safe: a change with no base to compare against (a
 dispatch, a branch's first push), an empty change and a diff git cannot compute all run
-everything, and the full jobs' `!cancelled()` condition keeps them running if the classifier
+everything, and the full jobs' `!canceled()` condition keeps them running if the classifier
 itself fails. The step summary lists the paths that decided it.
 
 Two things keep "every `.md` file" honest. A guide's `rust` snippets are compiled from the
@@ -451,7 +493,7 @@ first is now confirmed by the `0.1.0` release above, the second is not:
 - **partial-failure recovery** — that a run which published one crate and then
   failed can be finished. `scripts/tests/test_release.py` proves the rule locally (an
   already-indexed crate is skipped, so a re-run publishes only what is missing), but
-  the registry behaviour it relies on is only confirmed by a real release.
+  the registry behavior it relies on is only confirmed by a real release.
 
 Both of those are decisions now, not shell: `release publish` is exercised in the suite
 against a fake index and a fake runner, including the 404-means-publish,
@@ -538,7 +580,7 @@ All three are implemented and covered, and `check-features` fails on a declared 
 that no `cfg` mentions. The `json` feature 0.2.0 reserved is gone: it selected
 `serde_json` and gated nothing, and since output is application-owned (decision-3) the
 library has no JSON of its own to write. `serde_json` is a development dependency, used
-by the tests that read the serialised shape back. Everything is checked every
+by the tests that read the serialized shape back. Everything is checked every
 way — `--no-default-features`, the empty `default` set, each boundary on its own and
 all of them together — by the `check-features` task described in
 [Supported platforms and feature combinations](#supported-platforms-and-feature-combinations).
@@ -595,7 +637,7 @@ when chat history is missing or insufficient. `skills-check` validates required
 skill files and basic frontmatter; script tests exercise failures. Changes to
 skills are reviewed and versioned with the repository, not with a remote
 `skills-lock.json`. `bun.lock` locks the **CLI package**, not remote skills.
-No remote skills are auto-installed. The CLI's `add`, `update`,
+No remote skill installs itself. The CLI's `add`, `update`,
 `experimental_install`, and `experimental_sync` can fetch external content or
 modify files and agent links: inspect the source, destination and behavior and
 obtain authorization before using them. They must not overwrite local skills.
@@ -631,7 +673,7 @@ pixi run --no-install --offline alint
 pixi run --no-install --offline test
 ```
 
-The restore already materialises the complete environment, including the PyPI
+The restore already materializes the complete environment, including the PyPI
 wheels for `alint` and `pytest`. They are packed under
 `.pixi-sandbox/envs/default/pack/pypi/` on the sandbox branch, installed into
 `.pixi/envs/default/`, and verified file by file against the manifest, so no

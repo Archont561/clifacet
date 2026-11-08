@@ -1,24 +1,54 @@
 # AGENTS.md — Clifacet working rules
 
-## Bootstrap first
+## Session start: check for Pixi
 
-Before running any check or test, run the bootstrap script once:
+**At the start of every session, before any check, test or build, check whether `pixi`
+exists:**
 
 ```sh
-bash scripts/bootstrap.sh
+export PATH="$HOME/.local/bin:$PATH"
+command -v pixi || echo "pixi is missing — restore the environment"
+```
+
+If `pixi` is missing, do this, in this order, and do not skip the hooks step:
+
+```sh
+bash scripts/bootstrap.sh          # restores the environment, then installs the hooks
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-It fast-forwards a clean checkout to its upstream (refusing when there is local
-work to lose), restores the sandbox when the Pixi environment is missing or
-`pixi` is not on `PATH`, installs the Git hooks, and ends with `test-scripts` and
-`alint` as a smoke check. `--skip-restore`, `--skip-hooks`, `--skip-checks` and
-`--no-fetch` narrow it.
+`bootstrap.sh` is the whole sequence, and it is what to run rather than the pieces, because
+it does them in the order that works:
 
-To restore without the checkout step, run the generated launcher directly:
+1. **fast-forwards** a clean checkout that is strictly behind its upstream, and refuses
+   everything else rather than losing work;
+2. **restores the sandbox** when `pixi` is not on `PATH` or `.pixi` is missing, by running
+   the generated launcher (`scripts/restore.sh`), then registers the user tools on `PATH`;
+3. **installs the Git hooks** with `lefthook install`, so the commit and push gates are the
+   ones in `lefthook.yml` and not whatever the checkout arrived with;
+4. **proves the result** with `test-scripts` and `alint` as a smoke check.
+
+`--skip-restore`, `--skip-hooks`, `--skip-checks` and `--no-fetch` narrow it. To restore
+without the checkout step, run the generated launcher directly:
 
 ```sh
 bash scripts/restore.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then install the hooks, because a restore does not do it and a missing hook is invisible
+until the commit that should have been checked lands:
+
+```sh
+pixi run --frozen --no-install hooks-install
+```
+
+Confirm both before starting work — a session that skips this reports a missing tool as a
+broken change, and a session without hooks reports nothing until CI does:
+
+```sh
+pixi --version                       # the environment is up
+test -f .git/hooks/pre-commit && echo "hooks are installed"
 ```
 
 The launcher uses Git and the trusted `sandbox/developer-linux-64` branch and
@@ -40,6 +70,7 @@ pixi run --frozen test-doc
 pixi run --frozen test-scripts
 pixi run --frozen coverage
 pixi run --frozen sandbox-check
+pixi run --frozen prose-check
 ```
 
 Use `pixi run --frozen -x cargo ...` for a focused Cargo command where no
@@ -68,7 +99,7 @@ production code is written**:
    — the design: clear names, cohesive modules, explicit errors, one source of
    truth, presentation separated from execution, no speculative abstraction.
 
-This is mandatory, not "as relevant". A feature is not ready when it cannot point
+This is mandatory, not "as relevant." A feature is not ready when it cannot point
 at the failing test that came first, the scenario that describes the behavior it
 adds, and the design decision that kept the change proportionate. Record that
 evidence in the task notes.
@@ -100,6 +131,38 @@ When unsure about the goal, priority, or next step, read and follow
 before continuing. If an important decision is unresolved, ask the maintainer
 rather than silently broadening scope.
 
+## Prose: two tools, two questions
+
+The repository has two linters, and a finding belongs to exactly one of them (decision-20):
+
+| Tool | Owns | Configuration | Run it |
+| --- | --- | --- | --- |
+| alint | what the repository *is*: required files, workspace membership, pinned workflows, generated sandbox files | `.alint.yml` | `pixi run --frozen alint` |
+| Vale | how the guides *read*: spelling, terminology, editorial style | `vale.toml` (which renders `.vale.ini` and `.vale/styles/`) | `pixi run --frozen prose-check` |
+
+After changing `README.md`, `AGENTS.md` or anything in `docs/`, run `prose-check`. After
+changing a manifest, a workflow or a required file, run `alint`. `test-local` and `quality`
+run both.
+
+Rules for changing the prose check:
+
+- **Edit `vale.toml`, never `.vale.ini` or `.vale/styles/`.** They are generated;
+  `prose-check` fails when they have drifted. Render them with `pixi run prose-sync`, which
+  also re-installs the pinned packages.
+- **A switched-off rule keeps its reason.** `prose-check` refuses a `NO` with no `reason`:
+  the reason is the only record of a decision that is invisible in the generated INI.
+- **Do not pin a package by name.** A name installs whatever is newest, so a release
+  upstream would change what CI rejects without a commit here.
+- **Fix the prose, do not silence the rule.** A new word for the project's own vocabulary
+  goes in `accept` in `vale.toml`. Switching a rule off is for prose written a certain way
+  on purpose, and it needs the reason.
+- **Code is not prose.** A `rust` fence and an inline span are skipped, so an identifier is
+  never "misspelled" and a guide may quote the API exactly. A finding inside a code block
+  means the block is not fenced properly.
+- **Vale does not run in every environment.** The sandbox cannot reach conda-forge or
+  GitHub's release assets, so `prose-check` fails there for lack of the binary rather than
+  for a finding. Report that, and let CI make the call; do not claim the prose passed.
+
 ## GitHub operations from an agent session
 
 `git` and `gh` work here; two `gh` commands do not, and knowing which saves a detour:
@@ -108,9 +171,9 @@ rather than silently broadening scope.
 | --- | --- | --- |
 | `gh pr edit` | 403 from the app token | amend the commit message with `git commit --amend`, or describe the change in a PR comment |
 | `gh run cancel` | 403 from the app token | push a fix on the same branch: the `ci` concurrency group cancels the superseded run |
-| `gh workflow run` | 403 from the app token (`Resource not accessible by integration`) | a maintainer dispatches from the Actions tab, or from their own authenticated `gh`; record the run URL in the task afterwards |
+| `gh workflow run` | 403 from the app token (`Resource not accessible by integration`) | a maintainer dispatches from the Actions tab, or from their own authenticated `gh`; record the run's address in the task afterwards |
 
-Reading is mostly unrestricted: `gh run list`, `gh run view`, `gh run watch`, `gh run view
+Reading is almost unrestricted: `gh run list`, `gh run view`, `gh run watch`, `gh run view
 --job=<id>` and `gh pr checks` all work, so a run can be watched to completion even when it
 had to be started by hand. `gh run view --log` does not: raw logs are served from
 `results-receiver.actions.githubusercontent.com`, which the sandbox cannot reach, so it

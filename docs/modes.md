@@ -167,6 +167,6 @@ without pretending the input was invalid. Answering a confirmation with *no* is 
 decision (`Confirmation::Declined`); dismissing the question, or the end of input, is a
 cancellation — and only the second costs exit 130.
 
-What a mode may not do is guess: a cancelled form runs nothing, and a refused mode
+What a mode may not do is guess: a canceled form runs nothing, and a refused mode
 never reaches the command at all. See [Command core](command-core.md) for the
 per-mode detail and the tests behind each row.

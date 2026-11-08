@@ -115,7 +115,7 @@ struct Greeting {
     repeat: u8,
 }
 
-// The flags: clap parses, the generated bridge normalises.
+// The flags: clap parses, the generated bridge normalizes.
 let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
     .expect("the forwarded grammar parses");
 let input = cli.validate().expect("valid");
@@ -149,9 +149,9 @@ naming the supported keys, rather than an argument that quietly means nothing:
 | grammar, translated | `range = 1..=8` | `value_parser = clap::value_parser!(T).range(1..=8)`, `T` the field type with `Option`/`Vec` peeled |
 | asking | `ask = "…"` | `collect` asks when no flag supplied the value; the answer is parsed by the argument's own clap parser |
 | asking | `confirm = "…"` | `collect` puts the set flag to the user; declining cancels the run |
-| normalising | `fill = expr` | the bridge's value when neither a flag nor an answer supplied one |
-| normalising | `trim`, `non_empty` | the bridge trims, then rejects blank text — or, on an `Option`, makes it absent |
-| normalising | `secret` | the field must be a `Secret<_>`, so the credential cannot be printed |
+| normalizing | `fill = expr` | the bridge's value when neither a flag nor an answer supplied one |
+| normalizing | `trim`, `non_empty` | the bridge trims, then rejects blank text — or, on an `Option`, makes it absent |
+| normalizing | `secret` | the field must be a `Secret<_>`, so the credential cannot be printed |
 | input | `skip` | the bridge leaves the field out of the input; clap still parses it (not clap's `#[arg(skip)]`) |
 | form | `form` | the field is listed in `Facet::form_fields`, in declaration order, for a generated TUI form |
 | tree | `subcommands` | the field holds a [command tree](#nested-commands-a-tree-declared-where-its-commands-live), or an `Option` of one: clap's `#[command(subcommand)]`, the bridge converts the chosen leaf, `collect` lets it ask; it takes no other key |
@@ -413,8 +413,8 @@ What a tree gets wrong is a compile error, each with a golden `trybuild` file:
   produces at the tree's `input = …`.
 - **One name, one subcommand.** A name or alias two variants answer to — a default name
   is clap's kebab-case of the variant — is reported at the second, naming it.
-- **Known keys only.** An unknown key on the tree or on a variant is named in the error;
-  so is `planned` without `output`.
+- **Known keys only.** An unknown key on the tree or on a variant is named in the error.
+  The same is true of `planned` without `output`.
 - **A `subcommands` field holds a tree.** Its type has to come from
   `#[clifacet::subcommands]`, and the field takes no other key.
 - **A leaf converts.** A leaf without a `Facet`, or whose output does not convert into
@@ -482,7 +482,7 @@ What it declares, and why each name is fixed rather than configurable:
 | `struct Cli` | the root: the tree, `clifacet::Globals`, and the application's own |
 
 - **The list is the whole registry.** Nothing is discovered, nothing registers itself by
-  initialising a static, and the compiler checks what a list gets wrong: a module listed
+  initializing a static, and the compiler checks what a list gets wrong: a module listed
   twice, an empty list, an unknown key. A leaf that is in the tree and missing from
   `Request` cannot happen, because both come from the same list.
 - **Dispatch stays compile-time.** The tree is the same `#[clifacet::subcommands]` this
@@ -558,7 +558,7 @@ fully supported, and is what an application uses when a folder's members are not
 `examples/backlog-lite` is built this way: its `bl` has seven subcommands, one `--json` for
 the whole run, and a `commands!` line where three hand-kept lists used to be.
 
-### Which macro do I need?
+### Which macro is needed?
 
 The layering rule of decision-16, in one place. Every public macro belongs to exactly one
 layer, and each is used in one situation:
@@ -653,7 +653,7 @@ the input is not a field-by-field copy of the command at all.
 
 ## Testing it
 
-Because the derive's promise is "the same command with typed input", the interesting
+Because the derive's promise is "the same command with typed input," the interesting
 assertions are about parity, not about the macro: a flag alias, a `default_value_t`
 and a custom `value_parser` all have to reach the same input as their canonical
 spellings. `examples/simple/tests/facet_bridge.rs` and

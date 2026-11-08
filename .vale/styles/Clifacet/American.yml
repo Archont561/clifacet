@@ -1,0 +1,12 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+level: error
+ignorecase: true
+swap:
+  behaviour: behavior
+  "normalis(e|ed|es|ing)": normaliz$1
+  "serialis(e|ed|es|ing)": serializ$1
+  "materialis(e|ed|es|ing)": materializ$1
+  "initialis(e|ed|es|ing)": initializ$1
+  labelled: labeled
+  cancelled: canceled

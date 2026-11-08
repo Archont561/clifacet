@@ -23,10 +23,10 @@ do not enable is not compiled, and neither are the crates it would bring in.
 | *(none)* | commands, the derive, the policy, the plain frontend, secrets, provenance and the harness | `clap`, `thiserror` and the `clifacet-macros` proc macro |
 | `interactive` | the `inquire`-backed dialog behind `Prompter`, so prompts work at a terminal | `inquire` with its `crossterm` backend — the largest prompt-side tree |
 | `tui` | the full-screen form in `clifacet::tui` and the TUI mode in the policy | `ratatui` and `crossterm` — the largest tree of the three |
-| `serde` | `Serialize` for `Failure` and `FailureKind` (`{"kind":"validation","message":"…"}`) and for `Secret`, which serialises as `[redacted]` | `serde` and its derive macro, a proc macro built at compile time |
+| `serde` | `Serialize` for `Failure` and `FailureKind` (`{"kind":"validation","message":"…"}`) and for `Secret`, which serializes as `[redacted]` | `serde` and its derive macro, a proc macro built at compile time |
 | `build` | `clifacet::build::commands()`, the build-script half of discovery: a folder registers its own commands, so adding a command is adding a file | nothing in the binary — the module is only compiled into a build script |
 
-`serde` is how an application reports failures as JSON: it serialises a `Failure` with
+`serde` is how an application reports failures as JSON: it serializes a `Failure` with
 `serde_json` under a flag of its own, on a stream of its own, because output is the
 application's (decision-3) and the library writes no JSON itself. There is no `json`
 feature — 0.2.0 reserved one that selected `serde_json` and did nothing else; it was
@@ -299,9 +299,9 @@ modes, the exit codes and which test proves each promise.
 | Which mode runs, and who decides? | [Modes and the interaction policy](modes.md) |
 | How does an existing `clap` command get validated input? | [The companion derive](derive.md) |
 | How does dropping a file into a folder add a command? | [Discovery](derive.md#discovery-commands-with-no-list) |
-| How do I draw my own screen without a second command? | [TUI composition](tui-composition.md) |
+| How is a screen drawn without a second command? | [TUI composition](tui-composition.md) |
 | How is any of this tested without a terminal? | [Testing](testing.md) |
-| How do I work on the crate itself? | [Contributing](contributing.md) |
+| How is the crate itself built and tested? | [Contributing](contributing.md) |
 
 The reference material — every seam, the ownership rules and what is deliberately
 not implemented — is in [Command core and its seams](command-core.md).
