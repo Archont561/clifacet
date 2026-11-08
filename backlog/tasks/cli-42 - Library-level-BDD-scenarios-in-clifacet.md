@@ -1,10 +1,10 @@
 ---
 id: CLI-42
 title: Library-level BDD scenarios in clifacet
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07 22:51'
-updated_date: '2026-11-07 22:58'
+updated_date: '2026-11-08 01:56'
 labels: []
 milestone: m-7
 dependencies: []
@@ -45,6 +45,11 @@ Requested on 2026-11-07 ("add few features to clifacet and when needed"): every 
 
 **Design.** Tests only, with no production code change. Each step file declares its own small world, so the scenarios stay independent. The command-tree file declares its own tree instead of sharing command_tree.rs's, because integration test files are separate crates.
 
-
 **Layout change (2026-11-08, requested by the maintainer).** Feature files moved from `<crate>/tests/features/` to `<crate>/features/` in all three crates (clifacet, clifacet-example, clifacet-backlog-lite), with `git mv` so history follows. Step bindings stay in `tests/*_bdd.rs`, and their 43 `#[scenario(path = ..)]` attributes now read `features/..`. clifacet's package `exclude` is now `features/`. AGENTS.md, the bdd skill, doc-4, docs/testing.md, docs/command-core.md, docs/derive.md, the simple README and two script-test fixtures follow. Historical task notes keep the paths that were true when they were written.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed on maintainer authorisation (2026-11-08). All five ACs met in PR #59 (commits f20a9f74, e39e74d4, 1e344803): ten library scenarios in `crates/clifacet/features/{command_tree,plan,provenance}.feature`, bound in `tests/*_bdd.rs` through public seams, each shown able to fail and noted as written after the behaviour existed; clifacet-macros has no scenarios because its promises are covered end to end and by trybuild; doc-4 says where scenarios live. At the maintainer's request every crate now keeps feature files in `<crate>/features/` rather than `tests/features/`.
+<!-- SECTION:FINAL_SUMMARY:END -->

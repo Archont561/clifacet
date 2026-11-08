@@ -1,10 +1,10 @@
 ---
 id: CLI-41
 title: Lay out both examples one file per command
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07 21:46'
-updated_date: '2026-11-07 21:53'
+updated_date: '2026-11-08 01:56'
 labels: []
 milestone: m-7
 dependencies: []
@@ -44,3 +44,9 @@ Layout:
 
 For CLI-33's re-measurement: both examples now follow decision-15's file-per-leaf convention by hand. What a `clifacet::commands!` macro could still save is exactly the `mod` lines and the `Verb` enum in `commands/mod.rs`, about 25 lines in backlog-lite.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed on maintainer authorisation (2026-11-08). All five ACs met in PR #59 (commits e4a23666, e240d0e0, adc9d0cc): both examples keep one file per command under `src/commands/`, registered by hand in `src/commands/mod.rs`; `lib.rs` holds only the crate docs, module list and re-exports; `examples/simple/examples` is gone and its docs point at the tests; no test file changed and the same 185 example tests pass; both READMEs describe the layout. Refactor exception recorded: no behaviour change, so no new scenario.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -192,3 +192,13 @@ from the Decision above, this note says how; CLI-31's notes have the evidence.
   non-comment lines): the reporting it rewrote went, and a `Planned` impl arrived.
   `examples/simple` lost 14 lines.
 
+## Correction and amendment (2026-11-08, decision-19 item 5)
+
+- **Correction.** The refusal above says "`Source::Config` exists in the enum and nothing
+  fills it". It never did: `provenance::Source` has had `Argv`, `Environment`, `Default`,
+  `Prompt` and `Form` only, and its documentation says a config-file variant was left out on
+  purpose.
+- **The refusal of configuration-file layering is lifted.** decision-19 item 5 layers flag >
+  environment > file > built-in default through clap's own defaults, with format-agnostic
+  entries so the framework does not acquire a format it cannot change, and adds
+  `Source::File` (CLI-51).
