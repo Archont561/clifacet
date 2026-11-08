@@ -4,7 +4,7 @@ title: 'Discover commands from src/commands with clifacet::build'
 status: In Progress
 assignee: []
 created_date: '2026-11-08 01:59'
-updated_date: '2026-11-08 16:25'
+updated_date: '2026-11-08 16:41'
 labels: []
 milestone: m-13
 dependencies:
@@ -97,4 +97,18 @@ Three traps worth recording, because each cost a build:
 `examples/discovered/tests/reaching.rs` is now the positive half — the folder publishes exactly what `mod.rs` re-exports — because the negative half moved into the golden case above.
 
 Documentation that came with the task: `docs/derive.md` (discovery section, macro table row), `docs/getting-started.md` (`build` in the feature table, a link under "What to read next"), `docs/testing.md` (the fixture as the answer to "does a folder register itself?"), and `README.md` + `docs/contributing.md` (the new crate in the layout tables). `.alint.yml`'s `cargo-workspace-members` rule lists the members on purpose — a new member is a reviewed change, not an automatic one — so the fixture is added there too.
+
+**CI, PR #70** (`https://github.com/Archont561/clifacet/pull/70`), run `https://github.com/Archont561/clifacet/actions/runs/42500547939`:
+
+| Job | Result |
+| --- | --- |
+| Minimum supported Rust version | pass, 1m09s |
+| Repository and Rust quality | pass (Alint, docs, changelog, formatting, Clippy, feature boundaries, deny, audit) |
+| Supported platforms — ubuntu / macos / windows | pass, 3m40s / 4m56s / 6m42s |
+| Tests and source coverage | pass, 4m08s |
+| Conventional commit messages, Classify the change, lock guard | pass |
+
+**AC#2 is now complete rather than mechanism-only.** The msrv job passed with the new feature in its matrix, so `cargo +1.88 check --locked --all-targets -p clifacet --no-default-features --features build` — the row that carries `Span::local_file()` — compiles at the declared floor on a real 1.88 toolchain. That was the one thing the sandbox could not prove.
+
+The first run of the quality job failed on `changelog-check`: the feature commit added an Unreleased entry and the committed `CHANGELOG.md` had drifted. Fixed with `pixi run changelog` (which needs a full clone — the sandbox checkout is shallow, so `git fetch --unshallow --tags` first) and committed separately as `chore(release): regenerate the changelog`.
 <!-- SECTION:NOTES:END -->
