@@ -175,7 +175,7 @@ fn command_core_snippet_5() {
     assert!(session.provenance().is_secret("token"));
 }
 
-/// `command-core.md`, line 587.
+/// `command-core.md`, line 588.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_6() {

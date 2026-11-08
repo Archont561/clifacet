@@ -128,6 +128,17 @@ pub(crate) fn parse(field: &Field) -> syn::Result<Rules> {
              variable, or ask for it by hand with `Session::ask_secret`",
         ));
     }
+    if rules.secret.is_some()
+        && let Some(environment) = shown_environment(&field.attrs)
+    {
+        return Err(syn::Error::new_spanned(
+            environment,
+            "a `secret` read from the environment would be shown by `--help`, because clap \
+             prints the variable's current value beside its name: add \
+             `hide_env_values = true` to this `#[arg(..)]`, or declare the field with \
+             `#[clifacet(env, secret)]`, which adds it",
+        ));
+    }
     if let Some(ask) = &rules.ask
         && !is_named_option(&field.attrs)
     {
@@ -300,8 +311,8 @@ fn is_list(ty: &syn::Type) -> bool {
         .any(|argument| matches!(argument, syn::GenericArgument::Type(inner) if is_list(inner)))
 }
 
-/// Whether the field's `#[arg(..)]` names it `long` or `short`, i.e. it is not positional.
-fn is_named_option(attributes: &[Attribute]) -> bool {
+/// Every entry of the field's `#[arg(..)]` attributes, in order.
+fn arguments(attributes: &[Attribute]) -> impl Iterator<Item = Meta> + '_ {
     attributes
         .iter()
         .filter(|attribute| attribute.path().is_ident("arg"))
@@ -311,7 +322,35 @@ fn is_named_option(attributes: &[Attribute]) -> bool {
                 .ok()
         })
         .flatten()
+}
+
+/// Whether the field's `#[arg(..)]` names it `long` or `short`, i.e. it is not positional.
+fn is_named_option(attributes: &[Attribute]) -> bool {
+    arguments(attributes)
         .any(|entry| entry.path().is_ident("long") || entry.path().is_ident("short"))
+}
+
+/// The field's `env` entry when clap's help would print the variable's value: an `env`
+/// without `hide_env_values` or `hide_env` (written bare or `= true`) beside it.
+fn shown_environment(attributes: &[Attribute]) -> Option<Meta> {
+    let entries: Vec<Meta> = arguments(attributes).collect();
+    let hidden = entries.iter().any(|entry| {
+        let hides = entry.path().is_ident("hide_env_values") || entry.path().is_ident("hide_env");
+        let set_false = matches!(
+            entry,
+            Meta::NameValue(syn::MetaNameValue {
+                value: Expr::Lit(ExprLit { lit: Lit::Bool(flag), .. }),
+                ..
+            }) if !flag.value
+        );
+        hides && !set_false
+    });
+    if hidden {
+        return None;
+    }
+    entries
+        .into_iter()
+        .find(|entry| entry.path().is_ident("env"))
 }
 
 /// The id clap gives the field: an explicit `#[arg(id = "…")]`, or the field's name.

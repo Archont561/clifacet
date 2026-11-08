@@ -82,6 +82,9 @@ pub(crate) const EITHER_KEYS: &[&str] = &[
 /// derive's `subcommands` rule. It has no grammar of its own, so it stands alone.
 const SUBCOMMANDS: &str = "subcommands";
 
+/// The rule that marks a credential; it also hides an environment variable's value.
+const SECRET: &str = "secret";
+
 /// The one key that is not clap's: `range = 1..=8` becomes clap's ranged value parser
 /// for the field's own type, which clap's derive has no attribute for.
 const RANGE: &str = "range";
@@ -161,6 +164,13 @@ pub(crate) fn parse(attribute: &Attribute, ty: &Type) -> syn::Result<Declared> {
         } else {
             declared.push(check_key(entry, &key)?);
         }
+    }
+
+    // clap's help prints an environment variable's current value beside its name, so a
+    // credential that may come from one hides the value. It costs nothing on a field that
+    // reads no variable, and it also covers a raw `#[arg(env = ..)]` on the same field.
+    if rules.iter().any(|entry| entry.path().is_ident(SECRET)) {
+        declared.push(syn::parse_quote!(hide_env_values = true));
     }
 
     let subcommand = rules.iter().any(|entry| entry.path().is_ident(SUBCOMMANDS));
