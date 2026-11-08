@@ -1,22 +1,11 @@
-//! A validated request as the command line it stands for, and the one place it runs.
+//! A request as the command line it stands for.
 //!
-//! Each leaf forwards its own arguments (`forward` in its file); this module only
-//! picks the leaf, adds what every leaf shares — the program and `--json` — and is the
-//! single place that spawns a process.
-
-use std::process::Command as Process;
-
-use clifacet::failure::Failure;
+//! This module is deliberately pure: it turns a validated [`Request`] into an [`Invocation`]
+//! and nothing else. The one place that spawns a process is
+//! [`program::run`](crate::program::run), and the plan built around it is the application's.
 
 use crate::commands::{self, Action, Filter, Request};
-
-/// The program the wrapper runs, overridable so a test never spawns the real tool.
-///
-/// The value is a command with whitespace-separated arguments — `backlog` by
-/// default, `bun x --bun --no-install backlog` in a repository that runs the CLI
-/// through Bun. Nothing is shell-expanded, so a path containing a space needs a
-/// wrapper script rather than quoting; the honest cost of not shelling out.
-pub const BIN_ENV: &str = "CLIFACET_BACKLOG_BIN";
+use crate::program::Program;
 
 /// The command line this request stands for, plus why.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,8 +29,8 @@ impl Invocation {
 
     /// The command as a line that can be pasted into a shell.
     ///
-    /// Quoting is deliberately minimal — single quotes only for arguments that
-    /// contain whitespace or a quote — so the printed line stays readable.
+    /// Quoting is deliberately minimal — single quotes only for arguments that contain
+    /// whitespace or a quote — so the printed line stays readable.
     #[must_use]
     pub fn shell_line(&self) -> String {
         self.argv
@@ -67,13 +56,13 @@ pub(crate) fn push_args(argv: &mut Vec<String>, values: &[&str]) {
     argv.extend(values.iter().map(|value| (*value).to_owned()));
 }
 
-/// Turns a validated request into the command it stands for.
+/// Turns a validated request into the command it stands for, on `program`.
 ///
 /// This is a pure function, and that is the design: the same value can be printed
 /// (`--dry-run`), asserted in a test, or executed, and the three cannot disagree.
 #[must_use]
-pub fn invocation_of(request: Request) -> Invocation {
-    let mut argv = program();
+pub fn invocation_of(request: Request, program: &Program) -> Invocation {
+    let mut argv = program.argv().to_vec();
     let json = request.json;
     let action = request.command.unwrap_or(Action::List(Filter::default()));
     let explain = match action {
@@ -91,45 +80,4 @@ pub fn invocation_of(request: Request) -> Invocation {
         argv.push(String::from("--json"));
     }
     Invocation { argv, explain }
-}
-
-/// The command to run: the environment's override, or `backlog`.
-#[must_use]
-pub fn program() -> Vec<String> {
-    std::env::var(BIN_ENV).map_or_else(
-        |_| vec![String::from("backlog")],
-        |value| {
-            let parts: Vec<String> = value.split_whitespace().map(str::to_owned).collect();
-            if parts.is_empty() {
-                vec![String::from("backlog")]
-            } else {
-                parts
-            }
-        },
-    )
-}
-
-/// Runs an invocation, inheriting the terminal, and answers with its exit status.
-///
-/// The wrapped tool owns its own exit codes, and its own output; this returns the
-/// child's status unchanged instead of remapping it, because remapping somebody
-/// else's contract is how a wrapper starts lying. The wrapper's *own* failures are
-/// mapped by the application, which is the one thing clifacet does decide.
-///
-/// # Errors
-///
-/// Returns [`Failure::execution`] when the program cannot be spawned at all — a
-/// missing `backlog`, usually — and when the child ends without an exit code.
-pub fn run(invocation: &Invocation) -> Result<i32, Failure> {
-    let (program, arguments) = invocation
-        .argv()
-        .split_first()
-        .ok_or_else(|| Failure::execution("nothing to run"))?;
-    let status = Process::new(program)
-        .args(arguments)
-        .status()
-        .map_err(|error| Failure::execution(format!("cannot run {program}: {error}")))?;
-    status
-        .code()
-        .ok_or_else(|| Failure::execution(format!("{program} ended without an exit code")))
 }

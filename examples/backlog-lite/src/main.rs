@@ -1,17 +1,9 @@
-//! Runs the Backlog.md wrapper against the real process streams.
+//! Runs the Backlog.md wrapper: one call, because the runner owns the pipeline.
 //!
 //! Everything worth testing lives in the library; this file is the `main` a real
-//! application would write.
+//! application writes now that clifacet's `App` parses, asks, validates, previews, runs,
+//! renders and maps the exit code (CLI-46, CLI-48).
 
-use std::io::Write;
-use std::process::ExitCode;
-
-fn main() -> ExitCode {
-    let mut out = std::io::stdout().lock();
-    let mut err = std::io::stderr().lock();
-    let code = clifacet_backlog_lite::main(std::env::args_os(), &mut out, &mut err);
-    if out.flush().and_then(|()| err.flush()).is_err() {
-        return ExitCode::from(u8::try_from(clifacet_backlog_lite::EXIT.execution()).unwrap_or(1));
-    }
-    ExitCode::from(u8::try_from(code).unwrap_or(1))
+fn main() -> std::process::ExitCode {
+    clifacet_backlog_lite::run_app()
 }

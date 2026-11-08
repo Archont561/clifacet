@@ -32,11 +32,15 @@ bl --dry-run done CLI-20        # print the exact command, run nothing
 
 ## Design notes
 
+- **The application is three things.** A context (`Program`: the command to forward to), a
+  `PlannedWith` impl (`Backlog`: a request on that program as a `Plan` whose work is `run`),
+  and `run_app()`. Everything else — parse, mode, ask, validate, preview, run, render, exit
+  code — is clifacet's `App` (CLI-46/CLI-48), so `main.rs` is one call.
 - **A decision is data.** `Request` is validated input, `invocation_of` turns it into an
-  `Invocation` (argument vector plus one sentence), and `Backlog`, a clifacet `Planned`
-  command, wraps that in a `Plan` whose work is `run`. `--dry-run` describes the plan and
-  a real run executes it; the library makes executing the plan the only way to run a
-  planned command, so the two cannot disagree.
+  `Invocation` (argument vector plus one sentence), and `Backlog` wraps that in a `Plan`
+  whose work is `run`. `--dry-run` describes the plan and a real run executes it; the
+  library makes executing the plan the only way to run a planned command, so the two cannot
+  disagree.
 - **Questions never change an explicit answer.** Every prompt goes through `Session`, which
   returns a supplied value untouched, and builds no frontend at all when the plan asks
   nothing.
@@ -54,14 +58,15 @@ bl --dry-run done CLI-20        # print the exact command, run nothing
 One file per command, and one file per layer around them:
 
 ```text
-src/commands/mod.rs     the map: one `commands!` line, then the request and the runner's plan
+src/commands/mod.rs     the map: one `commands!` line, then the request
 src/commands/list.rs    one leaf per file: its flags, its input, its questions, its argv
 src/commands/show.rs      (and new, start, done, search, doctor)
 src/commands/task.rs    what show, start and done share: a task ID and moving it
 src/status.rs           the `Status` every spelling of a status parses to
-src/invocation.rs       a request as a command line, and the one place it runs
-src/app.rs              modes, `--dry-run`, streams and exit codes
-src/lib.rs              the crate docs, the module list and the re-exports
+src/invocation.rs       a request as a command line, purely
+src/program.rs          the context: the program forwarded to, and the one place it spawns
+src/lib.rs              the command, the wiring, and `run_app`
+src/main.rs             one call to `run_app()`
 ```
 
 Adding a leaf is a new file, its name in the `commands!` list in `commands/mod.rs`, and one
@@ -74,16 +79,19 @@ the CLI a reviewer reads; it is just the only copy of it.
 
 ```sh
 cargo build -p clifacet-backlog-lite      # target/debug/bl
-CLIFACET_BACKLOG_BIN="bun x --bun --no-install backlog" target/debug/bl list --limit 3
+target/debug/bl list --limit 3
 ```
 
-`CLIFACET_BACKLOG_BIN` is a command with whitespace-separated arguments and no shell
-expansion — that is what makes it usable in a repository that runs the CLI through Bun, and
-what keeps a test from ever spawning the real tool.
+The program it forwards to is the application's **context**, not a setting: `main` passes
+`Program::default()` — `backlog` on the `PATH` — and a test passes its own fake. Running the
+CLI through Bun instead is a one-word change in `Program::new(["bun", "x", "--bun",
+"backlog"])` in the binary, which also compiles no path from the environment into what
+runs.
 
 ## Tests
 
 `tests/flows.rs` asserts the argument vector byte for byte for each leaf, plus the flows
 that are the reason to have a wrapper at all: the default verb, the asked-for title, the
 declined confirmation, `--yes` with and without a terminal, and the status chosen from a
-list.
+list. `tests/program.rs` proves the program comes from the context — a fake in, the fake's
+name out — and `features/*.feature` drive the same seams a person does, through `App`.

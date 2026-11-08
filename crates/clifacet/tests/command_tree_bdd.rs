@@ -3,15 +3,18 @@
 //! The tree is three levels deep — `cast db migrate` — and every scenario runs it the way
 //! an application does: clap parses the line, the parsed tree asks its questions on a
 //! scripted session, `Facet::validate` turns it into the typed request, and the tree's
-//! generated `Command` runs the chosen leaf. No application sits in between; these are the
+//! generated `Handler` runs the chosen leaf. No application sits in between; these are the
 //! library's own promises. `command_tree.rs` proves the mechanics case by case.
+//!
+//! The commands record what they did in a [`Ran`] value the world owns and passes in as the
+//! application's context (CLI-47), so a scenario's evidence cannot leak into another one.
 
 use std::cell::RefCell;
 
 use clap::Parser as _;
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
 use clifacet::prompt::{Answer, Collect, Scripted, Session};
-use clifacet::{Command, Facet, Failure};
+use clifacet::{Command, Facet, Failure, Handler};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 
@@ -36,7 +39,7 @@ struct CastInput {
     command: Option<Request>,
 }
 
-#[clifacet::subcommands(input = Request, output = Said)]
+#[clifacet::subcommands(input = Request, output = Said, context = Ran)]
 #[derive(Clone)]
 enum Commands {
     /// Say hello.
@@ -86,7 +89,7 @@ struct DbInput {
     command: DbRequest,
 }
 
-#[clifacet::subcommands(input = DbRequest, output = Said)]
+#[clifacet::subcommands(input = DbRequest, output = Said, context = Ran)]
 #[derive(Clone)]
 enum DbCommands {
     /// Apply the pending migrations.
@@ -137,9 +140,18 @@ fn confirm_reset(mut reset: Reset, session: &mut Session) -> Result<Reset, Failu
 
 // --- the leaves as commands -----------------------------------------------------
 
-thread_local! {
-    /// The database commands that actually ran, in order.
-    static RAN: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
+/// The database commands that actually ran, in order: the application's context.
+#[derive(Debug, Default)]
+struct Ran(RefCell<Vec<&'static str>>);
+
+impl Ran {
+    fn record(&self, what: &'static str) {
+        self.0.borrow_mut().push(what);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
 }
 
 impl Command for Greet {
@@ -151,31 +163,31 @@ impl Command for Greet {
     }
 }
 
-impl Command for Db {
+impl Handler<Ran> for Db {
     type Input = DbInput;
     type Output = Said;
 
-    fn execute(&self, input: DbInput) -> Result<Said, Failure> {
-        self.command.execute(input.command)
+    fn handle(&self, input: DbInput, ran: &Ran) -> Result<Said, Failure> {
+        self.command.handle(input.command, ran)
     }
 }
 
-impl Command for Migrate {
+impl Handler<Ran> for Migrate {
     type Input = MigrateInput;
     type Output = Said;
 
-    fn execute(&self, input: MigrateInput) -> Result<Said, Failure> {
-        RAN.with(|ran| ran.borrow_mut().push("migrate"));
+    fn handle(&self, input: MigrateInput, ran: &Ran) -> Result<Said, Failure> {
+        ran.record("migrate");
         Ok(Said(format!("migrated {}", input.steps.unwrap_or(1))))
     }
 }
 
-impl Command for Reset {
+impl Handler<Ran> for Reset {
     type Input = ResetInput;
     type Output = Said;
 
-    fn execute(&self, _input: ResetInput) -> Result<Said, Failure> {
-        RAN.with(|ran| ran.borrow_mut().push("reset"));
+    fn handle(&self, _input: ResetInput, ran: &Ran) -> Result<Said, Failure> {
+        ran.record("reset");
         Ok(Said(String::from("reset")))
     }
 }
@@ -185,6 +197,8 @@ impl Command for Reset {
 /// One run of `cast`, and what it showed.
 struct World {
     capabilities: Capabilities,
+    /// What the commands did, in order: the context every step of this world shares.
+    ran: Ran,
     input: Option<Result<CastInput, Failure>>,
     said: Option<Result<Said, Failure>>,
     asked: Vec<String>,
@@ -229,9 +243,9 @@ impl World {
 
 #[fixture]
 fn world() -> World {
-    RAN.with(|ran| ran.borrow_mut().clear());
     World {
         capabilities: Capabilities::headless(),
+        ran: Ran::default(),
         input: None,
         said: None,
         asked: Vec::new(),
@@ -264,7 +278,7 @@ fn the_user_runs_through_the_tree(world: &mut World, line: String) {
         Some(Ok(input)) => input.command.expect("the request carries the command"),
         other => panic!("the run did not validate: {other:?}"),
     };
-    world.said = Some(tree.execute(request));
+    world.said = Some(tree.handle(request, &world.ran));
 }
 
 #[then("the application receives the root flag, the replica database and 2 steps")]
@@ -307,8 +321,10 @@ fn the_tree_answers(world: &World, answer: String) {
 
 #[then("no database command ran")]
 fn no_database_command_ran(world: &World) {
-    let _ = world;
-    RAN.with(|ran| assert!(ran.borrow().is_empty(), "ran: {:?}", ran.borrow()));
+    assert!(
+        world.ran.is_empty(),
+        "a command ran in a scenario that ran none"
+    );
 }
 
 #[then("the application receives no command")]
