@@ -33,6 +33,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
+# This file is run both as `python scripts/prose.py` (Pixi, CI) and imported as
+# `scripts.prose` (the pytest suite). Only the second has the repository root on
+# `sys.path`, so put it there before reaching for a sibling.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 CONFIG = ROOT / "vale.toml"
 INI = ROOT / ".vale.ini"
 STYLES = ROOT / ".vale" / "styles"
@@ -275,6 +281,69 @@ def vale_command(config: dict[str, Any] | None = None) -> list[str]:
     return ["vale", "--config", str(INI.relative_to(ROOT)), *sources(config)]
 
 
+def lint(config: dict[str, Any] | None = None) -> int:
+    """Run Vale over the prose, and make what it found readable from a CI run.
+
+    Vale's own output is the report; this adds two things a pull request reviewer needs.
+    Raw step logs are not reachable from every environment (the sandbox this was written
+    in cannot fetch them), so the findings go into the run summary, where the review page
+    shows them. And a rate is reported beside them, because the *count* is what says
+    whether a rule is earning its place: fifty alerts from one substitution usually means
+    a word belongs in the vocabulary, not that fifty sentences are wrong.
+    """
+    import collections
+    import os
+    import subprocess
+
+    from scripts.github_actions import append_summary  # noqa: PLC0415 (import cycle-free, late)
+
+    config = load() if config is None else config
+    try:
+        result = subprocess.run(
+            vale_command(config),
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        # A missing binary is not a pass, and it is not a finding either: it is the one
+        # thing this check cannot prove from here, and saying so is the honest report.
+        message = (
+            "prose: `vale` is not installed in this environment, so the prose was not "
+            "linted. Install the Pixi environment (`pixi install`) and run this again; "
+            "this is not a pass."
+        )
+        print(message, file=sys.stderr)
+        append_summary(f"## Prose: not run\n\n{message}")
+        return 1
+    report = f"{result.stdout or ''}{result.stderr or ''}"
+    print(report, end="" if report.endswith("\n") else "\n")
+
+    counts: collections.Counter[str] = collections.Counter()
+    for line in report.splitlines():
+        # `file:line:col:Style.Rule:message`
+        parts = line.split(":", 4)
+        if len(parts) == 5 and parts[3].count(".") >= 1 and not parts[3].startswith(" "):
+            counts[parts[3]] += 1
+
+    if counts:
+        summary = ["## Prose: Vale", "", "| Alerts | Rule |", "| ---: | --- |"]
+        summary.extend(f"| {count} | `{rule}` |" for rule, count in counts.most_common())
+        summary.append("")
+        summary.append(
+            "A word the dictionary does not know belongs in `accept` in `vale.toml`; a rule "
+            "that is wrong for this prose belongs there too, with a `reason`."
+        )
+        append_summary("\n".join(summary))
+
+    if result.returncode == 0:
+        print(f"prose: {len(sources(config))} page(s) pass")
+    elif not counts and "vale" not in report:
+        append_summary("## Prose: Vale did not run\n\nThe binary is missing from this environment.")
+    return result.returncode
+
+
 def sync(config: dict[str, Any] | None = None) -> int:
     """Install the pinned packages into the StylesPath, as `vale sync` does."""
     import subprocess
@@ -298,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "action",
-        choices=("check", "write", "sync", "list", "command"),
+        choices=("check", "write", "sync", "lint", "list", "command"),
         nargs="?",
         default="check",
         help="check the committed tree, write it, sync the packages, or print what would run",
@@ -314,6 +383,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if arguments.action == "sync":
             return sync(config)
+        if arguments.action == "lint":
+            return lint(config)
         if arguments.action == "list":
             print(json.dumps(sources(config)) if arguments.format == "json" else "\n".join(sources(config)))
             return 0

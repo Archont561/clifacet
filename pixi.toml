@@ -100,7 +100,7 @@ docs-snippets = "python scripts/check_docs.py --write"
 # without fetching anything, which is why it belongs in `test-local`.
 prose = "python scripts/prose.py"
 prose-sync = "python scripts/prose.py write && python scripts/prose.py sync"
-prose-check = "python scripts/prose.py check && vale --config=.vale.ini $(python scripts/prose.py list)"
+prose-check = "python scripts/prose.py check && python scripts/prose.py lint"
 # Proves the declared MSRV. CI installs that toolchain; locally this needs rustup,
 # or `--toolchain ""` to reuse the pinned compiler as a plumbing check.
 prove-msrv = "python scripts/prove_msrv.py"

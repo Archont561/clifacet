@@ -211,6 +211,56 @@ def test_an_empty_vocabulary_is_refused(tmp_path):
         prose.rendered(prose.load(manifest))
 
 
+# --- what the lint does with Vale's output ----------------------------------------------
+
+
+def fake_vale(tmp_path, monkeypatch, report: str, returncode: int = 1):
+    """Put a stand-in `vale` on PATH, so the report handling is what gets tested."""
+    binary = tmp_path / "vale"
+    binary.write_text(f"#!/bin/sh\ncat <<'EOF'\n{report}\nEOF\nexit {returncode}\n", encoding="utf-8")
+    binary.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ['PATH']}")
+    return binary
+
+
+def test_a_finding_reaches_the_run_summary(tmp_path, monkeypatch):
+    """Raw step logs are not reachable from every environment; the summary is."""
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    fake_vale(
+        tmp_path,
+        monkeypatch,
+        "README.md:3:5:Microsoft.Spacing:This should have one space.\n"
+        "docs/modes.md:9:1:Clifacet.American:Use 'behavior' instead of 'behaviour'.",
+    )
+
+    assert prose.lint() == 1
+
+    written = summary.read_text(encoding="utf-8")
+    assert "Microsoft.Spacing" in written
+    assert "Clifacet.American" in written
+    assert "| 1 |" in written, "each rule is counted once per alert"
+
+
+def test_a_clean_run_says_so_and_passes(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    fake_vale(tmp_path, monkeypatch, "", returncode=0)
+
+    assert prose.lint() == 0
+    assert not summary.exists(), "nothing to report is not a report"
+
+
+def test_a_missing_binary_is_not_a_pass(tmp_path, monkeypatch):
+    """The one thing this check cannot prove must never read as success."""
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.setenv("PATH", str(tmp_path))  # no vale anywhere
+
+    assert prose.lint() == 1
+    assert "not run" in summary.read_text(encoding="utf-8")
+
+
 # --- the command CI runs ----------------------------------------------------------------
 
 
