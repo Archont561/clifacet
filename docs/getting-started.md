@@ -299,9 +299,9 @@ modes, the exit codes and which test proves each promise.
 | Which mode runs, and who decides? | [Modes and the interaction policy](modes.md) |
 | How does an existing `clap` command get validated input? | [The companion derive](derive.md) |
 | How does dropping a file into a folder add a command? | [Discovery](derive.md#discovery-commands-with-no-list) |
-| How do I draw my own screen without a second command? | [TUI composition](tui-composition.md) |
+| How is a screen drawn without a second command? | [TUI composition](tui-composition.md) |
 | How is any of this tested without a terminal? | [Testing](testing.md) |
-| How do I work on the crate itself? | [Contributing](contributing.md) |
+| How is the crate itself built and tested? | [Contributing](contributing.md) |
 
 The reference material — every seam, the ownership rules and what is deliberately
 not implemented — is in [Command core and its seams](command-core.md).

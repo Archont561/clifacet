@@ -16,10 +16,25 @@ has just begun, or context was lost or condensed beyond what the task needs.
    tie each one to its commit. A green check is evidence; a skipped, pending or
    never-triggered workflow is not. Preserve pre-existing changes. Do not fetch,
    switch branches, commit, push or release without authorization.
-3. Before checks or tests, follow the Pixi restore rule in `AGENTS.md`. After a
-   sandbox restore, run tasks with `--no-install`: `pixi install` re-syncs the
-   environment, deletes the restored PyPI files and then fails offline (see the
-   restore section of `docs/development.md`). If usable, inspect relevant tasks
+3. Before checks or tests, follow the Pixi restore rule in `AGENTS.md`, which
+   starts with a check that `pixi` exists at all:
+
+   ```sh
+   export PATH="$HOME/.local/bin:$PATH"
+   command -v pixi
+   ```
+
+   If it is missing, run `bash scripts/bootstrap.sh` — it restores the sandbox
+   **and then installs the lefthook hooks** — and export the path again. If the
+   environment is already up but `.git/hooks/pre-commit` is absent, run
+   `pixi run --frozen --no-install hooks-install` before working, because an
+   uninstalled hook silently drops the commit gate. Report a restore that fails
+   and ask for the missing prerequisite; never substitute a host toolchain.
+
+   After a sandbox restore, run tasks with `--no-install`: `pixi install`
+   re-syncs the environment, deletes the restored PyPI files and then fails
+   offline (see the restore section of `docs/development.md`). If usable,
+   inspect relevant tasks
    and milestones with `pixi run --frozen --offline backlog-offline --
    milestone list` and `task list`; read relevant decisions and docs. These
    offline tasks fail if the locked Bun packages are unavailable. In that case,

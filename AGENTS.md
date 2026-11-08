@@ -1,24 +1,54 @@
 # AGENTS.md — Clifacet working rules
 
-## Bootstrap first
+## Session start: check for Pixi
 
-Before running any check or test, run the bootstrap script once:
+**At the start of every session, before any check, test or build, check whether `pixi`
+exists:**
 
 ```sh
-bash scripts/bootstrap.sh
+export PATH="$HOME/.local/bin:$PATH"
+command -v pixi || echo "pixi is missing — restore the environment"
+```
+
+If `pixi` is missing, do this, in this order, and do not skip the hooks step:
+
+```sh
+bash scripts/bootstrap.sh          # restores the environment, then installs the hooks
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-It fast-forwards a clean checkout to its upstream (refusing when there is local
-work to lose), restores the sandbox when the Pixi environment is missing or
-`pixi` is not on `PATH`, installs the Git hooks, and ends with `test-scripts` and
-`alint` as a smoke check. `--skip-restore`, `--skip-hooks`, `--skip-checks` and
-`--no-fetch` narrow it.
+`bootstrap.sh` is the whole sequence, and it is what to run rather than the pieces, because
+it does them in the order that works:
 
-To restore without the checkout step, run the generated launcher directly:
+1. **fast-forwards** a clean checkout that is strictly behind its upstream, and refuses
+   everything else rather than losing work;
+2. **restores the sandbox** when `pixi` is not on `PATH` or `.pixi` is missing, by running
+   the generated launcher (`scripts/restore.sh`), then registers the user tools on `PATH`;
+3. **installs the Git hooks** with `lefthook install`, so the commit and push gates are the
+   ones in `lefthook.yml` and not whatever the checkout arrived with;
+4. **proves the result** with `test-scripts` and `alint` as a smoke check.
+
+`--skip-restore`, `--skip-hooks`, `--skip-checks` and `--no-fetch` narrow it. To restore
+without the checkout step, run the generated launcher directly:
 
 ```sh
 bash scripts/restore.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then install the hooks, because a restore does not do it and a missing hook is invisible
+until the commit that should have been checked lands:
+
+```sh
+pixi run --frozen --no-install hooks-install
+```
+
+Confirm both before starting work — a session that skips this reports a missing tool as a
+broken change, and a session without hooks reports nothing until CI does:
+
+```sh
+pixi --version                       # the environment is up
+test -f .git/hooks/pre-commit && echo "hooks are installed"
 ```
 
 The launcher uses Git and the trusted `sandbox/developer-linux-64` branch and
@@ -69,7 +99,7 @@ production code is written**:
    — the design: clear names, cohesive modules, explicit errors, one source of
    truth, presentation separated from execution, no speculative abstraction.
 
-This is mandatory, not "as relevant". A feature is not ready when it cannot point
+This is mandatory, not "as relevant." A feature is not ready when it cannot point
 at the failing test that came first, the scenario that describes the behavior it
 adds, and the design decision that kept the change proportionate. Record that
 evidence in the task notes.
@@ -141,9 +171,9 @@ Rules for changing the prose check:
 | --- | --- | --- |
 | `gh pr edit` | 403 from the app token | amend the commit message with `git commit --amend`, or describe the change in a PR comment |
 | `gh run cancel` | 403 from the app token | push a fix on the same branch: the `ci` concurrency group cancels the superseded run |
-| `gh workflow run` | 403 from the app token (`Resource not accessible by integration`) | a maintainer dispatches from the Actions tab, or from their own authenticated `gh`; record the run URL in the task afterwards |
+| `gh workflow run` | 403 from the app token (`Resource not accessible by integration`) | a maintainer dispatches from the Actions tab, or from their own authenticated `gh`; record the run's address in the task afterwards |
 
-Reading is mostly unrestricted: `gh run list`, `gh run view`, `gh run watch`, `gh run view
+Reading is almost unrestricted: `gh run list`, `gh run view`, `gh run watch`, `gh run view
 --job=<id>` and `gh pr checks` all work, so a run can be watched to completion even when it
 had to be started by hand. `gh run view --log` does not: raw logs are served from
 `results-receiver.actions.githubusercontent.com`, which the sandbox cannot reach, so it

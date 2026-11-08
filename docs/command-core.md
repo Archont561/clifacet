@@ -39,7 +39,7 @@ application decides whether it becomes stdout, JSON or a table.
 
 A command that changes something can implement `command::Planned` instead. It answers
 its input with a `command::Plan` — the steps a person reads, and the work that takes
-them — and the library implements `Command` for it as "plan, then execute". A
+them — and the library implements `Command` for it as "plan, then execute." A
 `--dry-run` prints the plan; a real run executes the same plan:
 
 ```rust
@@ -257,7 +257,7 @@ required methods, `ask` and `confirm`, and provided ones a frontend may override
 | `Dialog` | `interactive` | the same questions as an `inquire` dialog — a cursor, a help line, bracketed paste — drawn on `stderr`, with a choice as a list to move through |
 | `Scripted` | none | answers from a list, a choice by its exact label; the seam every test uses, so a flow is driven end to end without a terminal and cannot reach one by accident |
 
-`Dialog` is the one a real process usually wants, and it changes nothing else: the
+`Dialog` is the one a real process wants, and it changes nothing else: the
 session still decides whether a question may be asked, a supplied value is still
 never re-asked, and `--yes` still answers confirmations without a dialog appearing.
 Escape or Ctrl-C is a `FailureKind::Cancelled`; a dialog that cannot reach a terminal
@@ -423,7 +423,7 @@ Five rules keep it a frontend rather than a second command:
   is byte-for-byte what `--name ada` produces.
 - **A prefilled value is an offer.** Typing replaces a default the user has not
   edited; backspace edits it like any other text. Appending to a default would make
-  "change 1 to 3" mean "delete the 1 first".
+  "change 1 to 3" mean "delete the 1 first."
 - **The state machine is screen-free.** `Key` is a key, not a crossterm event, so
   focus, editing, submission and cancellation are asserted against a `TestBackend`
   and a scripted key list. The terminal appears in exactly two places: `live_keys`
@@ -486,7 +486,7 @@ Three pieces, and deliberately no fourth:
   prompt session, the form — rather than a test-only runner that could drift. There
   is no mode enum and no runner trait, because describing frontends to the library is
   the global registration decision-4 forbids.
-- **Recording is "what reached the command", not "what was typed".** A rejected
+- **Recording is "what reached the command," not "what was typed."** A rejected
   answer leaves the record empty, which is how "nothing ran" becomes an assertion
   instead of an inference from an empty data stream.
 - **Subjects are selectable.** Frontends word a cancellation differently on purpose —
@@ -576,7 +576,7 @@ Redaction is a property of the type, not a scrubbing pass:
   itself be a place to leak them, and it would have to be cleansed. Since the marker
   is produced by the value's own formatting, there is nothing to cleanse.
 - **`Secret::expose` is the only read.** No `Deref`, no `AsRef`, no `Serialize`: a
-  credential reaches a log, a file or a URL only through a line someone wrote, which
+  credential reaches a log, a file or a link only through a line someone wrote, which
   is what makes review possible.
 - **Provenance has no field for a value.** `Origin` holds a name, a `Source` and
   whether the value is secret, so "the record cannot leak a secret" is structural. It
@@ -731,7 +731,7 @@ Documented so nobody reads absence as oversight:
   nothing else; no `TERM`, locale or window-size probing. A false positive there
   would resolve to a mode that cannot render.
 - **Cancellation from a real frontend.** The category, the message and the exit
-  code exist and are tested against `Scripted` and against the TUI's scripted keys;
+  code exist and are tested against `Scripted` and against the scripted keys of the TUI;
   an actual person pressing <kbd>Esc</kbd> is the one path no test can take.
 - **Canonical argv replay.** The derive proves the command that was parsed; it
   does not rebuild argv or re-parse it, so constructs `clap` cannot re-validate

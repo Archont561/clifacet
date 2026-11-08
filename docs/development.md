@@ -637,7 +637,7 @@ when chat history is missing or insufficient. `skills-check` validates required
 skill files and basic frontmatter; script tests exercise failures. Changes to
 skills are reviewed and versioned with the repository, not with a remote
 `skills-lock.json`. `bun.lock` locks the **CLI package**, not remote skills.
-No remote skills are auto-installed. The CLI's `add`, `update`,
+No remote skill installs itself. The CLI's `add`, `update`,
 `experimental_install`, and `experimental_sync` can fetch external content or
 modify files and agent links: inspect the source, destination and behavior and
 obtain authorization before using them. They must not overwrite local skills.

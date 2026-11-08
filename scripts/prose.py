@@ -16,9 +16,13 @@ What this script can and cannot prove:
 - It proves the rendering is deterministic and current, that every rule named in
   `vale.toml` exists in the pinned packages or in the style this repository owns, and
   that every rule switched off says why.
-- It does not prove what Vale will report. Vale is not run here: the packages it needs
-  are pinned and fetched by `pixi run prose-sync`, and the reports belong to
-  `pixi run prose-check` in CI.
+- It does not prove what Vale will report. `prose-check` runs Vale, and what it finds is a
+  report rather than a rendering question.
+
+The two upstream styles are **committed**, under `.vale/styles/`, exactly as `vale sync`
+installs them at the pinned versions. They are not fetched at check time: a check that
+needs GitHub's release assets is a check that fails on an offline restore, which is where
+this repository runs most of its gates. `prose-sync` re-installs them when a pin changes.
 """
 
 from __future__ import annotations
@@ -288,28 +292,25 @@ def vale_command(config: dict[str, Any] | None = None) -> list[str]:
 def lint(config: dict[str, Any] | None = None) -> int:
     """Run Vale over the prose, and make what it found readable from a CI run.
 
-    Vale's own output is the report; this adds two things a pull request reviewer needs.
-    Raw step logs are not reachable from every environment (the sandbox this was written
-    in cannot fetch them), so the findings go into the run summary, where the review page
-    shows them. And a rate is reported beside them, because the *count* is what says
-    whether a rule is earning its place: fifty alerts from one substitution usually means
-    a word belongs in the vocabulary, not that fifty sentences are wrong.
+    Vale's JSON output, not its table: the table's columns move, and a parser that guesses
+    at them reports rules that never fired. JSON names the check, the line and the message,
+    so this can count per rule and annotate the line a finding is about.
+
+    Two things are added beyond Vale's own report, both for a reviewer. The findings go
+    into the run summary, because raw step logs are not reachable from every environment.
+    And they are emitted as annotations, so a finding lands on the line it is about in the
+    pull request's diff.
     """
     import collections
-    import os
+    import json
     import subprocess
 
-    from scripts.github_actions import append_summary  # noqa: PLC0415 (import cycle-free, late)
+    from scripts.github_actions import append_summary  # noqa: PLC0415 (late, keeps startup cheap)
 
     config = load() if config is None else config
+    command = [*vale_command(config)[:1], "--output=JSON", *vale_command(config)[1:]]
     try:
-        result = subprocess.run(
-            vale_command(config),
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
     except FileNotFoundError:
         # A missing binary is not a pass, and it is not a finding either: it is the one
         # thing this check cannot prove from here, and saying so is the honest report.
@@ -321,42 +322,58 @@ def lint(config: dict[str, Any] | None = None) -> int:
         print(message, file=sys.stderr)
         append_summary(f"## Prose: not run\n\n{message}")
         return 1
-    report = f"{result.stdout or ''}{result.stderr or ''}"
-    print(report, end="" if report.endswith("\n") else "\n")
+
+    try:
+        report = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        # Vale failed before it could report — a missing style, an unreadable INI. Its
+        # own message is the useful part, and exit code 2 says the run never linterized.
+        print(result.stderr or result.stdout, file=sys.stderr)
+        append_summary(f"## Prose: Vale could not run\n\n```\n{(result.stderr or '').strip()}\n```")
+        return result.returncode or 1
 
     counts: collections.Counter[str] = collections.Counter()
-    findings: list[tuple[str, str, str, str]] = []
-    for line in report.splitlines():
-        # `file:line:col:Style.Rule:message`
-        parts = line.split(":", 4)
-        if len(parts) == 5 and parts[3].count(".") >= 1 and not parts[3].startswith(" "):
-            counts[parts[3]] += 1
-            findings.append((parts[0], parts[1], parts[2], f"{parts[3]}: {parts[4].strip()}"))
-
-    # Annotations, not just a summary: they land on the line they are about in the
-    # pull request's diff, and they are readable through the checks API when raw logs are
-    # not. Bounded, because a hundred-annotation cap silently drops the rest.
-    for path, line, column, message in findings[:ANNOTATION_LIMIT]:
-        escape = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-        print(
-            f"::error file={path},line={line},col={column},title=Prose::{escape}",
-            file=sys.stderr,
-        )
+    findings: list[tuple[str, int, int, str]] = []
+    for path, alerts in report.items():
+        for alert in alerts:
+            counts[alert["Check"]] += 1
+            findings.append(
+                (
+                    path,
+                    alert.get("Line", 1),
+                    alert.get("Span", [1, 1])[0],
+                    f"{alert['Check']}: {alert['Message']}",
+                )
+            )
 
     if counts:
-        summary = ["## Prose: Vale", "", "| Alerts | Rule |", "| ---: | --- |"]
+        summary = [
+            "## Prose: Vale",
+            "",
+            f"{len(findings)} finding(s) in {len(report)} file(s).",
+            "",
+            "| Alerts | Rule |",
+            "| ---: | --- |",
+        ]
         summary.extend(f"| {count} | `{rule}` |" for rule, count in counts.most_common())
-        summary.append("")
-        summary.append(
-            "A word the dictionary does not know belongs in `accept` in `vale.toml`; a rule "
-            "that is wrong for this prose belongs there too, with a `reason`."
-        )
+        summary += [
+            "",
+            "A word the dictionary does not know belongs in `accept` in `vale.toml`. A rule "
+            "that is wrong for this prose belongs there too, with a `reason`.",
+        ]
         append_summary("\n".join(summary))
+        for path, line, column, message in findings[:ANNOTATION_LIMIT]:
+            escaped = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            print(f"::error file={path},line={line},col={column},title=Prose::{escaped}", file=sys.stderr)
+        if len(findings) > ANNOTATION_LIMIT:
+            print(
+                f"prose: {len(findings) - ANNOTATION_LIMIT} further finding(s); the summary "
+                "lists them all by rule",
+                file=sys.stderr,
+            )
 
     if result.returncode == 0:
         print(f"prose: {len(sources(config))} page(s) pass")
-    elif not counts and "vale" not in report:
-        append_summary("## Prose: Vale did not run\n\nThe binary is missing from this environment.")
     return result.returncode
 
 
@@ -375,7 +392,10 @@ def sync(config: dict[str, Any] | None = None) -> int:
     if result.returncode != 0:
         print(f"prose: `vale sync` failed; {styles} is unchanged", file=sys.stderr)
         return result.returncode
-    print(f"prose: synced {len(config['packages'])} package(s) into {styles}")
+    print(
+        f"prose: synced {len(config['packages'])} package(s) into {styles}; commit the result, "
+        "because the check reads the committed styles rather than fetching them"
+    )
     return 0
 
 

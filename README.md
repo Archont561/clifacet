@@ -5,7 +5,7 @@
 [![crates.io](https://img.shields.io/crates/v/clifacet.svg)](https://crates.io/crates/clifacet)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](https://github.com/Archont561/clifacet)
 
-**One command core, several presentation modes.**
+**One command core, four presentation modes.**
 
 A command takes validated input and returns data or a failure. It never writes a
 stream and never reads a terminal, so the same command is reachable from flags, a

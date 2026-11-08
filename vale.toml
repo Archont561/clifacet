@@ -15,6 +15,10 @@ sources = ["README.md", "AGENTS.md", "docs"]
 
 # Pinned releases, never names. A name installs whatever is newest, so a package update
 # would change what CI rejects without a commit here.
+#
+# What the pins install is committed, under `.vale/styles/`, and `prose-check` reads that
+# copy rather than fetching it: a check that needs GitHub's release assets fails on an
+# offline restore. `pixi run prose-sync` re-installs the two styles when a pin moves.
 packages = [
   "https://github.com/vale-cli/Microsoft/releases/download/v0.15.1/Microsoft.zip",
   "https://github.com/vale-cli/write-good/releases/download/v0.4.1/write-good.zip",
@@ -49,6 +53,21 @@ accept = [
   "rustdoc",
   "rustsec",
   "rustup",
+  # Prose that renders a code identifier without a code span. Vale skips an inline span,
+  # so these only reach its spelling rule when the sentence writes them as words — and
+  # then they are the thing being named, not a misspelling.
+  "impl",
+  "impls",
+  "parser",
+  "derive",
+  "tui",
+  "narrowings",
+  "unflagged",
+  "scrollback",
+  "vendoring",
+  "rescan",
+  "fmt",
+  "relock",
   # The dependencies an application meets by name.
   "argv",
   "backend",
@@ -64,6 +83,15 @@ accept = [
   "subcommands",
   "toolchain",
   "yml",
+  "toml",
+  "devcontainer",
+  "gh",
+  "lcov",
+  "proptest",
+  "trybuild",
+  "thiserror",
+  "serde",
+  "assert_cmd",
 ]
 
 vocab = "Clifacet"
@@ -118,6 +146,14 @@ style lists it as jargon; here it is the least ambiguous term available.
 level = "NO"
 reason = "`CI`, `TUI` and `MSRV` are heading words here; expanding them in a heading helps nobody."
 
+[rules."Microsoft.HeadingPunctuation"]
+level = "NO"
+reason = """
+A heading in these guides is a question — headers such as "Which macro is needed?" and
+"Session start: check for Pixi" label the section they answer. The rule exists to stop a
+heading becoming a sentence, which is a different fault.
+"""
+
 [rules."Microsoft.HeadingColons"]
 level = "NO"
 reason = "A heading may end in a colon when it introduces the table or list below it."
@@ -133,6 +169,38 @@ reason = "A subject that needs one long sentence gets one long sentence."
 [rules."write-good.E-Prime"]
 level = "NO"
 reason = "The guides describe what a thing is, not what it does; the rule reads that as hedging."
+
+[rules."write-good.Passive"]
+level = "NO"
+reason = """
+Technical writing describes what a system does to a value — "the input is validated",
+"the flag is rejected" — and the actor is the library, not a person. 250 alerts across
+eleven pages, nearly all of them exactly right, is not 250 mistakes; it is the passive
+voice doing its job. The rule stays in `BasedOnStyles` and is switched off here so a
+reader can see the decision rather than wonder why it never fires.
+"""
+
+[rules."Microsoft.Adverbs"]
+level = "NO"
+reason = """
+"Deliberately" and "explicitly" are load-bearing in these guides: they mark the places
+where a design refuses something on purpose, which is the point being made. 32 alerts,
+mostly those two words.
+"""
+
+[rules."write-good.Weasel"]
+level = "NO"
+reason = """
+"Usually" and "mostly" are how a rule with exceptions is stated honestly. Removing them
+would make a true sentence false.
+"""
+
+[rules."Microsoft.Terms"]
+level = "NO"
+reason = """
+The reference style substitutes "agent" with "personal digital assistant", which is not
+the sense the word has here: these are coding agents, named as such by the tool.
+"""
 
 [rules."Vale.Terms"]
 level = "NO"

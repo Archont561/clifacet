@@ -52,7 +52,7 @@ assert_eq!(state.fields().len(), 2);
 
 The label comes from the argument's help and the initial value from its default. A
 name the command does not have is an error, not an empty form: it is a mistake in the
-application, not something a user can fix. So is a list — a repeatable or counted flag —
+application, not something a user can fix. A list is the same — a repeatable or counted flag —
 because a field submits one value.
 
 Each field is what its grammar says: a `bool` flag is a toggle, an argument with

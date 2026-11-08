@@ -10,6 +10,7 @@ that merely looks like it.
 
 from __future__ import annotations
 
+import os
 import tomllib
 
 import pytest
@@ -211,16 +212,70 @@ def test_an_empty_vocabulary_is_refused(tmp_path):
         prose.rendered(prose.load(manifest))
 
 
+# --- every style the INI names has to be on the StylesPath --------------------------------
+
+
+def test_every_style_the_ini_names_is_committed(config):
+    """Vale stops with `Invalid value` when a named style is not installed.
+
+    The styles are committed rather than fetched at check time, so this is the failure a
+    forgotten `prose-sync` causes — and it happens before Vale reads a single page.
+    """
+    ini = prose.render_ini(config)
+    named = next(
+        line.split("=", 1)[1].split(", ")
+        for line in ini.splitlines()
+        if line.startswith("BasedOnStyles =")
+    )
+
+    for style in (name.strip() for name in named):
+        if style in ("Vale",) or not style:
+            continue
+        assert (STYLES / style).is_dir(), f"{style} is named but not on the StylesPath"
+
+
+def test_the_vendored_styles_carry_their_licence(config):
+    """What is committed is redistributed with the repository, so its licence travels too."""
+    packages = {package.rsplit("/", 1)[-1].removesuffix(".zip") for package in config["packages"]}
+
+    for style in packages:
+        assert (STYLES / style / "LICENSE").is_file(), f"{style} ships without its licence"
+
+
 # --- what the lint does with Vale's output ----------------------------------------------
 
 
 def fake_vale(tmp_path, monkeypatch, report: str, returncode: int = 1):
-    """Put a stand-in `vale` on PATH, so the report handling is what gets tested."""
+    """Put a stand-in `vale` on PATH that prints `report` verbatim.
+
+    `report` is Vale's `--output=JSON`, because that is what the lint reads: the table's
+    columns move, and a parser that guesses at them reports rules that never fired.
+    """
     binary = tmp_path / "vale"
     binary.write_text(f"#!/bin/sh\ncat <<'EOF'\n{report}\nEOF\nexit {returncode}\n", encoding="utf-8")
     binary.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ['PATH']}")
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
     return binary
+
+
+def vale_report(*alerts, path: str = "README.md") -> str:
+    """One file's findings in the shape Vale emits, as JSON text."""
+    import json
+
+    return json.dumps(
+        {
+            path: [
+                {
+                    "Check": check,
+                    "Message": message,
+                    "Line": line,
+                    "Span": [column, column + 4],
+                    "Severity": "error",
+                }
+                for check, message, line, column in alerts
+            ]
+        }
+    )
 
 
 def test_a_finding_reaches_the_run_summary(tmp_path, monkeypatch):
@@ -230,8 +285,10 @@ def test_a_finding_reaches_the_run_summary(tmp_path, monkeypatch):
     fake_vale(
         tmp_path,
         monkeypatch,
-        "README.md:3:5:Microsoft.Spacing:This should have one space.\n"
-        "docs/modes.md:9:1:Clifacet.American:Use 'behavior' instead of 'behaviour'.",
+        vale_report(
+            ("Microsoft.Spacing", "This should have one space.", 3, 5),
+            ("Clifacet.American", "Use 'behavior' instead of 'behaviour'.", 9, 1),
+        ),
     )
 
     assert prose.lint() == 1
@@ -246,11 +303,7 @@ def test_a_finding_becomes_an_annotation_on_the_line_it_is_about(tmp_path, monke
     """Annotations reach the diff, and the checks API can read them when logs cannot."""
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
-    fake_vale(
-        tmp_path,
-        monkeypatch,
-        "README.md:3:5:Microsoft.Spacing:This should have one space.",
-    )
+    fake_vale(tmp_path, monkeypatch, vale_report(("Microsoft.Spacing", "This should have one space.", 3, 5)))
 
     assert prose.lint() == 1
 
@@ -263,8 +316,11 @@ def test_annotations_are_bounded_but_the_summary_is_complete(tmp_path, monkeypat
     """GitHub drops annotations past the tenth, so the count in the summary is the record."""
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
-    lines = "\n".join(f"README.md:{n}:1:Microsoft.Spacing:space" for n in range(1, 26))
-    fake_vale(tmp_path, monkeypatch, lines)
+    fake_vale(
+        tmp_path,
+        monkeypatch,
+        vale_report(*[("Microsoft.Spacing", "space", n, 1) for n in range(1, 26)]),
+    )
 
     assert prose.lint() == 1
 
@@ -274,7 +330,7 @@ def test_annotations_are_bounded_but_the_summary_is_complete(tmp_path, monkeypat
 def test_a_clean_run_says_so_and_passes(tmp_path, monkeypatch):
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
-    fake_vale(tmp_path, monkeypatch, "", returncode=0)
+    fake_vale(tmp_path, monkeypatch, "{}", returncode=0)
 
     assert prose.lint() == 0
     assert not summary.exists(), "nothing to report is not a report"

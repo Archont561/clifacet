@@ -413,8 +413,8 @@ What a tree gets wrong is a compile error, each with a golden `trybuild` file:
   produces at the tree's `input = …`.
 - **One name, one subcommand.** A name or alias two variants answer to — a default name
   is clap's kebab-case of the variant — is reported at the second, naming it.
-- **Known keys only.** An unknown key on the tree or on a variant is named in the error;
-  so is `planned` without `output`.
+- **Known keys only.** An unknown key on the tree or on a variant is named in the error.
+  The same is true of `planned` without `output`.
 - **A `subcommands` field holds a tree.** Its type has to come from
   `#[clifacet::subcommands]`, and the field takes no other key.
 - **A leaf converts.** A leaf without a `Facet`, or whose output does not convert into
@@ -558,7 +558,7 @@ fully supported, and is what an application uses when a folder's members are not
 `examples/backlog-lite` is built this way: its `bl` has seven subcommands, one `--json` for
 the whole run, and a `commands!` line where three hand-kept lists used to be.
 
-### Which macro do I need?
+### Which macro is needed?
 
 The layering rule of decision-16, in one place. Every public macro belongs to exactly one
 layer, and each is used in one situation:
@@ -653,7 +653,7 @@ the input is not a field-by-field copy of the command at all.
 
 ## Testing it
 
-Because the derive's promise is "the same command with typed input", the interesting
+Because the derive's promise is "the same command with typed input," the interesting
 assertions are about parity, not about the macro: a flag alias, a `default_value_t`
 and a custom `value_parser` all have to reach the same input as their canonical
 spellings. `examples/simple/tests/facet_bridge.rs` and
