@@ -4,7 +4,7 @@ title: Keep the release's changelog commit from going stale
 status: In Progress
 assignee: []
 created_date: '2026-11-08 11:15'
-updated_date: '2026-11-08 12:30'
+updated_date: '2026-11-08 12:36'
 labels: []
 milestone: m-12
 dependencies: []
@@ -27,11 +27,11 @@ Proposed fix, to be confirmed test-first: render a stable `## [Unreleased]` head
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A test in scripts/tests reproduces the bug first: a render at a tag differs from a render after one more hidden (`docs`/`chore`) commit, and it fails before the fix
-- [ ] #2 After the fix those two renders are identical, so the commit `release changelog` makes cannot make CHANGELOG.md stale
-- [ ] #3 The release notes are still exactly the new version's section: `release preflight` and `release tag` never include an empty `Unreleased` heading, covered by the existing release tests or a new one
-- [ ] #4 The release step checks its own result: after committing, it runs the changelog check and fails the run if the file does not match, because CI does not run on the bot's push
-- [ ] #5 docs/development.md §Release describes the stable heading and the self-check, and test-local is green
+- [x] #1 A test in scripts/tests reproduces the bug first: a render at a tag differs from a render after one more hidden (`docs`/`chore`) commit, and it fails before the fix
+- [x] #2 After the fix those two renders are identical, so the commit `release changelog` makes cannot make CHANGELOG.md stale
+- [x] #3 The release notes are still exactly the new version's section: `release preflight` and `release tag` never include an empty `Unreleased` heading, covered by the existing release tests or a new one
+- [x] #4 The release step checks its own result: after committing, it runs the changelog check and fails the run if the file does not match, because CI does not run on the bot's push
+- [x] #5 docs/development.md §Release describes the stable heading and the self-check, and test-local is green
 <!-- AC:END -->
 
 ## Implementation Notes
