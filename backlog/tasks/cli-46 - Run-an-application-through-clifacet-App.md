@@ -1,9 +1,10 @@
 ---
 id: CLI-46
 title: 'Run an application through clifacet::App'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-08 01:59'
+updated_date: '2026-11-08 11:25'
 labels: []
 milestone: m-12
 dependencies: []
@@ -27,3 +28,20 @@ Decision-19 item 1. Today every application writes the same pipeline by hand —
 - [ ] #6 examples/simple's main.rs is one call to the runner and its tests and scenarios pass unchanged
 - [ ] #7 The authoring guide has a runner section with a snippet check-docs compiles
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Design agreed with the maintainer (2026-11-08, ask_user), before any production code:
+
+1. **Which command runs.** `run::<Cli>()` and `App::<Cli>::new()` run the parsed `Cli` itself (`Cli: Command + Clone`), as a decision-14 tree already runs a clone of itself and as `commands!` (CLI-33) will generate. `.command(&other)` runs another command with the same input — how examples/simple keeps `Example` and its tests keep a recording command. Borrowed, because `Command` has no `&C` impl and cannot get one beside the `Planned` blanket.
+2. **`--dry-run` on a plain command.** `Command` gains a provided `preview(&self, input) -> Result<Plan, Failure>` that refuses (validation: nothing ran). The `Planned` blanket returns `self.plan(input)`, so planned commands and `planned` trees preview without new code. Non-breaking for existing implementations.
+3. **Render.** A strategy on the App: `trait Render<T> { fn render(&self, output: T, out: &mut dyn Write) -> io::Result<()> }`, default `Plain` for `Display` output, closures implement it, `.render(..)` swaps it.
+4. **Full-screen mode.** Behind `tui`, the runner hosts `FormState::of::<Cli>()` on the diagnostic stream and submits through the same parse → validate → run/preview → render path; examples/simple's form pipeline moves into the library.
+
+Decided without asking, as consequences of the above:
+- `Globals` is `clap::Args` (`--yes`, `--dry-run`, both `global = true`) that an application flattens. The runner reads them from clap's matches by id, so no trait is needed and an application that already declares its own `yes`/`dry_run` flags keeps working.
+- The mode the user asked for comes from `.mode_from(fn(&Cli) -> policy::Request)`, default none; `--yes` is ORed into it. Default policy `Policy::up_to(Mode::Interactive)`: prompts when there is a terminal, never for a script.
+- A policy refusal is a validation failure (nothing ran), as in examples/simple. A resolved TUI without the `tui` feature is refused the same way.
+- `run_parsed(cli, globals, ..)` is the pipeline after parsing, for an application (and examples/simple's `run(cli, ..)`) that already holds a `Cli`.
+<!-- SECTION:NOTES:END -->

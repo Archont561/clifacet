@@ -29,9 +29,10 @@
 //! }
 //! ```
 //!
-//! The application owns everything around the seam: parsing with `clap`,
-//! validation, which stream the data goes to, and which exit code a failure
-//! costs. `clifacet-example` shows that division end to end.
+//! Everything around the seam — parsing with `clap`, asking, validation, which stream
+//! the data goes to, and which exit code a failure costs — is one pipeline, and
+//! [`app`] runs it: `main` is `clifacet::run::<Cli>()`, or an [`App`] when an
+//! application changes a default. `clifacet-example` shows that division end to end.
 //!
 //! # Four frontends, one command
 //!
@@ -43,6 +44,9 @@
 //! - [`prompt`] — questions asked only for what the flags left out;
 //! - [`tui`] — a full-screen form built from public components (`tui` feature);
 //! - [`harness`] — the public way to prove the mode changed nothing else.
+//!
+//! [`Globals`] gives every application `--yes` and `--dry-run`; a dry run prints what a
+//! [`command::Planned`] command would do, through [`Command::preview`].
 //!
 //! [`contract`] states what a run may write where — data on the data stream, everything
 //! a person sees on the diagnostic one — and maps each outcome to an exit code;
@@ -72,6 +76,7 @@
 // resolve, and it is why `#[derive(Facet)]` works inside this crate too.
 extern crate self as clifacet;
 
+pub mod app;
 pub mod command;
 pub mod contract;
 pub mod facet;
@@ -96,6 +101,7 @@ pub const fn version() -> &'static str {
     VERSION
 }
 
+pub use app::{App, Globals, Plain, Render, run};
 pub use command::Command;
 pub use facet::Facet;
 pub use failure::{Failure, FailureKind};
