@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from scripts.changelog import (
+    ROOT,
+    UNRELEASED,
     UnreleasedError,
     commit,
+    convco,
+    generate,
     main,
     notes,
+    notes_for,
     render,
+    with_unreleased,
 )
 
 RAW = """# Changelog
@@ -197,3 +205,72 @@ def test_commit_without_an_identity_uses_the_configured_one():
     """A maintainer running `changelog commit` locally commits as themselves."""
     assert committing_argv()[:2] == ["git", "commit"]
 
+
+
+# The release renders CHANGELOG.md while HEAD is the tag it just created, then commits
+# the file — and that commit moves HEAD past the tag. These run the real convco against
+# a real history, because the bug lives in what convco emits at a tag, not in any fake.
+
+_GIT_ENVIRONMENT = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
+
+
+def _git(repository: Path, *arguments: str) -> None:
+    subprocess.run(["git", *arguments], cwd=repository, check=True, capture_output=True)
+
+
+def _history(repository: Path, monkeypatch, tags: list[str]) -> Path:
+    """A history with one describable commit per tag, HEAD exactly on the last tag."""
+    # A hook that runs this suite exports the outer repository's git variables; convco and
+    # git would follow them out of the temporary history.
+    for name in _GIT_ENVIRONMENT:
+        monkeypatch.delenv(name, raising=False)
+    _git(repository, "init", "-q", "-b", "main")
+    _git(repository, "config", "user.name", "Test")
+    _git(repository, "config", "user.email", "test@example.com")
+    shutil.copy(ROOT / ".versionrc", repository / ".versionrc")
+    _git(repository, "add", ".versionrc")
+    for number, tag in enumerate(tags):
+        _git(repository, "commit", "-q", "--allow-empty", "-m", f"feat: feature {number}")
+        _git(repository, "tag", tag)
+    return repository
+
+
+@pytest.fixture
+def released(tmp_path, monkeypatch) -> Path:
+    """The moment after a release's tag: HEAD is `v0.1.1`, which follows `v0.1.0`."""
+    return _history(tmp_path, monkeypatch, ["v0.1.0", "v0.1.1"])
+
+
+@pytest.mark.parametrize("hidden", ["chore(release): regenerate the changelog", "docs: reword"])
+def test_a_render_at_the_tag_survives_the_commit_that_records_it(released, hidden) -> None:
+    at_tag = generate(convco(released), released)
+    _git(released, "commit", "-q", "--allow-empty", "-m", hidden)
+    assert generate(convco(released), released) == at_tag
+
+
+def test_the_first_release_survives_the_commit_that_records_it(tmp_path, monkeypatch) -> None:
+    # The first version has no compare link of its own to borrow the repository from.
+    repository = _history(tmp_path, monkeypatch, ["v0.1.0"])
+    at_tag = generate(convco(repository), repository)
+    _git(repository, "commit", "-q", "--allow-empty", "-m", "chore: tidy")
+    assert generate(convco(repository), repository) == at_tag
+
+
+def test_the_stable_heading_is_empty_and_compares_the_tag_with_head(released) -> None:
+    rendered = generate(convco(released), released)
+    assert "## [Unreleased]\n\n## [0.1.1] - " in rendered
+    assert (
+        "[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.1.1...HEAD"
+        in rendered.splitlines()
+    )
+
+
+def test_release_notes_never_carry_the_unreleased_heading(released) -> None:
+    _git(released, "commit", "-q", "--allow-empty", "-m", "feat: the next feature")
+    text = notes_for(convco(released), "0.2.0", "2026-11-09")
+    assert text.startswith("## [0.2.0] - 2026-11-09\n")
+    assert UNRELEASED not in text
+
+
+def test_an_unreleased_section_convco_wrote_is_left_alone() -> None:
+    assert with_unreleased(RAW) == RAW
