@@ -75,3 +75,16 @@ pub(crate) use new::forward as forward_new;
 pub(crate) use search::forward as forward_search;
 pub(crate) use show::forward as forward_show;
 pub(crate) use start::forward as forward_start;
+
+impl From<Input> for Request {
+    /// What the root's input means: the chosen command, and the root's own flag.
+    ///
+    /// A bare `bl` means `list` — the application's decision, not the parser's — so
+    /// [`invocation_of`](crate::invocation_of) is handed a request that always names one.
+    fn from(input: Input) -> Self {
+        Self {
+            json: input.json,
+            command: input.command,
+        }
+    }
+}

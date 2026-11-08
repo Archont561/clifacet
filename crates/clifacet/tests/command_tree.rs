@@ -9,14 +9,18 @@
 //! conversion to typed input works at every node; an absent optional subcommand reaches
 //! the application; and the generated `Command`, `Planned` and `Collect` impls delegate to
 //! the chosen leaf, with the leaf's own `collect = path` honoured.
+//!
+//! What the leaves *did* is recorded in a [`Ran`] value the test owns, passed in as the
+//! application's context (CLI-47). It used to be a `thread_local!`, which every test in the
+//! binary shared and which made a run's evidence depend on which test ran first.
 
 use std::cell::RefCell;
 
 use clap::{CommandFactory, FromArgMatches, Parser};
-use clifacet::command::{Plan, Planned};
+use clifacet::command::{Plan, PlannedWith};
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
 use clifacet::prompt::{Answer, Collect, Scripted, Session};
-use clifacet::{Command, Facet, Failure, FailureKind};
+use clifacet::{Command, Facet, Failure, FailureKind, Handler};
 
 // --- the tree -------------------------------------------------------------------
 
@@ -39,7 +43,7 @@ struct CastInput {
     command: Option<Request>,
 }
 
-#[clifacet::subcommands(input = Request, output = Said)]
+#[clifacet::subcommands(input = Request, output = Said, context = Ran)]
 #[derive(Clone)]
 enum Commands {
     /// Say hello.
@@ -93,7 +97,7 @@ struct DbInput {
     command: DbRequest,
 }
 
-#[clifacet::subcommands(input = DbRequest, output = Said, planned)]
+#[clifacet::subcommands(input = DbRequest, output = Said, context = Ran)]
 #[derive(Clone)]
 enum DbCommands {
     /// Apply the pending migrations.
@@ -169,12 +173,12 @@ impl Command for Handshake {
 }
 
 /// The inner node runs its own subtree; the input carries the node's own flag along.
-impl Command for Db {
+impl Handler<Ran> for Db {
     type Input = DbInput;
     type Output = Said;
 
-    fn execute(&self, input: DbInput) -> Result<Said, Failure> {
-        let Said(done) = self.command.execute(input.command)?;
+    fn handle(&self, input: DbInput, ran: &Ran) -> Result<Said, Failure> {
+        let Said(done) = self.command.handle(input.command, ran)?;
         Ok(Said(format!("{} on {}", done, input.url)))
     }
 }
@@ -188,42 +192,59 @@ impl From<Migrated> for Said {
     }
 }
 
-thread_local! {
-    static RAN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+/// What the leaves did, in order: the application's context, so a test owns its own record.
+#[derive(Debug, Default)]
+struct Ran(RefCell<Vec<String>>);
+
+impl Ran {
+    fn record(&self, what: &str) {
+        self.0.borrow_mut().push(what.to_owned());
+    }
+
+    /// What was recorded so far, draining it.
+    fn take(&self) -> Vec<String> {
+        self.0.borrow_mut().drain(..).collect()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
 }
 
-fn ran(what: &str) {
-    RAN.with(|log| log.borrow_mut().push(what.to_owned()));
-}
-
-fn take_ran() -> Vec<String> {
-    RAN.with(|log| log.borrow_mut().drain(..).collect())
-}
-
-impl Planned for Migrate {
+#[clifacet::planned]
+impl PlannedWith<Ran> for Migrate {
     type Input = MigrateInput;
     type Output = Migrated;
 
-    fn plan(&self, input: MigrateInput) -> Result<Plan<'_, Migrated>, Failure> {
+    fn plan<'a>(
+        &'a self,
+        input: MigrateInput,
+        ran: &'a Ran,
+    ) -> Result<Plan<'a, Migrated>, Failure> {
         let steps = input.steps.unwrap_or(3);
         Ok(Plan::new(move || {
-            ran("migrate");
+            ran.record("migrate");
             Ok(Migrated(steps))
         })
         .step(format!("apply {steps} migrations")))
     }
 }
 
-impl Planned for Reset {
+impl Handler<Ran> for Reset {
     type Input = ResetInput;
     type Output = Said;
 
-    fn plan(&self, input: ResetInput) -> Result<Plan<'_, Said>, Failure> {
+    fn handle(&self, input: ResetInput, ran: &Ran) -> Result<Said, Failure> {
+        let plan = self.preview(input, ran)?.execute()?;
+        Ok(plan)
+    }
+
+    fn preview<'a>(&'a self, input: ResetInput, ran: &'a Ran) -> Result<Plan<'a, Said>, Failure> {
         if !input.force {
             return Err(Failure::cancelled("nothing was dropped"));
         }
-        Ok(Plan::new(|| {
-            ran("reset");
+        Ok(Plan::new(move || {
+            ran.record("reset");
             Ok(Said(String::from("reset")))
         })
         .step("drop every table"))
@@ -429,21 +450,21 @@ fn a_hidden_variant_is_left_out_of_the_help_and_the_variant_doc_is_its_about() {
 
 #[test]
 fn the_tree_runs_the_chosen_leaf_and_converts_its_output() {
+    let ran = Ran::default();
     let (tree, request) = tree_and_request(&["greet", "--name", "ada"]);
 
     assert_eq!(
-        tree.execute(request).expect("runs"),
+        tree.handle(request, &ran).expect("runs"),
         Said(String::from("hello, ada"))
     );
 
     let (tree, request) = tree_and_request(&["db", "migrate", "--steps", "4"]);
-    take_ran();
     assert_eq!(
-        tree.execute(request).expect("runs"),
+        tree.handle(request, &ran).expect("runs"),
         Said(String::from("migrated 4 on main"))
     );
     assert_eq!(
-        take_ran(),
+        ran.take(),
         ["migrate"],
         "a planned leaf runs through its plan"
     );
@@ -454,38 +475,42 @@ fn an_input_for_another_subcommand_is_an_execution_failure_not_a_panic() {
     let (tree, _) = tree_and_request(&["greet"]);
     let other = Request::Handshake(HandshakeInput {});
 
-    let failure = tree.execute(other).expect_err("mismatched");
+    let failure = tree.handle(other, &Ran::default()).expect_err("mismatched");
 
     assert_eq!(failure.kind(), FailureKind::Execution);
 }
 
-// --- the generated Planned delegates to the chosen leaf ---------------------------
+// --- the generated Handler delegates to the chosen leaf ---------------------------
 
 #[test]
 fn a_planned_tree_describes_the_chosen_leaf_and_executes_that_plan() {
+    let ran = Ran::default();
     let tree = DbCommands::Migrate(Migrate { steps: Some(2) });
 
-    let plan = tree
-        .plan(DbRequest::Migrate(MigrateInput { steps: Some(2) }))
-        .expect("plans");
-    take_ran();
+    let plan = Handler::<Ran>::preview(
+        &tree,
+        DbRequest::Migrate(MigrateInput { steps: Some(2) }),
+        &ran,
+    )
+    .expect("plans");
 
     assert_eq!(plan.describe(), "apply 2 migrations");
-    assert_eq!(take_ran(), [""; 0], "describing runs nothing");
-    assert_eq!(
-        plan.execute().expect("runs"),
-        Said(String::from("migrated 2"))
-    );
-    assert_eq!(take_ran(), ["migrate"]);
+    assert_eq!(ran.take(), [""; 0], "describing runs nothing");
+    let executed = plan.execute().expect("runs");
+    assert_eq!(executed, Said(String::from("migrated 2")));
+    assert_eq!(ran.take(), ["migrate"]);
 }
 
 #[test]
 fn a_leaf_that_refuses_to_plan_refuses_through_the_tree() {
     let tree = DbCommands::Reset(Reset { force: false });
 
-    let failure = tree
-        .plan(DbRequest::Reset(ResetInput { force: false }))
-        .expect_err("refuses");
+    let failure = Handler::<Ran>::preview(
+        &tree,
+        DbRequest::Reset(ResetInput { force: false }),
+        &Ran::default(),
+    )
+    .expect_err("refuses");
 
     assert_eq!(failure.kind(), FailureKind::Cancelled);
 }
@@ -532,6 +557,21 @@ fn a_leaf_collect_path_replaces_its_generated_questions_at_depth_two() {
             url: String::from("main"),
             command: DbRequest::Reset(ResetInput { force: true }),
         }))
+    );
+}
+
+#[test]
+fn a_run_is_recorded_in_the_context_it_was_given_and_nowhere_else() {
+    let first = Ran::default();
+    let second = Ran::default();
+
+    let (tree, request) = tree_and_request(&["db", "migrate", "--steps", "4"]);
+    Handler::<Ran>::handle(&tree, request, &first).expect("runs");
+
+    assert_eq!(first.take(), ["migrate"], "the given context saw the run");
+    assert!(
+        second.is_empty(),
+        "a second context saw nothing: the record is the context, not a global"
     );
 }
 

@@ -4,10 +4,12 @@
 //! the planned command is printed instead of spawned, and with a scripted frontend, so a
 //! scenario that asks something unexpected fails instead of waiting for a person.
 
+use std::convert::Infallible;
+
 use clap::Parser as _;
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
-use clifacet_backlog_lite::{Cli, EXIT, Status, app};
+use clifacet_backlog_lite::{Cli, EXIT, Program, Status, app};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 
@@ -29,11 +31,14 @@ impl World {
                 .chain(arguments.iter().copied()),
         )
         .expect("bl parses its own command line");
+        // `--dry-run` arrives in the globals, which the runner takes apart from the `Cli`.
+        let globals = cli.globals;
         let script = Scripted::new(answers);
         let probe = script.clone();
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        self.code = app(
+        self.code = app(|| Ok::<_, Infallible>(Program::default())).run_parsed(
             cli,
+            globals,
             self.capabilities,
             move || Box::new(probe),
             &mut out,

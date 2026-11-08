@@ -1,13 +1,22 @@
 //! What the wrapper promises, asserted against the argument vector it would run.
 
+use std::convert::Infallible;
+
 use clifacet::Facet;
 use clifacet::failure::Failure;
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
 use clifacet::prompt::{Answer, Scripted, Session};
-use clifacet_backlog_lite::{Action, Cli, Commands, Status, invocation_of as plan, request_of};
+use clifacet_backlog_lite::{
+    Action, Cli, Commands, Program, Status, invocation_of as plan, request_of,
+};
+
+/// The program every assertion here is written against: the wrapper's default, named once.
+fn program() -> Program {
+    Program::default()
+}
 
 fn argv(cli: Cli) -> Vec<String> {
-    plan(request(cli)).argv().to_vec()
+    plan(request(cli), &program()).argv().to_vec()
 }
 
 fn cli(arguments: &[&str]) -> Cli {
@@ -130,7 +139,10 @@ fn a_status_is_validated_with_the_words_the_tool_uses() {
 
 #[test]
 fn dry_run_prints_a_line_that_could_be_pasted_back() {
-    let planned = plan(request(cli(&["new", "Two words", "--ac", "a b"])));
+    let planned = plan(
+        request(cli(&["new", "Two words", "--ac", "a b"])),
+        &program(),
+    );
     assert_eq!(
         planned.shell_line(),
         "backlog task create 'Two words' --ac 'a b'"
@@ -158,10 +170,13 @@ fn a_missing_title_is_asked_for_when_something_can_answer() {
     };
     let task = clifacet_backlog_lite::collect_new(new, &mut session).expect("collects");
     assert_eq!(
-        plan(clifacet_backlog_lite::Request {
-            json: false,
-            command: Some(Action::New(task)),
-        })
+        plan(
+            clifacet_backlog_lite::Request {
+                json: false,
+                command: Some(Action::New(task)),
+            },
+            &program(),
+        )
         .argv()[3],
         "ship it"
     );
@@ -253,10 +268,10 @@ fn dry_run(
     let script = Scripted::new(answers);
     let probe = script.clone();
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let mut argv = vec!["--dry-run"];
-    argv.extend_from_slice(arguments);
-    let code = clifacet_backlog_lite::app(
-        cli(&argv),
+    let code = clifacet_backlog_lite::app(|| Ok::<_, Infallible>(program())).run_with(
+        std::iter::once("bl")
+            .chain(["--dry-run"])
+            .chain(arguments.iter().copied()),
         capabilities,
         move || Box::new(probe),
         &mut out,
