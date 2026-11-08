@@ -15,6 +15,11 @@ copy has drifted. Edit the commit messages, not the file.
 * run an application through clifacet::App
 ([fab54ba](https://github.com/Archont561/clifacet/commit/fab54ba989497736d477016bf186c0126fc43c42))
 
+### Fixed
+
+* **release:** keep the changelog the release commits from going stale
+([b30fa4f](https://github.com/Archont561/clifacet/commit/b30fa4fe5ea69381ff7c916078cb0f05a368b87e))
+
 ### Changed
 
 * **example:** run the reference application through clifacet::App
