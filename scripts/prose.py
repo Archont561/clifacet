@@ -44,6 +44,10 @@ INI = ROOT / ".vale.ini"
 STYLES = ROOT / ".vale" / "styles"
 STYLE = "Clifacet"
 
+# GitHub accepts 10 annotations per step and silently drops the rest, so the count in the
+# summary is the complete record and the annotations are the ones a reader most needs.
+ANNOTATION_LIMIT = 10
+
 # The rule kinds this repository's own style may use, and the keys each one requires or
 # accepts. Vale rejects an unknown key in a rule file, so a typo here would only surface
 # in a lint run; naming them is what makes this script able to catch it.
@@ -321,11 +325,23 @@ def lint(config: dict[str, Any] | None = None) -> int:
     print(report, end="" if report.endswith("\n") else "\n")
 
     counts: collections.Counter[str] = collections.Counter()
+    findings: list[tuple[str, str, str, str]] = []
     for line in report.splitlines():
         # `file:line:col:Style.Rule:message`
         parts = line.split(":", 4)
         if len(parts) == 5 and parts[3].count(".") >= 1 and not parts[3].startswith(" "):
             counts[parts[3]] += 1
+            findings.append((parts[0], parts[1], parts[2], f"{parts[3]}: {parts[4].strip()}"))
+
+    # Annotations, not just a summary: they land on the line they are about in the
+    # pull request's diff, and they are readable through the checks API when raw logs are
+    # not. Bounded, because a hundred-annotation cap silently drops the rest.
+    for path, line, column, message in findings[:ANNOTATION_LIMIT]:
+        escape = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(
+            f"::error file={path},line={line},col={column},title=Prose::{escape}",
+            file=sys.stderr,
+        )
 
     if counts:
         summary = ["## Prose: Vale", "", "| Alerts | Rule |", "| ---: | --- |"]

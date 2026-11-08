@@ -242,6 +242,35 @@ def test_a_finding_reaches_the_run_summary(tmp_path, monkeypatch):
     assert "| 1 |" in written, "each rule is counted once per alert"
 
 
+def test_a_finding_becomes_an_annotation_on_the_line_it_is_about(tmp_path, monkeypatch, capsys):
+    """Annotations reach the diff, and the checks API can read them when logs cannot."""
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    fake_vale(
+        tmp_path,
+        monkeypatch,
+        "README.md:3:5:Microsoft.Spacing:This should have one space.",
+    )
+
+    assert prose.lint() == 1
+
+    errors = capsys.readouterr().err
+    assert "::error file=README.md,line=3,col=5,title=Prose::" in errors
+    assert "Microsoft.Spacing: This should have one space." in errors
+
+
+def test_annotations_are_bounded_but_the_summary_is_complete(tmp_path, monkeypatch):
+    """GitHub drops annotations past the tenth, so the count in the summary is the record."""
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    lines = "\n".join(f"README.md:{n}:1:Microsoft.Spacing:space" for n in range(1, 26))
+    fake_vale(tmp_path, monkeypatch, lines)
+
+    assert prose.lint() == 1
+
+    assert "| 25 |" in summary.read_text(encoding="utf-8")
+
+
 def test_a_clean_run_says_so_and_passes(tmp_path, monkeypatch):
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
