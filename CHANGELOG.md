@@ -12,6 +12,14 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **check:** lint the prose with Vale, and make it pass
+([6610272](https://github.com/Archont561/clifacet/commit/66102724b8ffe2fbf223aa13fa9bf3f7d30091ae))
+* **check:** annotate the prose finding on the line it is about
+([e0f0c59](https://github.com/Archont561/clifacet/commit/e0f0c59003f1a24f70e746df8103158dd0b14e90))
+* **check:** report what Vale found where a review can read it
+([cb464be](https://github.com/Archont561/clifacet/commit/cb464be1ad0d237b491c066fe8cd199afe8050f5))
+* **check:** lint the prose with Vale, keep alint for the repository
+([bbff149](https://github.com/Archont561/clifacet/commit/bbff149028fce732e455e3606a5baa08cc243ba8))
 * **command:** discover a folder's commands from its build script
 ([f42451f](https://github.com/Archont561/clifacet/commit/f42451fd45011a6d9a5de2148c278712ccaadccc))
 
