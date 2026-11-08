@@ -4,10 +4,12 @@ title: Release 0.4.0
 status: To Do
 assignee: []
 created_date: '2026-11-08 01:59'
+updated_date: '2026-11-08 11:15'
 labels: []
 milestone: m-12
 dependencies:
   - CLI-48
+  - CLI-55
 type: task
 ordinal: 49000
 ---
