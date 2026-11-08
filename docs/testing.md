@@ -9,6 +9,7 @@ job, and this page records what is actually installed and how to run it.
 | Which value does each layer produce, for this argv? | `rstest` cases | `pixi run test` | `examples/simple/tests/validation_matrix.rs` |
 | Does the user-facing promise hold, end to end? | `rstest-bdd` | `pixi run test` | `crates/clifacet/features/`, `examples/simple/features/`, `examples/backlog-lite/features/`, `tests/*_bdd.rs` |
 | Does it hold for inputs no table would enumerate? | `proptest` | `pixi run test` | `examples/simple/tests/properties.rs` |
+| Does a folder really register itself? | integration tests in a crate with a `build.rs` | `pixi run test` | `examples/discovered/tests/` |
 | Does a mistake in the derive read clearly? | `trybuild` | `pixi run test` | `crates/clifacet/tests/ui/`, `crates/clifacet-macros/tests/ui/` |
 
 `pixi run test-local` runs all of them plus fmt, clippy, alint, the documentation

@@ -1462,12 +1462,14 @@ fn a_question_beside_a_declared_collect_is_never_asked_so_it_is_rejected() {
 
 fn commands(attribute: &str) -> String {
     let tokens: proc_macro2::TokenStream = attribute.parse().expect("the call lexes");
-    crate::commands::expand(tokens).to_string()
+    // `call_site()` rather than a parsed span: every call here names its modules, so
+    // discovery — the only reader of the call site — never runs.
+    crate::commands::expand(tokens, proc_macro2::Span::call_site()).to_string()
 }
 
 fn rejected_commands(attribute: &str) -> String {
     let tokens: proc_macro2::TokenStream = attribute.parse().expect("the call lexes");
-    let expanded = crate::commands::expand(tokens).to_string();
+    let expanded = crate::commands::expand(tokens, proc_macro2::Span::call_site()).to_string();
     assert!(
         expanded.contains("compile_error"),
         "not rejected: {expanded}"
@@ -1586,9 +1588,11 @@ fn a_commands_call_says_what_it_cannot_register() {
     );
     // A key before any module is still a key: it is reported as one, not as a command.
     assert!(rejected_commands("discover = auto").contains("`discover` is not a key"));
+    // A call with no modules and no report is discovery that cannot run: the message says
+    // what to add, because the caller wrote keys and forgot the commands (CLI-50).
     assert!(
         rejected_commands("name = \"app\"")
-            .contains("`clifacet::commands!` needs at least one command")
+            .contains("reads the report its folder's `build.rs` wrote")
     );
     let unknown = rejected_commands("list, discover = auto");
     assert!(

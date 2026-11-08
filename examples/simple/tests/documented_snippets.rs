@@ -453,7 +453,7 @@ fn derive_snippet_5() {
     assert!(bare.command.is_none());
 }
 
-/// `derive.md`, line 556.
+/// `derive.md`, line 601.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_6() {
@@ -481,7 +481,7 @@ fn derive_snippet_6() {
     assert_eq!(input.name, "world");
 }
 
-/// `getting-started.md`, line 43.
+/// `getting-started.md`, line 44.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {
@@ -499,7 +499,7 @@ fn getting_started_snippet_1() {
     assert_eq!(greeting, "hello, ada");
 }
 
-/// `getting-started.md`, line 72.
+/// `getting-started.md`, line 73.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_2() {
@@ -547,7 +547,7 @@ fn getting_started_snippet_2() {
     assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
 }
 
-/// `getting-started.md`, line 163.
+/// `getting-started.md`, line 164.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_3() {

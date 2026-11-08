@@ -111,6 +111,7 @@ README, its sources and its suite.
 | `clifacet` | the library: the command seam, the frontends, the interaction policy, the result contract |
 | `clifacet-macros` | the `Facet` derive, the `#[clifacet::command]` wrapper and `version!`, re-exported through `clifacet` |
 | `clifacet-example` (in [`examples/simple`](examples/simple/README.md)) | the reference application, its tests and runnable demos — a consumer of the published API, not published itself |
+| `clifacet-discovered` (in `examples/discovered`) | a small application whose folder registers itself from its `build.rs`: the smallest consumer that proves discovery |
 
 ## Documentation
 
