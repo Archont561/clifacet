@@ -35,7 +35,8 @@
 #[cfg(feature = "interactive")]
 mod dialog;
 
-use std::cell::RefCell;
+use std::any::{Any, type_name};
+use std::cell::{OnceCell, RefCell};
 use std::collections::VecDeque;
 use std::fmt::{self, Write as _};
 use std::io::{BufRead, Write};
@@ -500,6 +501,36 @@ pub struct Session {
     plan: Plan,
     prompter: Option<Box<dyn Prompter>>,
     provenance: Provenance,
+    /// The run's [`Lazy`] context, type-erased: a question names the type it expects.
+    context: Option<Rc<dyn Any>>,
+}
+
+/// The application's context, built on first use and then shared.
+///
+/// One per run: the runner hands the same cell to the session and to the command, so a
+/// question that reads the context and the command that runs with it see one value, and
+/// a run that never needs it never builds it.
+pub(crate) struct Lazy<Cx> {
+    value: OnceCell<Rc<Cx>>,
+    build: Rc<dyn Fn() -> Result<Cx, Failure>>,
+}
+
+impl<Cx> Lazy<Cx> {
+    pub(crate) fn new(build: Rc<dyn Fn() -> Result<Cx, Failure>>) -> Self {
+        Self {
+            value: OnceCell::new(),
+            build,
+        }
+    }
+
+    /// The context, building it the first time it is asked for.
+    pub(crate) fn get(&self) -> Result<Rc<Cx>, Failure> {
+        if let Some(value) = self.value.get() {
+            return Ok(Rc::clone(value));
+        }
+        let built = Rc::new((self.build)()?);
+        Ok(Rc::clone(self.value.get_or_init(|| built)))
+    }
 }
 
 impl Session {
@@ -512,7 +543,75 @@ impl Session {
             plan,
             prompter: plan.with_frontend(build),
             provenance: Provenance::default(),
+            context: None,
         }
+    }
+
+    /// Gives this session's questions an application context, built on first use.
+    ///
+    /// The runner does this itself with the context [`App::context`](crate::App::context)
+    /// builds; this is for exercising a `collect` function on its own.
+    #[must_use]
+    pub fn with_context<Cx: 'static>(
+        self,
+        build: impl Fn() -> Result<Cx, Failure> + 'static,
+    ) -> Self {
+        self.sharing(Rc::new(Lazy::new(Rc::new(build))))
+    }
+
+    /// Shares the run's own context cell, so the command later sees the same value.
+    pub(crate) fn sharing<Cx: 'static>(mut self, context: Rc<Lazy<Cx>>) -> Self {
+        self.context = Some(context);
+        self
+    }
+
+    /// The application's context, for a question that needs it — to offer existing
+    /// records as choices, for example.
+    ///
+    /// It is built the first time anything asks for it and shared after that, with the
+    /// command as well. Ask only when the question will be asked
+    /// (`session.plan().asks_the_user()`), so a run that cannot ask does not build it
+    /// early. The handle is an [`Rc`], so the session stays free for the question itself:
+    ///
+    /// ```
+    /// use clifacet::Failure;
+    /// use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    /// use clifacet::prompt::{Answer, Prompter, Scripted, Session};
+    ///
+    /// struct Store {
+    ///     tasks: Vec<String>,
+    /// }
+    ///
+    /// let plan = Policy::up_to(Mode::Interactive)
+    ///     .resolve(Request::none(), Capabilities::terminal())
+    ///     .expect("a terminal may be asked");
+    /// let script = Scripted::new([Answer::Text(String::from("CLI-9"))]);
+    /// let mut session = Session::start(plan, move || -> Box<dyn Prompter> { Box::new(script) })
+    ///     .with_context(|| Ok::<_, Failure>(Store { tasks: vec!["CLI-7".into(), "CLI-9".into()] }));
+    ///
+    /// let store = session.context::<Store>()?;
+    /// let picked = session.choose(None, "Which task?", store.tasks.clone())?;
+    /// assert_eq!(picked.as_deref(), Some("CLI-9"));
+    /// # Ok::<(), Failure>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::execution`](crate::Failure::execution) when the context cannot be
+    /// built, and when this session has no context of type `Cx` — a declaration mistake.
+    pub fn context<Cx: 'static>(&self) -> Result<Rc<Cx>, Failure> {
+        let lazy = self
+            .context
+            .as_deref()
+            .and_then(|context| context.downcast_ref::<Lazy<Cx>>());
+        let Some(lazy) = lazy else {
+            return Err(Failure::execution(format!(
+                "no application context of type `{}` is available to this question: run it \
+                 through `clifacet::App` with `.context(..)` naming that type",
+                type_name::<Cx>()
+            )));
+        };
+        lazy.get()
     }
 
     /// The plan this session collects against.
@@ -866,6 +965,7 @@ impl fmt::Debug for Session {
             .field("plan", &self.plan)
             .field("prompter", &self.prompter.as_ref().map(|_| "constructed"))
             .field("provenance", &self.provenance)
+            .field("context", &self.context.as_ref().map(|_| "shared"))
             .finish()
     }
 }

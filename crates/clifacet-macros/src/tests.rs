@@ -1167,7 +1167,7 @@ fn the_tree_attribute_takes_known_keys_once_each() {
     assert_eq!(
         rejected_tree("input = Request, dispatch = auto", TWO_LEAVES),
         "`dispatch` is not a key of `#[clifacet::subcommands(..)]`; supported keys: \
-         `input = Type`, `output = Type`, `planned`"
+         `input = Type`, `output = Type`, `planned`, `context = Type`"
     );
     assert_eq!(
         rejected_tree("input = Request, input = Other", TWO_LEAVES),
@@ -1192,6 +1192,58 @@ fn the_tree_attribute_takes_known_keys_once_each() {
     assert!(rejected_tree("output = Report", TWO_LEAVES).contains(
         "needs the request it converts to: add `#[clifacet::subcommands(input = YourRequest)]`"
     ),);
+}
+
+#[test]
+fn a_tree_with_a_context_is_a_handler_of_it_and_reaches_each_leaf_as_one() {
+    let tokens = tree(
+        "input = Request, output = Report, context = Store",
+        TWO_LEAVES,
+    )
+    .expect("a tree with a context");
+    assert!(
+        tokens.contains("impl :: clifacet :: Handler < Store > for Commands"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("< Add as :: clifacet :: Handler < Store >> :: handle"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("< Done as :: clifacet :: Handler < Store >> :: preview"),
+        "{tokens}"
+    );
+    // A tree with a context is a handler, not a command: a context has to be supplied.
+    assert!(
+        !tokens.contains("impl :: clifacet :: Command for"),
+        "{tokens}"
+    );
+}
+
+#[test]
+fn a_context_needs_an_output_and_makes_planned_redundant() {
+    assert!(
+        rejected_tree("input = Request, context = Store", TWO_LEAVES)
+            .starts_with("`context` hands the context to the leaf that runs, so the tree runs"),
+    );
+    assert!(
+        rejected_tree(
+            "input = Request, output = Report, planned, context = Store",
+            TWO_LEAVES
+        )
+        .ends_with("so `planned` has nothing to add: drop it"),
+    );
+    assert_eq!(
+        rejected_tree(
+            "input = Request, output = Report, context = Store, context = Other",
+            TWO_LEAVES
+        ),
+        "`context` is declared twice; one key, one meaning"
+    );
+    assert_eq!(
+        rejected_tree("input = Request, output = Report, context", TWO_LEAVES),
+        "`context` takes a type, for example `context = MyType`"
+    );
 }
 
 #[test]

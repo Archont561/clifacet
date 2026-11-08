@@ -146,10 +146,123 @@ Build an `App` to change one:
 | `.policy(..)` | how interactive a run may be, and is unasked ([modes](modes.md)) | prompts when a terminal can answer them |
 | `.mode_from(..)` | reads the mode the user asked for — an `--interactive` or `--tui` flag of the application's own | none asked for |
 | `.command(&other)` | runs another command with the same input — how a test records a run | the parsed command line |
+| `.context(..)` | how to build what the command depends on ([below](#what-a-command-depends-on)) | none: every command runs as a `Handler` of `()` |
 | `.render(..)` | how the output is written: a `Render` value, or a closure taking the output and the stream | `Plain`, the output's `Display` and a newline |
 | `.exit(..)` | the exit code each outcome costs | `ExitPolicy::standard()` |
 
 `examples/simple`'s `app()` is one of these, and its `main.rs` is `app().run()`.
+
+### What a command depends on
+
+Input is what the user supplied, and every value of it has to be something the user could
+type. A store, a client, a clock or a config file is not: the command *depends* on it, and
+the application already has it. Passing one through the input would mean a field that is
+not a flag, a global or a `thread_local!`, and a command that cannot be run twice with
+two different ones. That is the application's context, and it travels beside the input:
+
+```rust
+use clifacet::command::{Plan, PlannedWith};
+use clifacet::prompt::Scripted;
+use clifacet::{App, Failure, Globals};
+
+/// What the user supplied: the task to mark done.
+#[clifacet::command(input = DoneInput)]
+#[derive(Clone)]
+#[command(name = "done")]
+struct Done {
+    /// The task to mark done.
+    #[arg(long)]
+    task: String,
+
+    #[command(flatten)]
+    #[clifacet(skip)]
+    globals: Globals,
+}
+
+struct DoneInput {
+    task: String,
+}
+
+/// What the application depends on: the store of tasks, opened once, outside the input.
+struct Store {
+    open: Vec<String>,
+}
+
+/// The command plans with the store; `#[clifacet::planned]` makes it a `Handler<Store>`.
+#[clifacet::planned]
+impl PlannedWith<Store> for Done {
+    type Input = DoneInput;
+    type Output = String;
+
+    fn plan<'a>(&'a self, input: DoneInput, store: &'a Store) -> Result<Plan<'a, String>, Failure> {
+        if !store.open.contains(&input.task) {
+            return Err(Failure::validation(format!("there is no open task named {}", input.task)));
+        }
+        let step = format!("mark {} done", input.task);
+        let task = input.task;
+        Ok(Plan::new(move || Ok(format!("{task} is done"))).step(step))
+    }
+}
+
+let store = Store { open: vec![String::from("CLI-47")] };
+let app = App::<Done>::new().context(move || Ok::<_, std::io::Error>(Store {
+    open: store.open.clone(),
+}));
+let (mut out, mut err) = (Vec::new(), Vec::new());
+let code = app.run_with(
+    ["done", "--task", "CLI-47", "--dry-run"],
+    clifacet::policy::Capabilities::headless(),
+    || Box::new(Scripted::new([])),
+    &mut out,
+    &mut err,
+);
+assert_eq!((code, out.as_slice()), (0, b"mark CLI-47 done\n".as_slice()), "{err:?}");
+```
+
+`App::context` takes a function returning the context, not the context itself, because the
+runner decides *when* to call it. The three rules that follow from that:
+
+- **After the input is valid, on first use.** A question may need the context — the
+  example above could offer `store.open` as the choices for `--task` — so it is built by
+  whichever asks first, and once per run: the command runs with the same value the
+  question read. Nothing that stops a run earlier pays for it: not `--help`, not
+  `--version`, not a usage error, not a rejected value, not a declined question.
+- **A failure to build it is an execution failure.** It is reported as
+  `cannot prepare the application: {error}`, on the diagnostic stream, with exit code `1`,
+  and nothing runs.
+- **A question reads it with `session.context::<Store>()`.** That is why the type has to
+  outlive the run (`Store: 'static`), while the handle is an `Rc` — so the session is free
+  for the question itself. Ask only when the question will be asked:
+
+  ```rust
+  use clifacet::Failure;
+  use clifacet::prompt::Session;
+
+  struct Store {
+      open: Vec<String>,
+  }
+
+  /// A `collect` function: it turns the parsed command line into the input, asking for
+  /// what the flags left out.
+  fn pick_task(chosen: Option<String>, session: &mut Session) -> Result<Option<String>, Failure> {
+      // Nobody can answer — a piped run, or `--yes` — so the context is not built for a
+      // question that will not be asked.
+      if chosen.is_some() || !session.plan().asks_the_user() {
+          return Ok(chosen);
+      }
+      // The same store the command runs with: built here, because this asks first.
+      let store = session.context::<Store>()?;
+      session.choose(None, "Which task?", store.open.clone())
+  }
+  ```
+
+  A session with no context of that type is a declaration mistake, and says so rather
+  than guessing: the message names the type it was asked for.
+
+Every `Command` is a `Handler` of any context through the library's blanket impl, so an
+application that needs none is written exactly as before, and a command in a tree may take
+the context while its siblings do not: `#[clifacet::subcommands(.., context = Store)]`
+threads `&Store` to the chosen leaf, and a leaf without one still runs.
 
 ### The options every application gets
 

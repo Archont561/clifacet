@@ -12,6 +12,7 @@ mod command;
 mod facet;
 mod field;
 mod input_type;
+mod planned;
 mod rules;
 mod subcommands;
 
@@ -79,6 +80,22 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 pub fn subcommands(attribute: TokenStream, item: TokenStream) -> TokenStream {
     subcommands::expand(attribute.into(), item.into())
         .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Adds the `Handler<Cx>` a `PlannedWith<Cx>` impl implies: `handle` executes the plan
+/// and `preview` returns it, so a dry run and a real run share one path. See
+/// `clifacet::command::PlannedWith`.
+#[proc_macro_attribute]
+pub fn planned(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    let item = proc_macro2::TokenStream::from(item);
+    planned::expand(&attribute.into(), item.clone())
+        .unwrap_or_else(|error| {
+            // The item is kept, so the only error is the one that says what to write.
+            let mut tokens = error.into_compile_error();
+            tokens.extend(item);
+            tokens
+        })
         .into()
 }
 

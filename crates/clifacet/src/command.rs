@@ -261,3 +261,147 @@ impl<P: Planned> Command for P {
         self.plan(input)
     }
 }
+
+/// A command that runs with the application's context beside its input.
+///
+/// The context is what a command *depends on* — a store, a client, a clock — built once
+/// by the application; the input is what the user supplied, validated. Keeping them apart
+/// is what keeps a handle out of `Input` and out of a global. Shared, because a command
+/// borrows its dependencies; [`App::context`](crate::App::context) says how it is built.
+///
+/// Every [`Command`] is a `Handler` under any context, through the blanket impl below, so
+/// no command written before contexts existed changes. An application implements
+/// `Handler` for a command that needs the context instead of `Command`. Implementing both
+/// for one type is a compile error (E0119, conflicting implementations): the blanket
+/// already makes that type a handler, and two would disagree about which one runs.
+///
+/// ```
+/// use std::cell::RefCell;
+/// use clifacet::{Failure, Handler};
+///
+/// struct Store {
+///     records: RefCell<Vec<String>>,
+/// }
+///
+/// struct Add;
+///
+/// impl Handler<Store> for Add {
+///     type Input = String;
+///     type Output = usize;
+///
+///     fn handle(&self, record: String, store: &Store) -> Result<usize, Failure> {
+///         store.records.borrow_mut().push(record);
+///         Ok(store.records.borrow().len())
+///     }
+/// }
+///
+/// let store = Store { records: RefCell::new(Vec::new()) };
+/// assert_eq!(Add.handle(String::from("CLI-7"), &store).unwrap(), 1);
+/// ```
+pub trait Handler<Cx: ?Sized> {
+    /// Input the command accepts, validated as for [`Command::Input`].
+    type Input;
+
+    /// Data the command produces, as for [`Command::Output`].
+    type Output;
+
+    /// Performs the command with its input and the application's context.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] as [`Command::execute`] does.
+    fn handle(&self, input: Self::Input, cx: &Cx) -> Result<Self::Output, Failure>;
+
+    /// What the command would do with `input`, without doing it: what `--dry-run` prints.
+    ///
+    /// The plan may borrow the context. As for [`Command::preview`], the default refuses
+    /// with a validation failure; a planned handler — `#[clifacet::planned]` on a
+    /// [`PlannedWith`] impl — answers with the plan its real run executes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::validation`] by default, and the plan's failure otherwise.
+    fn preview<'a>(
+        &'a self,
+        input: Self::Input,
+        cx: &'a Cx,
+    ) -> Result<Plan<'a, Self::Output>, Failure> {
+        let _ = (input, cx);
+        Err(Failure::validation(
+            "this command cannot describe what it would do, so it cannot be run with --dry-run",
+        ))
+    }
+}
+
+impl<C: Command, Cx: ?Sized> Handler<Cx> for C {
+    type Input = C::Input;
+    type Output = C::Output;
+
+    /// The command, ignoring the context it does not need.
+    fn handle(&self, input: Self::Input, _cx: &Cx) -> Result<Self::Output, Failure> {
+        self.execute(input)
+    }
+
+    /// The command's own preview.
+    fn preview<'a>(
+        &'a self,
+        input: Self::Input,
+        _cx: &'a Cx,
+    ) -> Result<Plan<'a, Self::Output>, Failure> {
+        Command::preview(self, input)
+    }
+}
+
+/// [`Planned`], with the application's context: the plan, and its work, may borrow it.
+///
+/// A second blanket impl of [`Handler`] for these would overlap the one for every
+/// [`Command`], so the bridge is written by `#[clifacet::planned]` on the impl instead: it
+/// adds the `Handler` whose `handle` is `self.plan(input, cx)?.execute()` and whose
+/// `preview` is the plan — one execution path, as [`Planned`] guarantees.
+///
+/// ```
+/// use std::cell::RefCell;
+/// use clifacet::command::{Plan, PlannedWith};
+/// use clifacet::{Failure, Handler};
+///
+/// struct Store {
+///     records: RefCell<Vec<String>>,
+/// }
+///
+/// struct Clear;
+///
+/// #[clifacet::planned]
+/// impl PlannedWith<Store> for Clear {
+///     type Input = ();
+///     type Output = usize;
+///
+///     fn plan<'a>(&'a self, (): (), store: &'a Store) -> Result<Plan<'a, usize>, Failure> {
+///         let count = store.records.borrow().len();
+///         let work = Plan::new(move || Ok(store.records.borrow_mut().drain(..).count()));
+///         Ok(work.step(format!("remove {count} records")))
+///     }
+/// }
+///
+/// let store = Store { records: RefCell::new(vec![String::from("CLI-7")]) };
+/// assert_eq!(Clear.preview((), &store).unwrap().describe(), "remove 1 records"); // --dry-run
+/// assert_eq!(Clear.handle((), &store).unwrap(), 1); // the real run, through the plan
+/// ```
+pub trait PlannedWith<Cx: ?Sized> {
+    /// Input the command accepts, validated as for [`Command::Input`].
+    type Input;
+
+    /// Data the executed plan produces, as for [`Command::Output`].
+    type Output;
+
+    /// What the command would do with `input` and the context, without doing it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] when there is nothing that could be run — the same failure
+    /// a real run reports, because a real run is this plan executed.
+    fn plan<'a>(
+        &'a self,
+        input: Self::Input,
+        cx: &'a Cx,
+    ) -> Result<Plan<'a, Self::Output>, Failure>;
+}

@@ -102,7 +102,7 @@ pub const fn version() -> &'static str {
 }
 
 pub use app::{App, Globals, Plain, Render, run};
-pub use command::Command;
+pub use command::{Command, Handler};
 pub use facet::Facet;
 pub use failure::{Failure, FailureKind};
 
@@ -231,6 +231,14 @@ pub use clifacet_macros::command;
 /// assert_eq!(tree.execute(request).unwrap(), "finished #7");
 /// ```
 pub use clifacet_macros::subcommands;
+
+/// Makes a [`PlannedWith`](command::PlannedWith) impl a [`Handler`] that runs through its plan.
+///
+/// The bridge a blanket impl cannot provide — it would overlap the one every [`Command`]
+/// has — written beside the impl it comes from: `handle` is `plan(input, cx)?.execute()`
+/// and `preview` is the plan, so `--dry-run` prints what a real run executes. See
+/// [`PlannedWith`](command::PlannedWith) for an example.
+pub use clifacet_macros::planned;
 
 /// Derives [`Facet`], the companion derive for a clap command.
 ///
