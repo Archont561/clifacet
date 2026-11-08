@@ -14,7 +14,8 @@ name = "bl"
 path = "src/main.rs"
 
 [dependencies]
-clap.workspace = true
+# The workspace leaves colour and suggestions off; an application turns them on.
+clap = { workspace = true, features = ["color", "suggestions"] }
 clifacet = { path = "../../crates/clifacet", features = ["interactive"] }
 
 [dev-dependencies]
