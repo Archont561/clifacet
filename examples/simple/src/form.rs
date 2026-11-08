@@ -1,7 +1,10 @@
-//! The full-screen path: the generated form, its submission, and its outcome.
+//! The full-screen form as a test drives it: a screen buffer and a script of keys.
 //!
-//! The form produces arguments and `clap` parses them, so a submitted form reaches the
-//! same bridge, the same command and the same exit codes as the flags do.
+//! A real `--tui` run is hosted by the runner ([`crate::app`]), which reads the
+//! terminal's own keys. These entry points take the screen and the keys as parameters
+//! instead, so a test can draw the same generated form and submit it. The form produces
+//! arguments and `clap` parses them, so a submitted form reaches the same bridge, the
+//! same command and the same exit codes as the flags do.
 
 use std::io::Write;
 
@@ -55,25 +58,6 @@ where
     let mut state = tui_form();
     let outcome = clifacet::tui::run_on(screen, &mut state, keys, tui_submit_with(command));
     finish_tui(outcome, out, err)
-}
-
-/// Runs the form with the screen drawn on the diagnostic stream itself.
-///
-/// A run that asks a person something has one place to show it: the screen and the
-/// diagnostic are the same stream, which is what lets a real invocation draw on
-/// stderr while a test asserts the escape sequences in a buffer.
-pub(crate) fn run_tui_on<C>(
-    command: &C,
-    stream: &mut dyn Write,
-    keys: impl IntoIterator<Item = clifacet::tui::Key>,
-    out: &mut dyn Write,
-) -> i32
-where
-    C: Command<Input = ExampleInput, Output = ExampleOutput>,
-{
-    let mut state = tui_form();
-    let outcome = clifacet::tui::run_on(&mut *stream, &mut state, keys, tui_submit_with(command));
-    finish_tui(outcome, out, stream)
 }
 
 /// Writes what the form produced, or reports why it did not finish.
