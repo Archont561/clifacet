@@ -4,7 +4,7 @@ title: Give commands the application's context
 status: In Progress
 assignee: []
 created_date: '2026-11-08 01:59'
-updated_date: '2026-11-08 13:14'
+updated_date: '2026-11-08 13:59'
 labels: []
 milestone: m-12
 dependencies:
@@ -58,4 +58,6 @@ Scope notes:
 - `Session::asks_the_user` was not needed: `Session::plan()` already exposes `Plan::asks_the_user()`, so a question asks the plan it is running under.
 - `planned` together with `context` in one tree is rejected: with a context the tree already previews through each leaf's `Handler::preview`, so `planned` would be a second, contradictory path.
 - `#[clifacet::subcommands(context = ..)]` on the enum is the library-level seam; threading it through `commands!(context = T)` is CLI-33 (decision-19 item 3).
+
+Committed on `arena/861b3563-clifacet` as `2a993f46` (feat) and `a3fe8d9c` (changelog), in PR #67. CI: every check passed.
 <!-- SECTION:NOTES:END -->

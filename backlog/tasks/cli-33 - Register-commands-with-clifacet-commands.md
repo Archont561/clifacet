@@ -4,7 +4,7 @@ title: Register one command per file
 status: In Progress
 assignee: []
 created_date: '2026-11-01 22:46'
-updated_date: '2026-11-08 13:49'
+updated_date: '2026-11-08 13:59'
 labels: []
 milestone: m-7
 dependencies:
@@ -74,4 +74,6 @@ Scope notes, recorded rather than silently reworded:
 - `Request` is **not** generated in the sense AC#3's first sentence means. Decision-19 item 3 supersedes it for this call: `commands!` generates the request enum from the leaves' inputs, and every hand-written `#[clifacet::subcommands]` tree keeps the `Request` of decision-14. backlog-lite keeps a two-field `Request` (`json`, which is the root's own flag, beside the generated `Action`), because its `--json` covers the whole run rather than one leaf.
 - AC#6's "tests unchanged" became "tests pass with a recorded rename": the leaf structs are now named after their files (`ListArgs` → `List`, `NewArgs` → `New`), which `commands!` requires, and `tests/flows.rs` names `Commands` instead of `Verb`, `Action` for the payload variants, and builds the request with `request_of`. No assertion changed meaning; `plan_bdd.rs` now validates through `Facet` and builds the same request.
 - backlog-lite's own `--dry-run`/`--yes` left the root: `clifacet::Globals` is flattened by the generated root for every application, and it owns those two ids. Its `Arguments` type went with them; `app.rs` reads `cli.globals`.
+
+Committed on `arena/861b3563-clifacet` as `ee8b93df` (feat) and `d9105e50` (changelog), in PR #67. CI: every check passed.
 <!-- SECTION:NOTES:END -->
