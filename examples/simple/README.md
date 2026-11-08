@@ -91,10 +91,10 @@ src/commands/mod.rs      the registry: one `mod` line per command
 src/commands/example.rs  the command: `Cli`, `ExampleInput`, `Example`
 src/interaction.rs       the interaction flags and the mode `POLICY`
 src/exit.rs              the exit codes, and the one place an outcome is written
-src/entry.rs             `run`, `main` and the scriptable entry points
+src/entry.rs             `app()`, the configured runner, and the scriptable entry points
 src/form.rs              the full-screen form and its submission
 src/lib.rs               the crate docs, the module list and the re-exports
-src/main.rs              the `main` a real binary writes: args in, streams, exit code
+src/main.rs              the `main` a real binary writes: one call, `app().run()`
 tests/                   what proves each promise — the tables, the scenarios, the properties
 ```
 

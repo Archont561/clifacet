@@ -15,10 +15,11 @@
 //! 3. [`Example`] is the command: it implements [`Command`], touches no stream and
 //!    knows nothing about `clap`.
 //!
-//! [`run`] is the application layer that joins them: it validates, settles the
-//! interaction mode against [`POLICY`], maps failures to the exit codes in [`EXIT`] and
-//! writes machine data to one stream and diagnostics to the other.
-//! None of that lives in [`Command`], which is what keeps the seam UI-free.
+//! [`app`] is the application layer that joins them: one [`clifacet::App`] that
+//! parses, settles the interaction mode against [`POLICY`], asks, validates, runs,
+//! writes machine data to one stream and diagnostics to the other, and maps failures to
+//! the exit codes in [`EXIT`]. None of that lives in [`Command`], which is what keeps
+//! the seam UI-free, and none of it is written here: it is the library's runner.
 //!
 //! # Layout
 //!
@@ -29,8 +30,8 @@
 //! src/commands/example.rs  the command: `Cli`, `ExampleInput`, `Example`
 //! src/interaction.rs       the interaction flags and the mode `POLICY`
 //! src/exit.rs              the exit codes, and the one place an outcome is written
-//! src/entry.rs             the entry points, and the flag and prompt path
-//! src/form.rs              the full-screen form and its submission
+//! src/entry.rs             the application as one `App`, and the entry points
+//! src/form.rs              the full-screen form, driven by a script of keys
 //! ```
 //!
 //! Everything public is re-exported here, so a caller writes `clifacet_example::Cli`
@@ -47,7 +48,7 @@ mod interaction;
 
 pub use commands::{Cli, Example, ExampleInput, ExampleOutput, Level, MAX_REPEAT, check_input};
 pub use entry::{
-    dialog_frontend, main, main_with, main_with_command, run, run_with, run_with_command,
+    app, dialog_frontend, main, main_with, main_with_command, run, run_with, run_with_command,
     terminal_frontend,
 };
 pub use exit::{

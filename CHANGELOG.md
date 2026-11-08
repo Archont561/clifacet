@@ -10,6 +10,16 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### Added
+
+* run an application through clifacet::App
+([fab54ba](https://github.com/Archont561/clifacet/commit/fab54ba989497736d477016bf186c0126fc43c42))
+
+### Changed
+
+* **example:** run the reference application through clifacet::App
+([5227c65](https://github.com/Archont561/clifacet/commit/5227c65543767987befc07fb819098bb334f8e95))
+
 ## [0.3.1] - 2026-11-08
 
 ### Added

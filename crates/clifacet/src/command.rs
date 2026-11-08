@@ -68,6 +68,43 @@ pub trait Command {
     /// problems are rejected before this call, as [`Failure::validation`], by
     /// whoever built the input.
     fn execute(&self, input: Self::Input) -> Result<Self::Output, Failure>;
+
+    /// What the command would do with `input`, without doing it — what `--dry-run` prints.
+    ///
+    /// A plain command cannot say, so by default this refuses with a validation failure:
+    /// nothing ran, and the invocation asked for something this command does not offer.
+    /// A [`Planned`] command answers with its [`Plan`], through the implementation the
+    /// library provides for it, so a planned command — or a tree declared `planned` —
+    /// previews without any code of its own.
+    ///
+    /// ```
+    /// use clifacet::{Command, Failure, FailureKind};
+    ///
+    /// struct Echo;
+    ///
+    /// impl Command for Echo {
+    ///     type Input = String;
+    ///     type Output = String;
+    ///
+    ///     fn execute(&self, input: String) -> Result<String, Failure> {
+    ///         Ok(input)
+    ///     }
+    /// }
+    ///
+    /// let refusal = Echo.preview("hi".to_owned()).unwrap_err();
+    /// assert_eq!(refusal.kind(), FailureKind::Validation);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The default returns [`Failure::validation`]; a [`Planned`] command returns what
+    /// [`Planned::plan`] does.
+    fn preview(&self, input: Self::Input) -> Result<Plan<'_, Self::Output>, Failure> {
+        drop(input);
+        Err(Failure::validation(
+            "this command cannot show what it would do without doing it, so nothing ran",
+        ))
+    }
 }
 
 /// What a planned command would do, as a value: described first, executed at most once.
@@ -217,5 +254,10 @@ impl<P: Planned> Command for P {
     /// Plans, then executes the plan: the only way a planned command runs.
     fn execute(&self, input: Self::Input) -> Result<Self::Output, Failure> {
         self.plan(input)?.execute()
+    }
+
+    /// The plan itself, unexecuted: the same value a real run executes.
+    fn preview(&self, input: Self::Input) -> Result<Plan<'_, Self::Output>, Failure> {
+        self.plan(input)
     }
 }
