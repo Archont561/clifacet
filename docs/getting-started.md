@@ -64,9 +64,109 @@ table is the application's decision.
 
 ## Run it
 
-Parsing, validation, the streams and the exit code belong to the application. The
-reference application in `examples/simple` shows the whole path, and is the
-shortcut to seeing a mode work:
+Everything around the command — parsing, asking for what the flags left out,
+validation, which stream the data goes to, and the exit code — is one pipeline, and
+the runner owns it. Give the command line its input type with
+[the companion derive](derive.md), make it the command, and `main` is one line:
+
+```rust
+use clifacet::policy::Capabilities;
+use clifacet::prompt::{Prompter, Scripted};
+use clifacet::{App, Command, Failure, Globals};
+
+#[clifacet::command(input = Greeting)]
+#[derive(Clone)]
+#[command(name = "greet", about = "Say hello")]
+struct Greet {
+    /// Who to greet.
+    #[clifacet(long, ask = "Who should I greet?", fill = "world")]
+    name: Option<String>,
+
+    /// `--yes` and `--dry-run`, which every application gets.
+    #[command(flatten)]
+    #[clifacet(skip)]
+    globals: Globals,
+}
+
+struct Greeting {
+    name: String,
+}
+
+impl Command for Greet {
+    type Input = Greeting;
+    type Output = String;
+
+    fn execute(&self, input: Greeting) -> Result<String, Failure> {
+        Ok(format!("hello, {}", input.name))
+    }
+}
+
+// The binary's whole `main`:
+fn main() -> std::process::ExitCode {
+    clifacet::run::<Greet>()
+}
+
+// `run_with` is the same pipeline with the process taken out — the arguments, what the
+// terminal can do, the frontend that answers questions and both streams are parameters
+// — which is how a test runs the application without a terminal.
+let (mut out, mut err) = (Vec::new(), Vec::new());
+let code = App::<Greet>::new().run_with(
+    ["greet", "--name", "ada"],
+    Capabilities::headless(),
+    || -> Box<dyn Prompter> { Box::new(Scripted::default()) },
+    &mut out,
+    &mut err,
+);
+assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
+```
+
+The runner takes the steps in this order, and whatever stops a run stops it before
+the command changes anything:
+
+| Step | Stops with | Exit code |
+| --- | --- | --- |
+| parse | the help or version that was asked for, on stdout | `0` |
+| parse | a usage error, on stderr | `2` |
+| settle the mode | a mode the policy forbids or the terminal cannot host | `2` |
+| ask | a declined question | `130` |
+| validate | a value the bridge refuses | `2` |
+| run, or preview with `--dry-run` | the command's failure | `1` (`2` for validation) |
+| write the output | a data stream that cannot be written | `1` |
+
+The numbers are `ExitPolicy::standard()`'s; see
+[Command core § Streams and exit codes](command-core.md#streams-and-exit-codes) for what each one means.
+
+### What an application changes
+
+`clifacet::run::<Cli>()` is `clifacet::App::<Cli>::new().run()` with every default.
+Build an `App` to change one:
+
+| Method | What it changes | Default |
+| --- | --- | --- |
+| `.policy(..)` | how interactive a run may be, and is unasked ([modes](modes.md)) | prompts when a terminal can answer them |
+| `.mode_from(..)` | reads the mode the user asked for — an `--interactive` or `--tui` flag of the application's own | none asked for |
+| `.command(&other)` | runs another command with the same input — how a test records a run | the parsed command line |
+| `.render(..)` | how the output is written: a `Render` value, or a closure taking the output and the stream | `Plain`, the output's `Display` and a newline |
+| `.exit(..)` | the exit code each outcome costs | `ExitPolicy::standard()` |
+
+`examples/simple`'s `app()` is one of these, and its `main.rs` is `app().run()`.
+
+### The options every application gets
+
+`clifacet::Globals` is `--yes`, which answers every confirmation instead of asking, and
+`--dry-run`, which shows what would run and runs nothing. Both are global, so they work
+after a subcommand too, and both stay out of the input with `#[clifacet(skip)]`. Add
+the application's own global options beside them as ordinary fields.
+
+A dry run prints `Command::preview`: a `Planned` command answers with its plan — the
+same plan a real run executes, so the two cannot disagree — and any other command
+refuses, with exit code `2` and nothing run. With the `tui` feature, a run whose mode
+resolves to the full-screen form is hosted by the runner too: the form generated from
+the fields declared `form` is drawn on stderr, and a submission goes through the same
+validation, command and output as the flags.
+
+The reference application in `examples/simple` runs this way, and is the shortcut to
+seeing each mode work:
 
 ```sh
 cargo run -p clifacet-example                            # asks for what the flags left out
@@ -77,10 +177,6 @@ cargo run -p clifacet-example -- --tui                    # the full-screen form
 
 Its own [README](../examples/simple/README.md) is the guided tour: the flags, the four
 modes, the exit codes and which test proves each promise.
-
-Its library is the shape to copy: a `clap` struct, a `TryFrom` bridge to validated
-input, the command, and an application layer that owns both streams and the exit
-codes.
 
 ## What to read next
 

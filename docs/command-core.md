@@ -16,7 +16,7 @@ one.
 | `clap` surface | `clifacet_example::Cli` | flags, help, usage errors | know about the command |
 | Validation | `TryFrom<Cli> for ExampleInput`, generated from the field declarations and ending in `check_input`, reached through `Facet::validate` | rejecting bad values, defaults | run anything |
 | Command | `impl Command for Example` | the operation | touch a stream, read a terminal, know `clap` exists |
-| Application | `clifacet_example::run`, `clifacet_example::main` | streams, exit codes, diagnostics | contain the operation |
+| Application | `clifacet::App`, configured once in `clifacet_example::app` and reached through `clifacet_example::run` and `clifacet_example::main` | the pipeline: streams, exit codes, diagnostics | contain the operation |
 
 `Command` is the only seam between the middle two rows, and it is the only one
 that has to stay stable for later frontends:
@@ -26,6 +26,8 @@ pub trait Command {
     type Input;
     type Output;
     fn execute(&self, input: Self::Input) -> Result<Self::Output, Failure>;
+    // Provided: refuses, unless the command is `Planned` (below).
+    fn preview(&self, input: Self::Input) -> Result<Plan<'_, Self::Output>, Failure>;
 }
 ```
 
@@ -78,6 +80,11 @@ assert_eq!(Archive.execute(tasks).expect("runs"), 2);
   (`crates/clifacet/tests/plan.rs`). `examples/backlog-lite`'s `Backlog` is the worked
   case: its steps are the sentence and the runnable line `--dry-run` prints, and its work
   spawns that line.
+- **`--dry-run` reaches it through `Command::preview`.** The runner's dry run calls
+  `preview` on whatever command it runs; the library's impl for a planned command returns
+  `plan(input)`, and every other command refuses with a validation failure, so a dry run
+  of a command that cannot describe itself runs nothing rather than running it
+  ([Getting started § The options every application gets](getting-started.md#the-options-every-application-gets)).
 - **`Plan` here is not `policy::Plan`.** The policy's plan decides how a run may interact;
   this one is what a command would do. They live in different modules for that reason.
 
@@ -91,7 +98,7 @@ are the application's: this repository's example uses `0` success, `1` execution
 touching the library.
 
 **Streams are the application's.** `Command` never writes.
-`clifacet_example::run` takes `out` and `err` as parameters, which is what makes a
+`clifacet::App::run_with` takes `out` and `err` as parameters, which is what makes a
 run testable without a terminal and is also why "stdout carries only requested
 machine data" is a property a test can assert rather than a convention.
 

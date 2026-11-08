@@ -51,7 +51,7 @@ fn readme_snippet_2() {
     }
 }
 
-/// `command-core.md`, line 43.
+/// `command-core.md`, line 45.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {
@@ -77,7 +77,7 @@ fn command_core_snippet_1() {
     assert_eq!(Archive.execute(tasks).expect("runs"), 2);
 }
 
-/// `command-core.md`, line 129.
+/// `command-core.md`, line 136.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_2() {
@@ -103,7 +103,7 @@ fn command_core_snippet_2() {
     assert_eq!(out, b"", "neither reaches the data stream");
 }
 
-/// `command-core.md`, line 267.
+/// `command-core.md`, line 274.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_3() {
@@ -126,7 +126,7 @@ fn command_core_snippet_3() {
     );
 }
 
-/// `command-core.md`, line 311.
+/// `command-core.md`, line 318.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_4() {
@@ -151,7 +151,7 @@ fn command_core_snippet_4() {
     );
 }
 
-/// `command-core.md`, line 341.
+/// `command-core.md`, line 348.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_5() {
@@ -175,7 +175,7 @@ fn command_core_snippet_5() {
     assert!(session.provenance().is_secret("token"));
 }
 
-/// `command-core.md`, line 588.
+/// `command-core.md`, line 595.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_6() {
@@ -497,6 +497,54 @@ fn getting_started_snippet_1() {
     }
     let greeting = Greet.execute("ada".to_owned()).expect("a greeting");
     assert_eq!(greeting, "hello, ada");
+}
+
+/// `getting-started.md`, line 72.
+#[rustfmt::skip]
+#[test]
+fn getting_started_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::policy::Capabilities;
+    use clifacet::prompt::{Prompter, Scripted};
+    use clifacet::{App, Command, Failure, Globals};
+    #[clifacet::command(input = Greeting)]
+    #[derive(Clone)]
+    #[command(name = "greet", about = "Say hello")]
+    struct Greet {
+        /// Who to greet.
+        #[clifacet(long, ask = "Who should I greet?", fill = "world")]
+        name: Option<String>,
+        /// `--yes` and `--dry-run`, which every application gets.
+        #[command(flatten)]
+        #[clifacet(skip)]
+        globals: Globals,
+    }
+    struct Greeting {
+        name: String,
+    }
+    impl Command for Greet {
+        type Input = Greeting;
+        type Output = String;
+        fn execute(&self, input: Greeting) -> Result<String, Failure> {
+            Ok(format!("hello, {}", input.name))
+        }
+    }
+    // The binary's whole `main`:
+    fn main() -> std::process::ExitCode {
+        clifacet::run::<Greet>()
+    }
+    // `run_with` is the same pipeline with the process taken out — the arguments, what the
+    // terminal can do, the frontend that answers questions and both streams are parameters
+    // — which is how a test runs the application without a terminal.
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let code = App::<Greet>::new().run_with(
+        ["greet", "--name", "ada"],
+        Capabilities::headless(),
+        || -> Box<dyn Prompter> { Box::new(Scripted::default()) },
+        &mut out,
+        &mut err,
+    );
+    assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
 }
 
 /// `modes.md`, line 10.
