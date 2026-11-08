@@ -287,7 +287,7 @@ fn derive_snippet_3() {
         name: String,
         repeat: u8,
     }
-    // The flags: clap parses, the generated bridge normalises.
+    // The flags: clap parses, the generated bridge normalizes.
     let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
         .expect("the forwarded grammar parses");
     let input = cli.validate().expect("valid");

@@ -115,7 +115,7 @@ struct Greeting {
     repeat: u8,
 }
 
-// The flags: clap parses, the generated bridge normalises.
+// The flags: clap parses, the generated bridge normalizes.
 let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
     .expect("the forwarded grammar parses");
 let input = cli.validate().expect("valid");
@@ -149,9 +149,9 @@ naming the supported keys, rather than an argument that quietly means nothing:
 | grammar, translated | `range = 1..=8` | `value_parser = clap::value_parser!(T).range(1..=8)`, `T` the field type with `Option`/`Vec` peeled |
 | asking | `ask = "…"` | `collect` asks when no flag supplied the value; the answer is parsed by the argument's own clap parser |
 | asking | `confirm = "…"` | `collect` puts the set flag to the user; declining cancels the run |
-| normalising | `fill = expr` | the bridge's value when neither a flag nor an answer supplied one |
-| normalising | `trim`, `non_empty` | the bridge trims, then rejects blank text — or, on an `Option`, makes it absent |
-| normalising | `secret` | the field must be a `Secret<_>`, so the credential cannot be printed |
+| normalizing | `fill = expr` | the bridge's value when neither a flag nor an answer supplied one |
+| normalizing | `trim`, `non_empty` | the bridge trims, then rejects blank text — or, on an `Option`, makes it absent |
+| normalizing | `secret` | the field must be a `Secret<_>`, so the credential cannot be printed |
 | input | `skip` | the bridge leaves the field out of the input; clap still parses it (not clap's `#[arg(skip)]`) |
 | form | `form` | the field is listed in `Facet::form_fields`, in declaration order, for a generated TUI form |
 | tree | `subcommands` | the field holds a [command tree](#nested-commands-a-tree-declared-where-its-commands-live), or an `Option` of one: clap's `#[command(subcommand)]`, the bridge converts the chosen leaf, `collect` lets it ask; it takes no other key |
@@ -482,7 +482,7 @@ What it declares, and why each name is fixed rather than configurable:
 | `struct Cli` | the root: the tree, `clifacet::Globals`, and the application's own |
 
 - **The list is the whole registry.** Nothing is discovered, nothing registers itself by
-  initialising a static, and the compiler checks what a list gets wrong: a module listed
+  initializing a static, and the compiler checks what a list gets wrong: a module listed
   twice, an empty list, an unknown key. A leaf that is in the tree and missing from
   `Request` cannot happen, because both come from the same list.
 - **Dispatch stays compile-time.** The tree is the same `#[clifacet::subcommands]` this

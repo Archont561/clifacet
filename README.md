@@ -74,7 +74,7 @@ code a failure costs.
 
 Frontends are features, so an application pays only for what it uses: `interactive`
 (prompts, with an `inquire` dialog), `tui` (full screen), and `serde` (failures and
-redacted secrets that serialise, for an application that reports failures as JSON); see
+redacted secrets that serialize, for an application that reports failures as JSON); see
 [what each feature adds and costs](docs/getting-started.md#features). Prompts are a seam that needs two methods —
 `ask` and `confirm`; choices come with them — so the dialog is a default rather than a fixture: an application can hand
 `Session` its own frontend and keep the policy, the streams and the exit codes.
@@ -126,8 +126,9 @@ README, its sources and its suite.
 | [Command core](docs/command-core.md) | the reference: seams, ownership, streams, exit codes, secrets |
 
 The [docs index](docs/README.md) has the full list. Every page is checked in CI:
-links resolve, ```` ```rust ```` fences are compiled as tests, and every documented
-`clifacet::…` path names a public item.
+links resolve, ```` ```rust ```` fences are compiled as tests, every documented
+`clifacet::…` path names a public item, and the prose is linted with
+[Vale](https://vale.sh) for spelling and terminology.
 
 ## Develop
 
@@ -136,6 +137,7 @@ bash scripts/bootstrap.sh          # checkout at the remote head, environment, h
 pixi run --frozen --no-install test-local   # the offline gate: format, lint, docs, tests, advisories
 pixi run --frozen quality         # adds the checks that need the network: deny, audit, backlog, skills
 pixi run --frozen check-docs      # links, anchors, compiled snippets
+pixi run --frozen prose-check     # spelling and terminology, with Vale
 pixi run --frozen check-packages  # what `cargo publish` would upload, without publishing it
 ```
 

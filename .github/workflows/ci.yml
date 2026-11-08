@@ -69,6 +69,8 @@ jobs:
         run: pixi run --frozen backlog-check
       - name: Check the documentation guides
         run: pixi run --frozen check-docs
+      - name: Check the prose
+        run: pixi run --frozen prose-check
       - name: Check the changelog matches the commits
         run: pixi run --frozen changelog-check
 
@@ -132,6 +134,8 @@ jobs:
         run: pixi run --frozen check-packages
       - name: Check the documentation guides
         run: pixi run --frozen check-docs
+      - name: Check the prose
+        run: pixi run --frozen prose-check
       - name: Check the changelog matches the commits
         run: pixi run --frozen changelog-check
       - name: Check generated sandbox files

@@ -187,6 +187,26 @@ rules:
     level: error
     message: "The supported feature matrix script is missing; compatibility would be a claim again."
 
+  # The prose check (decision-20). Vale reads the generated pair; the authored source and
+  # the script that renders it are the two files a writer could break the check by deleting.
+  - id: require-prose-config
+    kind: file_exists
+    paths: "vale.toml"
+    level: error
+    message: "The prose check's authored configuration is missing; the generated INI would have no source."
+
+  - id: require-prose-renderer
+    kind: file_exists
+    paths: "scripts/prose.py"
+    level: error
+    message: "The prose renderer is missing; .vale.ini and the style would be hand-edited again."
+
+  - id: require-vale-ini
+    kind: file_exists
+    paths: ".vale.ini"
+    level: error
+    message: "Vale's configuration is missing; the prose check would lint nothing and pass."
+
   - id: require-release-workflow
     kind: file_exists
     paths: ".github/workflows/release.yml"

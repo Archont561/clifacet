@@ -34,11 +34,11 @@ where no project task exists.
 Every feature starts by reading three skills — `.agents/skills/tdd`, `bdd` and
 `clean-code-principles` — **before** any production code is written, and the task
 records the evidence: the failing test that came first, the scenario that describes
-the behaviour, and the design decision that kept the change proportionate.
+the behavior, and the design decision that kept the change proportionate.
 
 Two narrowings exist and both are stated rather than assumed: a change with no
 user-visible workflow says so and explains why a scenario would not describe anything
-real, and a mechanical change with no behaviour — a rename, a dependency bump, a docs
+real, and a mechanical change with no behavior — a rename, a dependency bump, a docs
 or CI edit — may take the exception. A red test is never turned into a green one by
 weakening it.
 

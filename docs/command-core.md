@@ -212,7 +212,7 @@ which is why the policy can never resolve to a mode the binary cannot render.
 
 `FailureKind::Cancelled` exists so a frontend can report "the user changed their
 mind" without pretending the input was invalid. The example maps it to exit `130`
-— conventional for interruption, and deliberately not `2`. A cancelled run and a
+— conventional for interruption, and deliberately not `2`. A canceled run and a
 refused mode both execute nothing, but only one of them is a mistake in the
 invocation.
 
@@ -245,7 +245,7 @@ same session rules below, applied per declared field.
   safe, and one that does — "pass `--yes`" is a better message than "declined" —
   matches on the outcome instead of inspecting the plan.
 - **Collection precedes execution.** `Session::run` collects and then executes, so
-  a cancelled question, a bad answer or an exhausted script returns before the
+  a canceled question, a bad answer or an exhausted script returns before the
   command is reachable.
 
 Three adapters ship, all of them implementations of the same `Prompter` seam — two
@@ -443,7 +443,7 @@ Form::new(&state).with_field("name", &Masked);
 app::run_with(&mut terminal, &mut state, keys, my_screen, clifacet_example::tui_submit);
 ```
 
-Neither is a registry and neither can change behaviour. `CustomField::draw` is given
+Neither is a registry and neither can change behavior. `CustomField::draw` is given
 the field, its value and whether it has the focus, because a widget value built once
 would show a stale answer; `run_with` replaces the drawing and nothing else — the
 keys, the refusals, the submission and the handler are the same loop, so a custom
@@ -716,12 +716,12 @@ exposes internals (`unstable-*`), and both the derive and the trait mention only
 
 Documented so nobody reads absence as oversight:
 
-- **Widgets beyond the form.** The TUI ships a labelled field and a form. Tables,
+- **Widgets beyond the form.** The TUI ships a labeled field and a form. Tables,
   scroll views, the whole-screen escape hatches (CLI-12) and theming are not there,
   and neither is a universal widget-backend abstraction — tests use `ratatui`'s own
   `TestBackend`, which is why `tui::ratatui` is re-exported.
 - **`--json`.** The library writes no JSON: output is the application's (decision-3),
-  so the flag and the stream are too. With the `serde` feature a `Failure` serialises
+  so the flag and the stream are too. With the `serde` feature a `Failure` serializes
   as `{"kind":…,"message":…}` and a `Secret` as `[redacted]`, which is what an
   application builds a JSON failure body from with `serde_json`.
 - **A parity runner.** `clifacet::harness` measures and compares runs; it does not

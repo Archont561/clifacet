@@ -90,7 +90,7 @@ The second hatch is the whole screen: `tui::app::run_with` takes the drawing as 
 parameter, and `run_on_with` is the same hatch with the alternate screen, so a custom
 screen does not have to reimplement entering and leaving it.
 
-Neither hatch is a registry and neither can change behaviour. `run_with` replaces the
+Neither hatch is a registry and neither can change behavior. `run_with` replaces the
 drawing and nothing else: the same keys, the same refusals, the same submission
 through `clap` and the same handler, which is why a custom screen reaches the same
 validation as the generated one.

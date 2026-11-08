@@ -40,6 +40,7 @@ pixi run --frozen test-doc
 pixi run --frozen test-scripts
 pixi run --frozen coverage
 pixi run --frozen sandbox-check
+pixi run --frozen prose-check
 ```
 
 Use `pixi run --frozen -x cargo ...` for a focused Cargo command where no
@@ -99,6 +100,38 @@ When unsure about the goal, priority, or next step, read and follow
 [the local regain-direction skill](.agents/skills/regain-direction/SKILL.md)
 before continuing. If an important decision is unresolved, ask the maintainer
 rather than silently broadening scope.
+
+## Prose: two tools, two questions
+
+The repository has two linters, and a finding belongs to exactly one of them (decision-20):
+
+| Tool | Owns | Configuration | Run it |
+| --- | --- | --- | --- |
+| alint | what the repository *is*: required files, workspace membership, pinned workflows, generated sandbox files | `.alint.yml` | `pixi run --frozen alint` |
+| Vale | how the guides *read*: spelling, terminology, editorial style | `vale.toml` (which renders `.vale.ini` and `.vale/styles/`) | `pixi run --frozen prose-check` |
+
+After changing `README.md`, `AGENTS.md` or anything in `docs/`, run `prose-check`. After
+changing a manifest, a workflow or a required file, run `alint`. `test-local` and `quality`
+run both.
+
+Rules for changing the prose check:
+
+- **Edit `vale.toml`, never `.vale.ini` or `.vale/styles/`.** They are generated;
+  `prose-check` fails when they have drifted. Render them with `pixi run prose-sync`, which
+  also re-installs the pinned packages.
+- **A switched-off rule keeps its reason.** `prose-check` refuses a `NO` with no `reason`:
+  the reason is the only record of a decision that is invisible in the generated INI.
+- **Do not pin a package by name.** A name installs whatever is newest, so a release
+  upstream would change what CI rejects without a commit here.
+- **Fix the prose, do not silence the rule.** A new word for the project's own vocabulary
+  goes in `accept` in `vale.toml`. Switching a rule off is for prose written a certain way
+  on purpose, and it needs the reason.
+- **Code is not prose.** A `rust` fence and an inline span are skipped, so an identifier is
+  never "misspelled" and a guide may quote the API exactly. A finding inside a code block
+  means the block is not fenced properly.
+- **Vale does not run in every environment.** The sandbox cannot reach conda-forge or
+  GitHub's release assets, so `prose-check` fails there for lack of the binary rather than
+  for a finding. Report that, and let CI make the call; do not claim the prose passed.
 
 ## GitHub operations from an agent session
 

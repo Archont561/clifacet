@@ -46,6 +46,30 @@ def test_test_local_is_made_only_of_offline_safe_tasks(tasks):
     )
 
 
+def test_test_local_includes_the_prose_check(tasks):
+    """A guide is prose; a change to one has to be checked by the gate that owns prose."""
+    assert "prose-check" in dependencies(tasks["test-local"])
+
+
+def test_the_prose_check_needs_no_network(tasks):
+    """The packages are committed after `prose-sync`, so linting offline has to work."""
+    assert "prose-check" not in NETWORK_TASKS
+    assert "vale" not in tasks["prose-check"].split("&&")[0], (
+        "only the second half shells out to Vale; the first half is the rendering check"
+    )
+
+
+def test_quality_checks_the_prose_too(tasks):
+    """CI is the authority for the lint, so the CI task must run it."""
+    assert "prose-check" in dependencies(tasks["quality"])
+
+
+def test_syncing_the_prose_packages_is_the_only_fetching_prose_task(tasks):
+    """Fetching belongs in `prose-sync`, which a person runs, not in a gate."""
+    assert "vale sync" not in tasks["prose-check"]
+    assert "prose.py sync" in tasks["prose-sync"]
+
+
 def test_test_local_uses_the_offline_advisory_tasks(tasks):
     """The offline wrappers exist for exactly this; using the fetching ones defeats them."""
     depends = dependencies(tasks["test-local"])

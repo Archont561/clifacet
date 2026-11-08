@@ -32,6 +32,12 @@ pre-commit:
       glob: ["*.rs", "**/Cargo.toml", "Cargo.lock"]
       run: pixi run --frozen --no-install lint
 
+    - name: prose
+      # Vale plus the rendering check. Offline by construction: the styles are committed
+      # after `prose-sync`, so a restored sandbox lints without fetching anything.
+      glob: ["*.md", "docs/**/*.md", "vale.toml", ".vale.ini", ".vale/**"]
+      run: pixi run --frozen --no-install prose-check
+
     - name: feature-boundaries
       # Each optional feature is compiled on its own, so a `#[cfg]` mistake fails here rather
       # than in the CI matrix half an hour later.

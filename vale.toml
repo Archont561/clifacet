@@ -1,0 +1,165 @@
+# The prose check's source of truth: what Vale runs, and the style this repository owns.
+# `pixi run prose-sync` renders `.vale.ini` and `.vale/styles/` from this file, so the INI
+# and the YAML are generated and never edited by hand.
+#
+# Vale checks how the guides read — spelling, terminology, style. Alint checks what the
+# repository is: files that must exist, naming, manifests, workflows. Neither replaces the
+# other, and a rule belongs in exactly one of them. See docs/development.md.
+
+min_alert_level = "warning"
+
+# The prose the guides are made of. `backlog/**` and `CHANGELOG.md` are deliberately
+# absent: the first is tool-shaped, the second is generated, and `backlog-check` and
+# `changelog-check` already own both.
+sources = ["README.md", "AGENTS.md", "docs"]
+
+# Pinned releases, never names. A name installs whatever is newest, so a package update
+# would change what CI rejects without a commit here.
+packages = [
+  "https://github.com/vale-cli/Microsoft/releases/download/v0.15.1/Microsoft.zip",
+  "https://github.com/vale-cli/write-good/releases/download/v0.4.1/write-good.zip",
+]
+
+# The project's own words: names of the tools this repository is built with, and of the
+# things it names itself. Ordinary technical words (`parser`, `default`, `context`) are not
+# here — the built-in dictionary covers them, and a vocabulary entry for a word nobody
+# would misspell is a line to maintain for no check.
+#
+# Each entry is read in the exact case it is written, so `pixi` accepts "pixi" and would
+# report "Pixi" if `Vale.Terms` were on; it is off, because prose and command text use
+# different cases on purpose and a case rule cannot tell them apart. What the entries do
+# here is make the words words at all, for the spelling rules in both styles.
+accept = [
+  # The project and its crates.
+  "clifacet",
+  "clifacet-macros",
+  "clifacet-example",
+  "alint",
+  # The tooling the repository is checked with.
+  "clippy",
+  "codecov",
+  "convco",
+  "lefthook",
+  "msrv",
+  "nextest",
+  "pixi",
+  "pixi-sandbox",
+  "pytest",
+  "rstest",
+  "rustdoc",
+  "rustsec",
+  "rustup",
+  # The dependencies an application meets by name.
+  "argv",
+  "backend",
+  "clap",
+  "crossterm",
+  "frontend",
+  "frontends",
+  "ratatui",
+  "stdin",
+  "stdout",
+  "stderr",
+  "subcommand",
+  "subcommands",
+  "toolchain",
+  "yml",
+]
+
+vocab = "Clifacet"
+based_on = ["Vale", "Microsoft", "write-good", "Clifacet"]
+
+# ---------------------------------------------------------------------------------------
+# The inherited rules this repository turns off, each with the reason it is off.
+#
+# A rule is off because the guides are written a certain way on purpose, not because it
+# was noisy. Every entry is a decision, and docs/development.md repeats the ones a writer
+# would otherwise re-litigate.
+# ---------------------------------------------------------------------------------------
+
+[rules."Microsoft.Dashes"]
+level = "NO"
+reason = """
+Em dashes are spaced — like this — everywhere in the guides. The reference style sets
+them closed; this prose is read in a terminal-width editor, where the spaced form is
+what stays legible at 80 columns.
+"""
+
+[rules."Microsoft.Contractions"]
+level = "NO"
+reason = """
+The guides write "cannot" rather than "can't", and keep both words wherever a
+contraction would be ambiguous. Plain, formal English is the register here.
+"""
+
+[rules."Microsoft.Semicolon"]
+level = "NO"
+reason = """
+Semicolons pair two clauses in this prose, and the sentences are written that way on
+purpose. The rule is only a suggestion in the guide it comes from.
+"""
+
+[rules."Microsoft.We"]
+level = "NO"
+reason = "The guides have no author voice: no first person singular or plural appears in them."
+
+[rules."Microsoft.Vocab"]
+level = "NO"
+reason = "The guides describe promises and behavior; that is not marketing language."
+
+[rules."Microsoft.Avoid"]
+level = "NO"
+reason = """
+`backend` is the domain's word for what this library sits in front of. The reference
+style lists it as jargon; here it is the least ambiguous term available.
+"""
+
+[rules."Microsoft.HeadingAcronyms"]
+level = "NO"
+reason = "`CI`, `TUI` and `MSRV` are heading words here; expanding them in a heading helps nobody."
+
+[rules."Microsoft.HeadingColons"]
+level = "NO"
+reason = "A heading may end in a colon when it introduces the table or list below it."
+
+[rules."write-good.ThereIs"]
+level = "NO"
+reason = "A sentence may open with \"There is\" when it introduces the list of what exists."
+
+[rules."write-good.TooWordy"]
+level = "NO"
+reason = "A subject that needs one long sentence gets one long sentence."
+
+[rules."write-good.E-Prime"]
+level = "NO"
+reason = "The guides describe what a thing is, not what it does; the rule reads that as hedging."
+
+[rules."Vale.Terms"]
+level = "NO"
+reason = """
+The vocabulary exists to make the project's own words words at all, not to enforce
+their case. Tool names appear both as prose and as command text, and a case rule
+cannot tell "pixi run" from a sentence about Pixi.
+"""
+
+# ---------------------------------------------------------------------------------------
+# House style: what this repository owns, rendered into `.vale/styles/Clifacet/`.
+# ---------------------------------------------------------------------------------------
+
+[rules."Clifacet.American"]
+extends = "substitution"
+level = "error"
+message = "Use '%s' instead of '%s'."
+ignorecase = true
+
+# American English, which the inherited styles and Vale's own dictionary already assume.
+# Only the words this prose actually uses are listed: a substitution nobody writes is a
+# rule nobody can verify.
+[rules."Clifacet.American".swap]
+"behaviour" = "behavior"
+"normalis(e|ed|es|ing)" = "normaliz$1"
+"serialis(e|ed|es|ing)" = "serializ$1"
+"materialis(e|ed|es|ing)" = "materializ$1"
+"initialis(e|ed|es|ing)" = "initializ$1"
+"labelled" = "labeled"
+"cancelled" = "canceled"
