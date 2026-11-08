@@ -6,10 +6,11 @@
 //! `crates/clifacet/tests/plan.rs`.
 
 use clap::Parser as _;
+use clifacet::Facet;
 use clifacet::command::Planned as _;
 use clifacet::policy::Capabilities;
 use clifacet::prompt::Scripted;
-use clifacet_backlog_lite::{Backlog, Cli, EXIT, Request, app};
+use clifacet_backlog_lite::{Backlog, Cli, EXIT, app, request_of};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 
@@ -73,7 +74,7 @@ fn previews_a_new_task(world: &mut World, title: String) {
 
 #[then("the output is exactly the plan bl would execute")]
 fn the_output_is_the_plan(world: &World) {
-    let request = Request::try_from(parsed(&world.arguments, false)).expect("a valid request");
+    let request = request_of(Facet::validate(parsed(&world.arguments, false)).expect("valid"));
     let plan = Backlog.plan(request).expect("the request plans");
 
     assert_eq!(world.out, format!("{}\n", plan.describe()));

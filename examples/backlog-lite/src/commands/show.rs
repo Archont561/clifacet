@@ -4,7 +4,7 @@ use super::task::TaskRef;
 
 /// `bl show`.
 #[clifacet::command(input = TaskRef)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Show {
     /// The task ID, for example CLI-20.
     #[clifacet(trim, non_empty)]

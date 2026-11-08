@@ -422,6 +422,117 @@ What a tree gets wrong is a compile error, each with a golden `trybuild` file:
 - **A declared `collect = …` asks every question.** A field's `ask` or `confirm` beside
   it is an error, because it would never be asked.
 
+## One folder, one line: `clifacet::commands!`
+
+Declaring the tree is most of the work of a command with subcommands, but not all of it:
+a folder also needs a `mod` line, a re-export, a variant in the tree and a second variant
+in `Request` for every leaf. `clifacet::commands!` writes those, so the folder's `mod.rs`
+is one call (decision-19 item 3, CLI-33). This is that file, `src/commands/mod.rs` —
+an illustration rather than a compiled snippet, because it declares file modules and so
+belongs to the crate, not to a test body:
+
+```rust,ignore
+use clifacet::clap::Parser as _;
+use clifacet::facet::Facet as _;
+use clifacet::Failure;
+
+mod greet {
+    use clifacet::Failure;
+
+    /// Say hello.
+    #[clifacet::command(input = Greeting)]
+    #[derive(Clone)]
+    pub struct Greet {
+        /// Who to greet.
+        pub name: String,
+    }
+
+    pub struct Greeting {
+        pub name: String,
+    }
+
+    impl clifacet::Command for Greet {
+        type Input = Greeting;
+        type Output = String;
+
+        fn execute(&self, input: Greeting) -> Result<String, Failure> {
+            Ok(format!("hello {}", input.name))
+        }
+    }
+}
+
+/// The registry: one line, and the file stem is the command's name.
+clifacet::commands!(greet, name = "greet-one", about = "One command, one file");
+
+// What the call declared: the tree, the validated request, and the root.
+let cli = Cli::try_parse_from(["greet-one", "greet", "ada"]).expect("parses");
+assert!(matches!(cli.command, Some(Commands::Greet(_))));
+let request = Request::try_from(cli.command.expect("a subcommand")).expect("validated");
+assert!(matches!(request, Request::Greet(greet::Greeting { .. })));
+```
+
+What it declares, and why each name is fixed rather than configurable:
+
+| Item | What it is |
+| --- | --- |
+| `mod <name>;`, `pub(crate) use <name>::<Name>;` | the leaf, one file per command |
+| `enum Commands` | the tree, `#[clifacet::subcommands]`, one variant per module |
+| `enum Request` | what the user asked for, validated: one variant per leaf input |
+| `struct Input` | the root's validated input: `command: Option<Request>` |
+| `struct Cli` | the root: the tree, `clifacet::Globals`, and the application's own |
+
+- **The list is the whole registry.** Nothing is discovered, nothing registers itself by
+  initialising a static, and the compiler checks what a list gets wrong: a module listed
+  twice, an empty list, an unknown key. A leaf that is in the tree and missing from
+  `Request` cannot happen, because both come from the same list.
+- **Dispatch stays compile-time.** The tree is the same `#[clifacet::subcommands]` this
+  attribute generates, so no subcommand reaches a command as an untyped argument.
+- **A file stem is a name.** `search_history` becomes a `SearchHistory` struct that clap
+  names `search-history`, exactly as clap would derive it; a leaf may still rename itself
+  with `#[command(name = "..")]`.
+- **`Request` is generated here only.** A tree declared with the attribute keeps the
+  hand-written `Request` of decision-14. The two are the same tree; the difference is who
+  writes the variant list.
+
+The keys after the module names declare what the folder's commands share:
+
+| Key | Effect |
+| --- | --- |
+| `globals = Type` | the application's own global options, a `clap::Args` type, flattened beside `Globals` and kept out of `Input` |
+| `output = Type` | what every leaf's output converts into, so the root runs |
+| `context = Type` | the application's [context](getting-started.md#what-a-command-depends-on): the root and the tree are `Handler<Type>`, and each leaf gets `&Type` |
+| `planned` | the tree delegates `plan`, so a dry run shows the chosen leaf's plan |
+| `request = Ident` | what the generated request enum is called, when the application has a richer `Request` of its own; `Request` by default |
+| `root = { "field": Type }` | the root's own flags, global, folded into the generated input by name |
+| `name = "…"`, `about = "…"`, `long_about = "…"` | the root's name and description, otherwise `CARGO_PKG_NAME` and `CARGO_PKG_DESCRIPTION` |
+| `version_off` | no `--version`, for a root that forwards version queries elsewhere |
+
+Groups are folders of their own, each with its own `commands!`, until discovery
+(`clifacet::build::commands()`) can find them: nested lists are not part of this call. A
+nested path (`db::migrate`) reaches into a group the application declared itself.
+
+`examples/backlog-lite` is built this way: its `bl` has seven subcommands, one `--json` for
+the whole run, and a `commands!` line where three hand-kept lists used to be.
+
+### Which macro do I need?
+
+The layering rule of decision-16, in one place. Every public macro belongs to exactly one
+layer, and each is used in one situation:
+
+| Macro | Layer | Expands to | Use it for |
+| --- | --- | --- | --- |
+| `#[derive(clifacet::Facet)]` | the grammar | `TryFrom<Cli> for Input`, `Collect`, `Facet` | an existing `clap` struct that needs validated input |
+| `#[clifacet::command(input = …)]` | the grammar | `#[derive(clap::Parser, clifacet::Facet)]` plus `#[facet(..)]` | a new command: parsing, input and questions from one declaration |
+| `#[clifacet::subcommands(..)]` | the tree | `#[derive(clap::Subcommand)]`, `TryFrom` into the application's `Request`, `Collect`, and `Command`/`Planned`/`Handler` as declared | a tree whose `Request` the application writes |
+| `clifacet::commands!(..)` | the registration | `mod`s, re-exports, `Commands`, `Request`, `Input`, `Cli` | a folder of commands that wants one line, and no hand-written `Request` |
+| `#[clifacet::planned]` | the context | `Handler<Cx>` for a `PlannedWith<Cx>` impl | a command that plans *with* the application's context |
+
+Two rules hold across all of them: every path an expansion names is `$crate`- or
+`::clifacet::`-rooted, so an application depends on `clifacet` alone; and a declaration in
+the wrong place — a field attribute where a command is expected, `planned` on a tree with a
+context, `commands!` as an attribute — fails to compile with a message that says what to
+write. Each of those is a golden `trybuild` case.
+
 ## Three ways to build the input
 
 | Attribute | Effect |

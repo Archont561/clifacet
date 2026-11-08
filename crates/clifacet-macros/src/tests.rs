@@ -1459,3 +1459,160 @@ fn a_question_beside_a_declared_collect_is_never_asked_so_it_is_rejected() {
         "`collect` is declared more than once"
     );
 }
+
+fn commands(attribute: &str) -> String {
+    let tokens: proc_macro2::TokenStream = attribute.parse().expect("the call lexes");
+    crate::commands::expand(tokens).to_string()
+}
+
+fn rejected_commands(attribute: &str) -> String {
+    let tokens: proc_macro2::TokenStream = attribute.parse().expect("the call lexes");
+    let expanded = crate::commands::expand(tokens).to_string();
+    assert!(
+        expanded.contains("compile_error"),
+        "not rejected: {expanded}"
+    );
+    expanded
+}
+
+#[test]
+fn a_commands_call_registers_modules_a_tree_a_request_and_a_root() {
+    let tokens = commands("search_history, show, output = Report, planned");
+
+    assert!(tokens.contains("mod search_history ;"), "{tokens}");
+    // The struct is the stem in Pascal case, which clap reads as `search-history`.
+    // The re-export is `pub(crate)` so the same call works in an application and in a
+    // test; the leaf itself may be `pub`, and `pub(crate)` re-exporting it is allowed.
+    assert!(
+        tokens.contains("pub (crate) use search_history :: SearchHistory ;"),
+        "{tokens}"
+    );
+    // The tree holds the leaves by name, re-exported just above it.
+    assert!(
+        tokens.contains("pub enum Commands { SearchHistory (SearchHistory)")
+            && tokens.contains("Show (Show)"),
+        "{tokens}"
+    );
+    assert!(tokens.contains("pub enum Request {"), "{tokens}");
+    // The root: the tree, the globals every application gets, and a name from Cargo.
+    assert!(tokens.contains("pub struct Cli"), "{tokens}");
+    assert!(
+        tokens.contains("pub command : Option < Commands >"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("pub globals : :: clifacet :: Globals"),
+        "{tokens}"
+    );
+    assert!(tokens.contains("CARGO_PKG_NAME"), "{tokens}");
+}
+
+#[test]
+fn a_commands_call_forwards_its_keys_to_the_tree() {
+    let tokens = commands("greet, output = Report, context = Store");
+    assert!(
+        tokens.contains("clifacet :: Handler < Store > for Commands"),
+        "{tokens}"
+    );
+    // With a context the root is a handler of it too, so the runner can run it.
+    assert!(
+        tokens.contains("impl :: clifacet :: Handler < Store > for Cli"),
+        "{tokens}"
+    );
+
+    let planned = commands("greet, output = Report, planned");
+    assert!(
+        planned.contains("impl :: clifacet :: command :: Planned for Commands"),
+        "{planned}"
+    );
+    assert!(
+        planned.contains("impl :: clifacet :: command :: Planned for Cli"),
+        "{planned}"
+    );
+
+    // Without a context or `planned`, the tree is a plain command and so is the root.
+    let run = commands("greet, output = Report");
+    assert!(
+        run.contains("impl :: clifacet :: Command for Commands"),
+        "{run}"
+    );
+    assert!(run.contains("impl :: clifacet :: Command for Cli"), "{run}");
+}
+
+#[test]
+fn a_commands_call_names_the_request_and_the_roots_own_fields() {
+    let tokens =
+        commands("list, request = Action, root = { \"json\": bool, \"verbose\": Option<String> }");
+    // The tree converts into the name the application gave, and the root validates into
+    // an input that carries the root's own fields beside the chosen command.
+    assert!(tokens.contains("pub enum Action {"), "{tokens}");
+    assert!(
+        tokens.contains("TryFrom < Commands > for Action"),
+        "{tokens}"
+    );
+    assert!(tokens.contains("pub json : bool"), "{tokens}");
+    assert!(
+        tokens.contains("pub verbose : Option < String >"),
+        "{tokens}"
+    );
+    // Each is a global long flag, so it may be written before or after the subcommand.
+    assert!(tokens.contains("# [clifacet (long)]"), "{tokens}");
+    assert!(tokens.contains("# [arg (global = true)]"), "{tokens}");
+    assert!(
+        tokens.contains("env ! (\"CARGO_PKG_DESCRIPTION\")"),
+        "{tokens}"
+    );
+}
+
+#[test]
+fn a_commands_call_takes_the_root_metadata_it_is_given() {
+    let tokens = commands("greet, name = \"bl\", about = \"A wrapper\", version_off");
+    assert!(tokens.contains("name = \"bl\""), "{tokens}");
+    assert!(tokens.contains("about = \"A wrapper\""), "{tokens}");
+    let long = commands("greet, long_about = \"A longer story\"");
+    assert!(long.contains("long_about = \"A longer story\""), "{long}");
+    assert!(!tokens.contains("version ,"), "no --version: {tokens}");
+    assert!(
+        commands("greet").contains("version ,"),
+        "version by default"
+    );
+}
+
+#[test]
+fn a_commands_call_says_what_it_cannot_register() {
+    assert!(
+        rejected_commands("list, list")
+            .contains("`list` is listed twice; one module, one command — drop the second")
+    );
+    // A key before any module is still a key: it is reported as one, not as a command.
+    assert!(rejected_commands("discover = auto").contains("`discover` is not a key"));
+    assert!(
+        rejected_commands("name = \"app\"")
+            .contains("`clifacet::commands!` needs at least one command")
+    );
+    let unknown = rejected_commands("list, discover = auto");
+    assert!(
+        unknown.contains("`discover` is not a key of `clifacet::commands!(..)`"),
+        "{unknown}"
+    );
+    assert!(
+        unknown.contains("`globals = Type`") && unknown.contains("`version_off`"),
+        "{unknown}"
+    );
+    assert!(
+        rejected_commands("list, planned, context = Store")
+            .contains("`context` and `planned` cannot both be declared")
+    );
+    assert!(
+        rejected_commands("list, planned = yes")
+            .contains("`planned` takes no value: write `planned` on its own")
+    );
+    assert!(
+        rejected_commands("list, output")
+            .contains("`output` takes a value, for example `output = MyType`")
+    );
+    assert!(
+        rejected_commands("list, root = [\"json\": bool]")
+            .contains("`root` takes the root's own input fields in braces")
+    );
+}

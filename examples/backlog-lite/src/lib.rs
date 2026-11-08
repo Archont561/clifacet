@@ -26,7 +26,7 @@
 //! One file per command, and one file per layer around them:
 //!
 //! ```text
-//! src/commands/mod.rs   the map: the root `Cli`, the `Verb` tree, `Request` and `Action`
+//! src/commands/mod.rs   the map: the registry, which declares `Cli`, `Commands`, `Request`
 //! src/commands/<leaf>.rs  one command: its flags, its input, its questions, its argv
 //! src/commands/task.rs  what show, start and done share: a task ID and moving it
 //! src/status.rs         the `Status` every spelling of a status parses to
@@ -42,10 +42,10 @@ mod commands;
 mod invocation;
 mod status;
 
-pub use app::{Backlog, EXIT, app, main, terminal_frontend};
+pub use app::{Backlog, EXIT, app, main, request_of, terminal_frontend};
 pub use commands::{
-    Action, Checkup, Cli, Doctor, Done, Filter, ListArgs, NewArgs, NewTask, Query, Request, Search,
-    Show, Start, TaskRef, Verb, collect_new, confirm_status, task_id,
+    Action, Checkup, Cli, Commands, Filter, Input, NewTask, Query, Request, TaskRef, collect_new,
+    confirm_status, task_id,
 };
 pub use invocation::{BIN_ENV, Invocation, invocation_of, program, run};
 pub use status::Status;

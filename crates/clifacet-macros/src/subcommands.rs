@@ -46,7 +46,8 @@ const ATTRIBUTE: &str = "clifacet::subcommands";
 const VARIANT_ATTRIBUTE: &str = "clifacet";
 
 /// The keys the attribute accepts, for messages.
-const SUPPORTED_KEYS: &str = "`input = Type`, `output = Type`, `planned`, `context = Type`";
+pub(crate) const SUPPORTED_KEYS: &str =
+    "`input = Type`, `output = Type`, `planned`, `context = Type`";
 
 /// Variant keys that take a string, forwarded as `#[command(key = "…")]`.
 const VARIANT_VALUE_KEYS: &[&str] = &["alias", "name", "visible_alias"];
@@ -265,6 +266,16 @@ fn parse_attribute(attribute: TokenStream) -> syn::Result<Declared> {
     })
 }
 
+/// The leaf type's span for an arm that binds values from it.
+///
+/// The *location* is the leaf, so an error about it points at the variant; the *hygiene*
+/// is the call site, so the bindings an arm introduces resolve in the caller's crate. That
+/// second half matters when the leaf type was itself named by a macro (`clifacet::commands!`):
+/// a span from another expansion cannot be seen from the caller's code.
+fn arm_span(leaf: &Type) -> Span {
+    Span::call_site().located_at(leaf.span())
+}
+
 /// The leaf of a `Name(Leaf)` variant, or what to write instead.
 fn leaf_of(variant: &syn::Variant) -> syn::Result<Type> {
     let name = &variant.ident;
@@ -467,8 +478,9 @@ fn reject_duplicate_derive(attributes: &[Attribute]) -> syn::Result<()> {
 /// so is not exhaustive when `Request` has one more.
 fn conversion(name: &Ident, input: &Type, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
-        let validated = quote_spanned!(leaf.span()=> <#leaf as ::clifacet::Facet>::validate(leaf)?);
-        quote!(#name::#variant(leaf) => Self::#variant(#validated))
+        let validated =
+            quote_spanned!(arm_span(leaf)=> <#leaf as ::clifacet::Facet>::validate(leaf)?);
+        quote_spanned!(arm_span(leaf)=> #name::#variant(leaf) => Self::#variant(#validated))
     });
     let every = leaves
         .iter()
@@ -503,10 +515,10 @@ fn conversion(name: &Ident, input: &Type, leaves: &[Leaf]) -> TokenStream {
 /// `Collect` for the tree: the chosen leaf asks its own questions.
 fn collect(name: &Ident, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
-        let collected = quote_spanned!(leaf.span()=>
+        let collected = quote!(
             <#leaf as ::clifacet::prompt::Collect>::collect(leaf, session)?
         );
-        quote!(Self::#variant(leaf) => Self::#variant(#collected))
+        quote_spanned!(arm_span(leaf)=> Self::#variant(leaf) => Self::#variant(#collected))
     });
     quote! {
         impl ::clifacet::prompt::Collect for #name {
@@ -529,10 +541,10 @@ const MISMATCH: &str = "this request is for a different subcommand from the one 
 /// `Command` for the tree: the chosen leaf runs with its own input, its output converted.
 fn command(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
-        let run = quote_spanned!(leaf.span()=>
+        let run = quote!(
             <#leaf as ::clifacet::Command>::execute(leaf, input).map(::core::convert::Into::into)
         );
-        quote!((Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #run)
+        quote_spanned!(arm_span(leaf)=> (Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #run)
     });
     quote! {
         impl ::clifacet::Command for #name {
@@ -556,11 +568,11 @@ fn command(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenS
 /// `Planned` for the tree: the chosen leaf's plan, its output converted when it runs.
 fn planned(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
-        let plan = quote_spanned!(leaf.span()=>
+        let plan = quote!(
             <#leaf as ::clifacet::command::Planned>::plan(leaf, input)
                 .map(|plan| plan.map(::core::convert::Into::into))
         );
-        quote!((Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #plan)
+        quote_spanned!(arm_span(leaf)=> (Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #plan)
     });
     quote! {
         impl ::clifacet::command::Planned for #name {
@@ -596,18 +608,18 @@ fn handler(
     leaves: &[Leaf],
 ) -> TokenStream {
     let handled = leaves.iter().map(|Leaf { variant, leaf }| {
-        let run = quote_spanned!(leaf.span()=>
+        let run = quote!(
             <#leaf as ::clifacet::Handler<#context>>::handle(leaf, input, cx)
                 .map(::core::convert::Into::into)
         );
-        quote!((Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #run)
+        quote_spanned!(arm_span(leaf)=> (Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #run)
     });
     let previewed = leaves.iter().map(|Leaf { variant, leaf }| {
-        let plan = quote_spanned!(leaf.span()=>
+        let plan = quote!(
             <#leaf as ::clifacet::Handler<#context>>::preview(leaf, input, cx)
                 .map(|plan| plan.map(::core::convert::Into::into))
         );
-        quote!((Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #plan)
+        quote_spanned!(arm_span(leaf)=> (Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #plan)
     });
     quote! {
         impl ::clifacet::Handler<#context> for #name {

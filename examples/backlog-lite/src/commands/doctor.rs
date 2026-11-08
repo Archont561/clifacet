@@ -2,7 +2,7 @@
 
 /// `bl doctor`, which takes nothing.
 #[clifacet::command(input = Checkup)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Doctor {}
 
 /// A health check, which needs nothing.

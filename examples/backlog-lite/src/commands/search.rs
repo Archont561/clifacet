@@ -2,7 +2,7 @@
 
 /// `bl search`.
 #[clifacet::command(input = Query)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Search {
     /// What to look for.
     #[clifacet(trim, non_empty)]

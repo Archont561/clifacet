@@ -1,12 +1,13 @@
 //! What the wrapper promises, asserted against the argument vector it would run.
 
+use clifacet::Facet;
 use clifacet::failure::Failure;
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
 use clifacet::prompt::{Answer, Scripted, Session};
-use clifacet_backlog_lite::{Cli, Request, Status, Verb, invocation_of as plan};
+use clifacet_backlog_lite::{Action, Cli, Commands, Status, invocation_of as plan, request_of};
 
 fn argv(cli: Cli) -> Vec<String> {
-    plan(Request::try_from(cli).expect("valid")).argv().to_vec()
+    plan(request(cli)).argv().to_vec()
 }
 
 fn cli(arguments: &[&str]) -> Cli {
@@ -60,6 +61,12 @@ fn show_is_plain_by_default_because_a_wrapper_is_a_pipe() {
     );
 }
 
+/// One validated command line as the request it stands for: what `app` builds after
+/// asking, without asking.
+fn request(cli: Cli) -> clifacet_backlog_lite::Request {
+    request_of(Facet::validate(cli).expect("valid"))
+}
+
 #[test]
 fn new_forwards_each_acceptance_criterion_separately() {
     assert_eq!(
@@ -110,7 +117,9 @@ fn start_and_done_are_shortcuts_for_the_edit_no_one_remembers() {
 #[test]
 fn a_status_is_validated_with_the_words_the_tool_uses() {
     use clap::Parser as _;
-    let error = Cli::try_parse_from(["bl", "list", "--status", "in-progres"]).expect_err("rejects");
+    let error = Cli::try_parse_from(["bl", "list", "--status", "in-progres"])
+        .err()
+        .expect("rejects");
     let text = error.to_string();
     assert!(text.contains("To Do"), "{text}");
     assert!(
@@ -121,8 +130,7 @@ fn a_status_is_validated_with_the_words_the_tool_uses() {
 
 #[test]
 fn dry_run_prints_a_line_that_could_be_pasted_back() {
-    let planned =
-        plan(Request::try_from(cli(&["new", "Two words", "--ac", "a b"])).expect("valid"));
+    let planned = plan(request(cli(&["new", "Two words", "--ac", "a b"])));
     assert_eq!(
         planned.shell_line(),
         "backlog task create 'Two words' --ac 'a b'"
@@ -145,18 +153,25 @@ fn a_missing_title_is_asked_for_when_something_can_answer() {
         Box::new(Scripted::new([Answer::Text(String::from("ship it"))]))
     });
     let args = cli(&["new"]);
-    let Some(Verb::New(new)) = args.command else {
+    let Some(Commands::New(new)) = args.command else {
         panic!("expected the new subcommand");
     };
-    let request = clifacet_backlog_lite::collect_new(new, &mut session).expect("collects");
-    assert_eq!(plan(request).argv()[3], "ship it");
+    let task = clifacet_backlog_lite::collect_new(new, &mut session).expect("collects");
+    assert_eq!(
+        plan(clifacet_backlog_lite::Request {
+            json: false,
+            command: Some(Action::New(task)),
+        })
+        .argv()[3],
+        "ship it"
+    );
 }
 
 #[test]
 fn a_missing_title_without_a_terminal_fails_instead_of_guessing() {
     let mut session = Session::start(headless(), || Box::new(Scripted::default()));
     let cli = cli(&["new"]);
-    let Some(Verb::New(new)) = cli.command else {
+    let Some(Commands::New(new)) = cli.command else {
         panic!("expected the new subcommand");
     };
     let failure = clifacet_backlog_lite::collect_new(new, &mut session).expect_err("refuses");
@@ -308,7 +323,7 @@ fn a_bare_status_filter_nothing_can_ask_about_is_refused() {
 
 #[test]
 fn a_bare_status_filter_without_a_session_is_refused() {
-    let failure = Request::try_from(cli(&["list", "--status"])).expect_err("incomplete");
+    let failure = Facet::validate(cli(&["list", "--status"])).expect_err("incomplete");
 
     assert_eq!(failure.kind(), clifacet::FailureKind::Validation);
 }

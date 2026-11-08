@@ -1,0 +1,7 @@
+error: `clifacet::commands!` needs at least one command: name the modules that hold them, `clifacet::commands!(list, show, new)` — one file per command, and this list is the only registry
+ --> tests/ui/commands_missing_list.rs:4:5
+  |
+4 |     clifacet::commands!(name = "app");
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `$crate::__commands` which comes from the expansion of the macro `clifacet::commands` (in Nightly builds, run with -Z macro-backtrace for more info)

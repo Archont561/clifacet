@@ -453,7 +453,7 @@ fn derive_snippet_5() {
     assert!(bare.command.is_none());
 }
 
-/// `derive.md`, line 445.
+/// `derive.md`, line 556.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_6() {

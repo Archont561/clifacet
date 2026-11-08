@@ -74,19 +74,20 @@ pub(crate) fn push_args(argv: &mut Vec<String>, values: &[&str]) {
 #[must_use]
 pub fn invocation_of(request: Request) -> Invocation {
     let mut argv = program();
-    let action = request
-        .command
-        .unwrap_or_else(|| Action::List(Filter::default()));
+    let json = request.json;
+    let action = request.command.unwrap_or(Action::List(Filter::default()));
     let explain = match action {
         Action::List(filter) => commands::forward_list(filter, &mut argv),
-        Action::Show(task) => commands::forward_show(task, request.json, &mut argv),
+        Action::Show(task) => commands::forward_show(task, json, &mut argv),
         Action::New(task) => commands::forward_new(task, &mut argv),
         Action::Start(task) => commands::forward_start(task, &mut argv),
         Action::Done(task) => commands::forward_done(task, &mut argv),
         Action::Search(query) => commands::forward_search(query, &mut argv),
         Action::Doctor(checkup) => commands::forward_doctor(checkup, &mut argv),
     };
-    if request.json {
+    // One `--json` for the whole run, whatever the leaf forwards: the flag is the root's,
+    // so it is appended here rather than repeated per subcommand.
+    if json {
         argv.push(String::from("--json"));
     }
     Invocation { argv, explain }

@@ -8,7 +8,7 @@ use crate::status::Status;
 
 /// `bl start`: confirmed before anything moves.
 #[clifacet::command(input = TaskRef, collect = confirm_start)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Start {
     /// The task ID.
     #[clifacet(trim, non_empty)]

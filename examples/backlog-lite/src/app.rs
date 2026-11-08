@@ -13,7 +13,7 @@ use clifacet::failure::Failure;
 use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
 use clifacet::prompt::{Collect, Prompter, Session, Terminal};
 
-use crate::commands::{Cli, Request};
+use crate::commands::{Cli, Input, Request};
 use crate::invocation::{invocation_of, run};
 
 /// The exit codes this application gives its outcomes.
@@ -35,8 +35,9 @@ pub fn app(
     } else {
         ModeRequest::none()
     };
+    let asked_yes = cli.globals.yes;
     let plan = match Policy::up_to(Mode::Interactive)
-        .resolve(requested.assuming_yes(cli.yes), capabilities)
+        .resolve(requested.assuming_yes(asked_yes), capabilities)
     {
         Ok(plan) => plan,
         Err(refusal) => {
@@ -44,14 +45,16 @@ pub fn app(
             return EXIT.execution();
         }
     };
-    let dry_run = cli.dry_run;
+    let dry_run = cli.globals.dry_run;
     let mut session = Session::start(plan, build_frontend);
     // The chosen leaf asks its own questions, then validates by its own rules; an
     // absent subcommand asks nothing and reaches `invocation_of` as `None`.
+    // The root's own flags (`json`) travel beside the chosen command, so the request the
+    // application plans with is built from both.
     let planned = cli
         .collect(&mut session)
         .and_then(Facet::validate)
-        .and_then(|request| Backlog.plan(request));
+        .and_then(|input| Backlog.plan(request_of(input)));
     // The dry run describes the plan and the real run executes it: one value, so the
     // printed line is the line that runs.
     let outcome = match planned {
@@ -63,7 +66,11 @@ pub fn app(
         Err(failure) => Err(failure),
     };
     match outcome {
-        Ok(code) => code,
+        Ok(printed) => {
+            // The wrapped tool's own exit status, the number the plan carried.
+            report(out, &printed);
+            EXIT.success()
+        }
         Err(failure) => clifacet::report::render("bl", &failure, &EXIT, out, err),
     }
 }
@@ -79,16 +86,21 @@ pub struct Backlog;
 
 impl Planned for Backlog {
     type Input = Request;
-    /// The wrapped tool's own exit status, passed through unchanged.
-    type Output = i32;
+    /// The sentence a dry run prints: the same value the tree's plan carries, so the
+    /// application's own dry run and the tree's cannot say different things.
+    type Output = String;
 
-    fn plan(&self, request: Request) -> Result<Plan<'_, i32>, Failure> {
+    fn plan(&self, request: Request) -> Result<Plan<'_, String>, Failure> {
         let invocation = invocation_of(request);
         let steps = [
             invocation.explain().to_owned(),
             format!("    {}", invocation.shell_line()),
         ];
-        let plan = Plan::new(move || run(&invocation));
+        let plan = Plan::new(move || {
+            // The wrapped tool's own exit status is passed through unchanged; what the
+            // plan carries is what a dry run shows.
+            run(&invocation).map(|status| status.to_string())
+        });
         Ok(steps.into_iter().fold(plan, Plan::step))
     }
 }
@@ -116,5 +128,14 @@ pub fn main(
         // Help is the result the user asked for, on the data stream; a usage error is
         // a diagnostic. `render` applies that, with the codes `EXIT` gives them.
         Err(error) => clifacet::report::render("bl", &error, &EXIT, out, err),
+    }
+}
+
+/// The request the application plans with: the chosen command, and the root's own flag.
+#[must_use]
+pub fn request_of(input: Input) -> Request {
+    Request {
+        json: input.json,
+        command: input.command,
     }
 }
