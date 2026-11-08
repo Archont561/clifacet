@@ -1,10 +1,10 @@
 ---
 id: CLI-43
 title: Hide a secret's environment value from --help
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08 01:58'
-updated_date: '2026-11-08 02:01'
+updated_date: '2026-11-08 12:18'
 labels: []
 milestone: m-11
 dependencies: []

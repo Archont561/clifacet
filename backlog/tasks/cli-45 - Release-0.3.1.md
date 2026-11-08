@@ -1,10 +1,10 @@
 ---
 id: CLI-45
 title: Release 0.3.1
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-08 01:58'
-updated_date: '2026-11-08 11:02'
+updated_date: '2026-11-08 12:18'
 labels: []
 milestone: m-11
 dependencies:

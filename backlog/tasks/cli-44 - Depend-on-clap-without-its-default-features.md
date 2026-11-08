@@ -1,10 +1,10 @@
 ---
 id: CLI-44
 title: Depend on clap without its default features
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08 01:58'
-updated_date: '2026-11-08 02:17'
+updated_date: '2026-11-08 12:18'
 labels: []
 milestone: m-11
 dependencies: []
