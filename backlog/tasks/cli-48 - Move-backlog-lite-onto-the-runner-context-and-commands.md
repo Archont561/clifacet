@@ -1,10 +1,10 @@
 ---
 id: CLI-48
 title: 'Move backlog-lite onto the runner, context and commands!'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08 01:59'
-updated_date: '2026-11-08 15:11'
+updated_date: '2026-11-08 15:12'
 labels: []
 milestone: m-12
 dependencies:

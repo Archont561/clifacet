@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **backlog-lite:** run the example on the runner, with a context
+([0ecc2c9](https://github.com/Archont561/clifacet/commit/0ecc2c96f507b3c6f73b65d44d0c39e6ff73275f))
 * register a folder of commands in one line
 ([ee8b93d](https://github.com/Archont561/clifacet/commit/ee8b93df81bcd4966b519b7e73bf4c5dc5b8ec0f))
 * give commands the application's context
