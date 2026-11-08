@@ -13,6 +13,10 @@ types earn a section, and the rendering below turns convco's output into Keep a 
   `## [0.1.0] - 2026-11-01`, and the sections under them become `###`.
 - **links.** The compare URL convco puts inside the heading becomes a reference at the
   bottom of the file, which is where Keep a Changelog keeps them.
+- **a stable `Unreleased`.** convco writes the `## [Unreleased]` heading only when HEAD is
+  past the latest tag, so a render at a tag went stale with the next commit, even a
+  hidden one — and the release commits its render in exactly such a commit. The heading
+  and its `vX...HEAD` link are therefore always there, empty at a tag.
 - **whitespace.** Runs of blank lines collapse to one, every heading gets exactly one
   blank line above it, and the file ends with a single newline — so re-rendering is
   byte-stable and `check` means something.
@@ -132,6 +136,36 @@ def render(raw: str, *, include_links: bool = True) -> str:
     return "\n".join(text) + "\n"
 
 
+def with_unreleased(raw: str) -> str:
+    """convco's output with an `Unreleased` section whether or not HEAD is a tag.
+
+    convco writes `## [Unreleased]` only when HEAD is past the latest tag — even when every
+    commit since is a hidden type, so the section is empty. A render taken *at* the tag
+    therefore lacks a heading and a link that a render one commit later has, and the
+    release commits exactly such a render, in a commit that moves HEAD past the tag: the
+    file it pushed was stale on arrival (CLI-55). Keep a Changelog keeps the heading at
+    all times, and so does this: at a tag it is added, empty, with the compare link
+    convco itself would write one commit later.
+    """
+    lines = raw.splitlines()
+    for index, line in enumerate(lines):
+        heading = _version_heading(line)
+        if heading is None:
+            continue
+        name, url, _ = heading
+        if name == UNRELEASED:
+            return raw
+        # The latest version's compare link names its tag and the repository; the first
+        # release has no link, so its tag and the configured repository stand in.
+        if url and "/compare/" in url and "..." in url:
+            base, tag = url.split("/compare/", 1)[0], url.rsplit("...", 1)[1]
+        else:
+            base, tag = f"https://github.com/{_OWNER}/{_REPOSITORY}", f"v{name}"
+        lines[index:index] = [f"## [{UNRELEASED}]({base}/compare/{tag}...HEAD)", ""]
+        return "\n".join(lines) + "\n"
+    return raw
+
+
 def unreleased_section(raw: str) -> list[str]:
     """The lines of the first version section in convco's output, body only."""
     body: list[str] = []
@@ -207,7 +241,7 @@ def generate(runner: Output, root: Path) -> str:
     code, output = runner(["changelog"])
     if code != 0:
         raise ChangelogError(f"convco changelog failed (exit {code}):\n{output.strip()}")
-    rendered = render(output)
+    rendered = render(with_unreleased(output))
     if rendered.strip() == render("").strip():
         raise ChangelogError(
             "convco produced no versions; the history holds no release tag or no "

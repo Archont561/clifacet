@@ -491,7 +491,41 @@ def test_the_changelog_step_renders_the_file_before_committing_it(tmp_path):
         ["git", "fetch", "--tags", "--force", "origin"],
         "render",
         ("commit", "main", RENDERED),
-    ], "fetch the tag, then render with it, then commit what was rendered"
+        "render",
+    ], "fetch the tag, render with it, commit what was rendered, then check it"
+
+
+def test_the_changelog_step_checks_the_file_against_the_commit_it_made(tmp_path):
+    """CI does not run on the bot's push, so the step is the only check its result gets.
+
+    The render after the commit is taken with HEAD past the tag — exactly what
+    `changelog-check` on the next pull request would see (CLI-55).
+    """
+    renders = iter([RENDERED, RENDERED + "\n## [Unreleased]\n"])
+
+    with pytest.raises(ReleaseError, match="stale") as failure:
+        regenerate_changelog(
+            tmp_path,
+            "main",
+            run=runner([]),
+            render=lambda root: next(renders),
+            commit=lambda root, branch: "committed",
+        )
+    assert "pixi run changelog" in str(failure.value)
+
+
+def test_a_changelog_that_already_matched_is_still_checked(tmp_path):
+    """"Nothing to commit" is a claim about the file too, and is checked the same way."""
+    renders = iter([RENDERED, "something else\n"])
+
+    with pytest.raises(ReleaseError, match="stale"):
+        regenerate_changelog(
+            tmp_path,
+            "main",
+            run=runner([]),
+            render=lambda root: next(renders),
+            commit=lambda root, branch: "the changelog already matches the tag; nothing to commit",
+        )
 
 
 def test_a_failed_tag_fetch_renders_and_commits_nothing(tmp_path):

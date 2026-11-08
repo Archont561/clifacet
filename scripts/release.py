@@ -11,8 +11,9 @@ sometimes only by a real publish. So the job keeps the plumbing (`environment`,
   proved before anything is packaged, because a publish cannot be undone and the notes
   step used to run last.
 - **changelog** — after the tag exists, the committed `CHANGELOG.md` is regenerated from
-  the commits and pushed. It cannot be part of the release commit: a version section
-  names a tag, and the tag is created by the publish that precedes it.
+  the commits and pushed, then checked against a render from the commit that recorded
+  it. It cannot be part of the release commit: a version section names a tag, and the
+  tag is created by the publish that precedes it.
 - **package** — one crate, `--locked`, so the tarball matches the committed lockfile.
 - **report** — the dry run's summary: for each crate, whether this version is already on
   the index and what a publish run would therefore do.
@@ -252,14 +253,27 @@ def regenerate_changelog(
     before it is committed — `commit` only commits a file that changed, so skipping the
     render made this step report "already matches the tag" and do nothing, which is
     what the 0.2.0 release did.
+
+    And the result is checked here, because nothing else checks it: a push made with the
+    workflow token starts no CI run. The commit moves HEAD past the tag, so the file is
+    rendered once more from there — what `changelog-check` on the next pull request will
+    see — and a mismatch fails the run instead of failing someone else's PR (CLI-55).
     """
     _check(
         run,
         ["git", "fetch", "--tags", "--force", "origin"],
         "fetch the tag that was just created",
     )
-    (Path(root) / CHANGELOG).write_text(render(Path(root)), encoding="utf-8")
-    return commit(Path(root), branch)
+    changelog = Path(root) / CHANGELOG
+    changelog.write_text(render(Path(root)), encoding="utf-8")
+    result = commit(Path(root), branch)
+    if render(Path(root)) != changelog.read_text(encoding="utf-8"):
+        raise ReleaseError(
+            f"{CHANGELOG} is stale after the commit that recorded it ({result}): a render "
+            f"from the new HEAD differs, so `changelog-check` fails on {branch}. Run "
+            "`pixi run changelog` and commit the result."
+        )
+    return result
 
 
 def _render_changelog(root: Path) -> str:

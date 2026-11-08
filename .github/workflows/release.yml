@@ -96,7 +96,9 @@ jobs:
       # A version section names a tag, and the tag exists only after the publish above, so
       # the changelog cannot be part of the release commit. It is regenerated here from the
       # same commits the notes came from, and pushed as its own commit — the one thing a
-      # release leaves for later, done by the run that knows the tag exists.
+      # release leaves for later, done by the run that knows the tag exists. A push made
+      # with the workflow token starts no CI run, so the step checks its own result: the
+      # file must still match a render taken after the commit that recorded it.
       - name: Regenerate the changelog for the tag
         if: ${{ !inputs.dry_run }}
         env:

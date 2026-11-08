@@ -329,7 +329,23 @@ release exercised the publish half.
 | `pixi run release report` | the dry run's summary: for each crate, whether this version is on the index, and what a publish run would do |
 | `pixi run release publish` | macro first, then main, skipping any version already indexed |
 | `pixi run release tag` | the GitHub Release from the notes file preflight verified, left alone if it already exists |
-| `pixi run release changelog` | fetches the tag the step above created, regenerates `CHANGELOG.md`, and commits and pushes it — the one piece of a release that cannot precede its own tag |
+| `pixi run release changelog` | fetches the tag the step above created, regenerates `CHANGELOG.md`, commits and pushes it — the one piece of a release that cannot precede its own tag — then renders once more from the commit it made and fails the run if the file no longer matches |
+
+The changelog step checks itself because nothing else will: a push made with the
+workflow token starts no CI run, so a stale file would surface only as a
+`changelog-check` failure on the next pull request, which did not touch it. Two things
+keep that from happening:
+
+- **The `Unreleased` heading is always there.** convco writes `## [Unreleased]` only when
+  HEAD is past the latest tag — even when every commit since is hidden — so a render at
+  the tag lacked a heading and a `vX...HEAD` link that the very next commit added, and the
+  step's own commit is that next commit. `scripts/changelog.py` adds the heading, empty,
+  whenever convco leaves it out, so a render at a tag equals a render after any number of
+  hidden commits. The release notes are rendered separately, from the new version's
+  section alone, and never carry the heading.
+- **The step re-renders after its commit.** HEAD is then past the tag, exactly as on the
+  next pull request; if the committed file differs, the run fails with the command that
+  repairs it (`pixi run changelog`, then commit the result).
 
 `release preflight` runs offline against this checkout, so the failure that used to need
 a dispatch is now one local command:
@@ -490,9 +506,14 @@ no git identity, and the step ran a bare `git commit`. The `0.3.0` section reach
 `github-actions[bot]` (`RELEASE_IDENTITY` in `scripts/release.py`, pinned by
 `test_release.py` and `test_changelog.py`).
 
-The push that follows that commit has still never run on a real release: each release so
-far has failed one step before it. The next release is its first test, and if it fails,
-the crates and the tag are already out — nothing to revert, only the section to commit.
+**`0.3.1` ran every step, and left `main` stale.** Run 42473663383 published both crates,
+tagged `v0.3.1` and pushed `1b7a1c4` `chore(release): regenerate the changelog` — the
+push's first real run, and a success. But the file was rendered at the tag and committed
+past it, so it lacked the `Unreleased` heading convco adds one commit later; the push
+started no CI, and the next pull request (#61) failed `changelog-check` on a file it had
+not touched. #61 committed the current render, and CLI-55 removed the cause: the stable
+heading and the step's self-check described above, both covered by `test_changelog.py`
+(against the real convco, at a tag and one hidden commit later) and `test_release.py`.
 
 Partial-failure recovery remains proven by rule only: none of the three releases failed
 before its last irreversible step.
