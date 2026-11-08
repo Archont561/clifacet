@@ -10,6 +10,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
+
 ### Added
 
 * **backlog-lite:** run the example on the runner, with a context
@@ -192,7 +194,8 @@ depend on serde_json in the application.
 * **example:** move the reference application into its own crate
 ([3178b1d](https://github.com/Archont561/clifacet/commit/3178b1d44db717a4b242b1235cacf798e9d6e2f0))
 
-[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Archont561/clifacet/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Archont561/clifacet/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Archont561/clifacet/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Archont561/clifacet/compare/v0.1.0...v0.2.0
