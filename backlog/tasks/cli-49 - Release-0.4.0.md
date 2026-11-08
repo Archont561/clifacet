@@ -1,10 +1,10 @@
 ---
 id: CLI-49
 title: Release 0.4.0
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-08 01:59'
-updated_date: '2026-11-08 11:15'
+updated_date: '2026-11-08 15:34'
 labels: []
 milestone: m-12
 dependencies:
