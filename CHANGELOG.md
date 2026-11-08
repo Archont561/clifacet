@@ -10,6 +10,11 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### Added
+
+* **command:** discover a folder's commands from its build script
+([f42451f](https://github.com/Archont561/clifacet/commit/f42451fd45011a6d9a5de2148c278712ccaadccc))
+
 ## [0.4.0] - 2026-11-08
 
 ### Added

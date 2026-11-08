@@ -88,6 +88,10 @@ pub mod provenance;
 pub mod report;
 pub mod secret;
 
+/// The build-script half of discovery, available with the `build` feature (CLI-50).
+#[cfg(feature = "build")]
+pub mod build;
+
 /// The full-screen frontend, available with the `tui` feature.
 #[cfg(feature = "tui")]
 pub mod tui;
@@ -106,6 +110,7 @@ pub const fn version() -> &'static str {
 /// ```ignore
 /// clifacet::commands!(list, show, new);
 /// clifacet::commands!(list, show; globals = Options, output = Report, context = Store);
+/// clifacet::commands!(output = Report, name = "app"); // discovered from this folder
 /// ```
 ///
 /// Each module named holds one command — the file stem is its name in kebab case, the
@@ -113,9 +118,14 @@ pub const fn version() -> &'static str {
 /// It expands to the modules and their re-exports, `Commands` (the tree), `Request` (what
 /// the user asked for, validated), `Input` and `Cli` (the root, with `Globals` flattened).
 ///
-/// Nothing is discovered and nothing registers itself: the list is the whole registry, and
-/// the compiler checks it — a `Request` variant left out is a compile error, a module
-/// listed twice is one too. The tree is `#[clifacet::subcommands]`, so dispatch is
+/// With no list at all, the call is discovery: it finds its own folder from the file it was
+/// written in and registers what the application's `build.rs` reported, so adding a command
+/// is adding a file. That needs `clifacet::build::commands()` in the build script and
+/// clifacet's `build` feature; see the module documentation for the rules a folder follows.
+///
+/// With a list, nothing is discovered and nothing registers itself: the list is the whole
+/// registry, and the compiler checks it — a `Request` variant left out is a compile error,
+/// a module listed twice is one too. The tree is `#[clifacet::subcommands]`, so dispatch is
 /// compile-time: no subcommand reaches a command as an untyped string.
 ///
 /// The keys after the module names declare what the folder's commands share:

@@ -199,5 +199,17 @@ mod tests;
 #[doc(hidden)]
 #[proc_macro]
 pub fn __commands(input: TokenStream) -> TokenStream {
-    commands::expand(input.into()).into()
+    // The call site, taken from the token stream itself: a `commands!()` with no list uses
+    // it to find the folder it was written in. `macro_rules!` and proc-macro invocations
+    // carry the caller's span, so this is the file the application wrote, not this crate.
+    let tokens: proc_macro2::TokenStream = input.into();
+    // The first token's span, not `Span::call_site()`: a span from inside a `macro_rules!`
+    // points at this macro, while a token's span names the file the application wrote —
+    // which is the folder discovery has to find.
+    let call_site = tokens
+        .clone()
+        .into_iter()
+        .next()
+        .map_or_else(proc_macro2::Span::call_site, |token| token.span());
+    commands::expand(tokens, call_site).into()
 }

@@ -87,6 +87,7 @@ the commits.
 | `crates/clifacet/src` | the library: the command seam, the frontends, the policy, the contract |
 | `crates/clifacet-macros` | the `Facet` derive |
 | `examples/simple` | the reference application, its tests and runnable demos — not published |
+| `examples/discovered` | a second application, small on purpose: the only crate here with a `build.rs`, so it is where discovery is proved end to end |
 | `docs/` | these guides |
 | `backlog/` | decisions, milestones and tasks, as the source of direction |
 | `scripts/` | the repository checks, each with a pytest suite in `scripts/tests/` |

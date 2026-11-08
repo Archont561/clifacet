@@ -21,6 +21,10 @@ tui = ["dep:ratatui", "dep:crossterm"]
 # `Serialize` for `Failure`, `FailureKind` and a redacted `Secret`. JSON is not the
 # library's to write (decision-3): an application serialises a failure itself.
 serde = ["dep:serde"]
+# `clifacet::build::commands()`, for an application's `build.rs`: it scans
+# `src/commands/` and reports it, and `clifacet::commands!()` with no list reads
+# that report (CLI-50). Off by default, because a build script is the only caller.
+build = []
 
 [dependencies]
 clifacet-macros.workspace = true

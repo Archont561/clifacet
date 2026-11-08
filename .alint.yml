@@ -266,6 +266,7 @@ rules:
     equals:
       - crates/clifacet
       - crates/clifacet-macros
+      - examples/discovered
       - examples/simple
       - examples/backlog-lite
     level: error

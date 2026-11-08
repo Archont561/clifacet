@@ -369,6 +369,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clifacet-discovered"
+version = "0.4.0"
+dependencies = [
+ "clap",
+ "clifacet",
+ "trybuild",
+]
+
+[[package]]
 name = "clifacet-example"
 version = "0.4.0"
 dependencies = [

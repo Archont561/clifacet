@@ -507,9 +507,53 @@ The keys after the module names declare what the folder's commands share:
 | `name = "…"`, `about = "…"`, `long_about = "…"` | the root's name and description, otherwise `CARGO_PKG_NAME` and `CARGO_PKG_DESCRIPTION` |
 | `version_off` | no `--version`, for a root that forwards version queries elsewhere |
 
-Groups are folders of their own, each with its own `commands!`, until discovery
-(`clifacet::build::commands()`) can find them: nested lists are not part of this call. A
-nested path (`db::migrate`) reaches into a group the application declared itself.
+Groups are folders of their own, each with its own `commands!`: nested lists are not part of
+this call. A nested path (`db::migrate`) reaches into a group the application declared
+itself.
+
+### Discovery: `commands!()` with no list
+
+A folder can register itself instead, which is what makes dropping a file into
+`src/commands/` the whole of adding a command:
+
+```rust,ignore
+// build.rs — the only line of setup, and it is the same for every application
+fn main() {
+    clifacet::build::commands();
+}
+```
+
+```rust,ignore
+// src/commands/mod.rs — no list, and no `mod` lines either
+clifacet::commands!(output = crate::Said, name = "discovered");
+```
+
+Both halves are needed, and each has a job:
+
+| Piece | Where it runs | What it does |
+| --- | --- | --- |
+| `clifacet::build::commands()` | the application's `build.rs` | scans `src/commands/` and every group folder under it, tells Cargo to rerun when the set changes, and reports what it found in `CLIFACET_COMMANDS` |
+| `commands!()` | `src/commands/mod.rs` | reads that report, finds its own folder from the file it was written in, and emits the same `mod` lines a list would |
+| the `build` feature | the application's `Cargo.toml` | enables the build-script half; off by default because a build script is its only caller |
+
+The rules the folder follows:
+
+- `<name>.rs` is a command named `<name>` whose struct is `Name`;
+- `<name>/` is a group, which is a folder with its own `commands!` — discovered, or written
+  out;
+- `_name.rs` and `_name/` are **helpers**: declared for the folder and the groups under it,
+  never registered as a command, and `mod.rs` decides what they make public;
+- `mod.rs` is the folder itself, never a command.
+
+A helper is private to its folder by construction, so reaching one from outside is `E0603`
+at the caller's line. Two other mistakes are reported where the mistake is: a syntax error
+in a helper names the helper file, and a `<name>.rs` without its `Name` struct names that
+file and the type it is missing.
+
+Moving between the two forms changes the call and nothing else: `commands!(list, echo, db, …)`
+and `commands!(…)` register the same tree, and `examples/discovered` asserts exactly that.
+Discovery is a convenience, not a different design — a folder that lists its commands stays
+fully supported, and is what an application uses when a folder's members are not one-per-file.
 
 `examples/backlog-lite` is built this way: its `bl` has seven subcommands, one `--json` for
 the whole run, and a `commands!` line where three hand-kept lists used to be.
@@ -525,6 +569,7 @@ layer, and each is used in one situation:
 | `#[clifacet::command(input = …)]` | the grammar | `#[derive(clap::Parser, clifacet::Facet)]` plus `#[facet(..)]` | a new command: parsing, input and questions from one declaration |
 | `#[clifacet::subcommands(..)]` | the tree | `#[derive(clap::Subcommand)]`, `TryFrom` into the application's `Request`, `Collect`, and `Command`/`Planned`/`Handler` as declared | a tree whose `Request` the application writes |
 | `clifacet::commands!(..)` | the registration | `mod`s, re-exports, `Commands`, `Request`, `Input`, `Cli` | a folder of commands that wants one line, and no hand-written `Request` |
+| `clifacet::build::commands()` | the registration | a build script that reports its folders | discovery: a folder that registers itself, so adding a command is adding a file |
 | `#[clifacet::planned]` | the context | `Handler<Cx>` for a `PlannedWith<Cx>` impl | a command that plans *with* the application's context |
 
 Two rules hold across all of them: every path an expansion names is `$crate`- or

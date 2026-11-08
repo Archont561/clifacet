@@ -1,0 +1,13 @@
+error[E0603]: module `_shared` is private
+ --> tests/ui/helper_from_outside.rs:7:36
+  |
+7 | use clifacet_discovered::commands::_shared::greeting;
+  |                                    ^^^^^^^  -------- function `greeting` is not publicly re-exported
+  |                                    |
+  |                                    private module
+  |
+note: the module `_shared` is defined here
+ --> src/commands/mod.rs
+  |
+  | mod _shared;
+  | ^^^^^^^^^^^

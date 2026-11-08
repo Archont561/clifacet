@@ -24,6 +24,7 @@ do not enable is not compiled, and neither are the crates it would bring in.
 | `interactive` | the `inquire`-backed dialog behind `Prompter`, so prompts work at a terminal | `inquire` with its `crossterm` backend — the largest prompt-side tree |
 | `tui` | the full-screen form in `clifacet::tui` and the TUI mode in the policy | `ratatui` and `crossterm` — the largest tree of the three |
 | `serde` | `Serialize` for `Failure` and `FailureKind` (`{"kind":"validation","message":"…"}`) and for `Secret`, which serialises as `[redacted]` | `serde` and its derive macro, a proc macro built at compile time |
+| `build` | `clifacet::build::commands()`, the build-script half of discovery: a folder registers its own commands, so adding a command is adding a file | nothing in the binary — the module is only compiled into a build script |
 
 `serde` is how an application reports failures as JSON: it serialises a `Failure` with
 `serde_json` under a flag of its own, on a stream of its own, because output is the
@@ -297,6 +298,7 @@ modes, the exit codes and which test proves each promise.
 | --- | --- |
 | Which mode runs, and who decides? | [Modes and the interaction policy](modes.md) |
 | How does an existing `clap` command get validated input? | [The companion derive](derive.md) |
+| How does dropping a file into a folder add a command? | [Discovery](derive.md#discovery-commands-with-no-list) |
 | How do I draw my own screen without a second command? | [TUI composition](tui-composition.md) |
 | How is any of this tested without a terminal? | [Testing](testing.md) |
 | How do I work on the crate itself? | [Contributing](contributing.md) |

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/clifacet", "crates/clifacet-macros", "examples/simple", "examples/backlog-lite"]
+members = ["crates/clifacet", "crates/clifacet-macros", "examples/discovered", "examples/simple", "examples/backlog-lite"]
 resolver = "3"
 
 [workspace.package]
@@ -35,7 +35,10 @@ ratatui = { version = "0.30.2", default-features = false, features = ["crossterm
 crossterm = "0.29.0"
 
 # Companion derive implementation.
-proc-macro2 = "1.0.107"
+# `span-locations`: `Span::local_file()`, which is how `clifacet::commands!()` with no
+# list finds the folder it was written in (decision-19 item 4, CLI-50). The method needs
+# proc-macro2 1.0.107+ and a compiler of 1.88+, which is this workspace's declared floor.
+proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
 quote = "1.0.47"
 syn = "2.0.119"
 # A subcommand's default name, computed exactly as clap's derive computes it, so the

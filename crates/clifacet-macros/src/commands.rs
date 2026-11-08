@@ -39,12 +39,92 @@
 
 use heck::ToUpperCamelCase as _;
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::parse::{ParseStream, Parser as _};
 use syn::spanned::Spanned as _;
 use syn::{Ident, LitStr, Token, Type};
 
 use crate::subcommands;
+
+/// Where the report's fields live, as `clifacet::build` writes them.
+///
+/// Spelled here rather than imported, because `clifacet` depends on this crate: the macro
+/// cannot name a type from the library, so the format is a contract between two crates that
+/// each hold up their own end of it, checked on both sides (see `build_report.rs`).
+mod protocol {
+    /// The protocol this macro reads.
+    pub(super) const PROTOCOL: &str = "clifacet-commands/1";
+    /// The variable the report travels in.
+    pub(super) const VARIABLE: &str = "CLIFACET_COMMANDS";
+
+    /// The commands and groups a report names, in its own order, and where they live.
+    pub(super) struct Report {
+        pub(super) folder: std::path::PathBuf,
+        pub(super) commands: Vec<String>,
+        pub(super) groups: Vec<String>,
+    }
+
+    impl Report {
+        /// Every folder report in a value, in the build script's order.
+        ///
+        /// A `folder=` record opens a report and every record after it belongs to that one,
+        /// which is how one environment variable carries a whole tree.
+        pub(super) fn decode(value: &str) -> Result<Vec<Self>, String> {
+            let mut records = value.split(';');
+            let header = records.next().unwrap_or_default();
+            if header != PROTOCOL {
+                return Err(format!(
+                    "`{VARIABLE}` does not start with `{PROTOCOL}`; it is written by \
+                     `clifacet::build::commands(..)` in the application's `build.rs`, and read \
+                     by `clifacet::commands!()`, so check that the build script calls it and \
+                     that both use one clifacet version"
+                ));
+            }
+            let mut reports: Vec<Self> = Vec::new();
+            for record in records {
+                let Some((key, value)) = record.split_once('=') else {
+                    continue;
+                };
+                match key {
+                    "folder" => reports.push(Self {
+                        folder: std::path::PathBuf::from(value),
+                        commands: Vec::new(),
+                        groups: Vec::new(),
+                    }),
+                    "command" | "group" => {
+                        let Some(report) = reports.last_mut() else {
+                            continue;
+                        };
+                        let names = if key == "command" {
+                            &mut report.commands
+                        } else {
+                            &mut report.groups
+                        };
+                        names.push(value.to_owned());
+                    }
+                    // `helper` records are read and kept out of the list on purpose: a helper
+                    // is declared beside the tree, never registered in it.
+                    _ => {}
+                }
+            }
+            Ok(reports)
+        }
+    }
+}
+
+use protocol::{Report, VARIABLE};
+
+/// Said when the call is in a file the compiler did not name to us.
+const NO_LOCAL_FILE: &str = "`clifacet::commands!()` with no list finds its folder from the file \
+                             the call is written in, and the compiler gave no file for this \
+                             call; name the modules instead with `clifacet::commands!(list, ..)`";
+
+/// Said when there is no report in the environment.
+const NO_REPORT: &str = "`clifacet::commands!()` with no list reads the report its folder's \
+                         `build.rs` wrote, and there is none: call \
+                         `clifacet::build::commands()` from the build script, with clifacet's \
+                         `build` feature enabled, or name the modules explicitly with \
+                         `clifacet::commands!(list, show)`";
 
 /// The keys `commands!(..)` takes once its module names are read, for messages.
 const SUPPORTED_KEYS: &str = "`globals = Type`, `output = Type`, `context = Type`, `planned`, \
@@ -67,6 +147,10 @@ struct Declared {
     /// The root's own fields, declared the way a `#[clifacet::command]` struct declares
     /// them and folded into the generated input by name: `root = {"json": bool}`.
     root: Vec<(Ident, Type)>,
+    /// Where the call was written, so a call with no list can find its own folder.
+    call_site: Option<Span>,
+    /// Whether the module list came from the folder's report rather than the call.
+    discovered: bool,
 }
 
 impl Default for Declared {
@@ -82,6 +166,8 @@ impl Default for Declared {
             long_about: None,
             version_off: false,
             root: Vec::new(),
+            call_site: None,
+            discovered: false,
             request: Ident::new("Request", Span::call_site()),
         }
     }
@@ -92,8 +178,19 @@ impl Declared {
     /// with a context.
     fn finish(self) -> syn::Result<Self> {
         if self.modules.is_empty() {
+            if self.discovered {
+                // Discovery found no commands. That is a real state — a folder before its
+                // first command — but registering nothing would generate an empty tree, so
+                // it is refused with the one thing the caller can do about it.
+                return Err(syn::Error::new(
+                    self.call_site.unwrap_or_else(Span::call_site),
+                    "`clifacet::commands!()` found no commands in this folder: add a `<name>.rs` \
+                     beside `mod.rs`, or name the modules explicitly with \
+                     `clifacet::commands!(list, show)`",
+                ));
+            }
             return Err(syn::Error::new(
-                Span::call_site(),
+                self.call_site.unwrap_or_else(Span::call_site),
                 "`clifacet::commands!` needs at least one command: name the modules that hold \
                  them, `clifacet::commands!(list, show, new)` — one file per command, and this \
                  list is the only registry",
@@ -197,17 +294,20 @@ fn pascal(module: &Ident) -> Ident {
 }
 
 /// Expands one `commands!(..)` call into the registration, or an error saying what to write.
-pub(crate) fn expand(input: TokenStream) -> TokenStream {
-    match parse(input).and_then(|declared| tokens(&declared)) {
+pub(crate) fn expand(input: TokenStream, call_site: Span) -> TokenStream {
+    match parse(input, call_site).and_then(|declared| tokens(&declared)) {
         Ok(tokens) => tokens,
         Err(error) => error.into_compile_error(),
     }
 }
 
 /// Reads the module list and the keys after it.
-fn parse(input: TokenStream) -> syn::Result<Declared> {
+fn parse(input: TokenStream, call_site: Span) -> syn::Result<Declared> {
     let parser = |stream: ParseStream<'_>| -> syn::Result<Declared> {
-        let mut declared = Declared::default();
+        let mut declared = Declared {
+            call_site: Some(call_site),
+            ..Declared::default()
+        };
         let mut first = true;
         while !stream.is_empty() {
             if !first {
@@ -222,12 +322,136 @@ fn parse(input: TokenStream) -> syn::Result<Declared> {
             }
             declaration(stream, &mut declared)?;
         }
+        discover(&mut declared)?;
         declared.finish()
     };
     parser.parse2(input)
 }
 
-/// Reads one entry: a module to register, or a key and its value.
+/// Everything the tree declares: the commands, then the groups, in the order they are known.
+///
+/// Helpers are not here. They are declared beside these but never become a variant, because
+/// a helper is not a command — it is what the commands in the folder share (decision-19 item
+/// 4), and `commands!` has nothing to register for it.
+fn names(report: &Report) -> Vec<String> {
+    report
+        .commands
+        .iter()
+        .chain(&report.groups)
+        .cloned()
+        .collect()
+}
+
+/// Fills in the module list from the folder's report when the call named none.
+///
+/// `commands!()` with no list is discovery: the folder is the one the call was written in,
+/// and `build.rs` has already scanned it and reported it through
+/// [`VARIABLE`](clifacet::build::VARIABLE). Two facts make that possible without a proc
+/// macro ever reading a directory (decision-15 item 4 stands):
+///
+/// - `Span::local_file()` gives the file the call is in, which is what the build script
+///   named in its report (`src/commands` relative to the crate root, or the folder passed
+///   to `commands_in`);
+/// - the report says which of that folder's files are commands, which are groups and which
+///   are helpers, so the macro does not have to guess from a name.
+///
+/// A call that named modules is left exactly as it was: moving between the two forms
+/// changes only the call, which is what CLI-50's last acceptance criterion asks for.
+fn discover(declared: &mut Declared) -> syn::Result<()> {
+    if !declared.modules.is_empty() {
+        return Ok(());
+    }
+    let call_site = declared.call_site.unwrap_or_else(Span::call_site);
+    // The report is checked first: "no build script" is the mistake a caller makes most
+    // often, and it is the one whose fix is a line in another file. A missing *file* is a
+    // compiler quirk by comparison, so it is reported second, when the report did arrive.
+    let value = std::env::var(VARIABLE).map_err(|_| syn::Error::new(call_site, NO_REPORT))?;
+    let reports = Report::decode(&value).map_err(|error| syn::Error::new(call_site, error))?;
+    let Some(file) = call_site.local_file() else {
+        return Err(syn::Error::new(call_site, NO_LOCAL_FILE));
+    };
+    // The build script scanned a whole tree; the call belongs to exactly one of its folders,
+    // and which one is what the file it was written in says.
+    // The deepest folder wins: a file in `src/commands/db/` is inside `src/commands` too,
+    // and taking the first match would register the group's commands in the folder above it.
+    // Depth is compared by the folder's own length, so a nested group beats its parent.
+    let found = reports
+        .iter()
+        .filter_map(|report| report_folder(&file, &report.folder).map(|depth| (report, depth)))
+        .max_by_key(|(report, _)| report.folder.as_os_str().len())
+        .ok_or_else(|| {
+            let scanned: Vec<String> = reports
+                .iter()
+                .map(|report| report.folder.display().to_string())
+                .collect();
+            syn::Error::new(
+                call_site,
+                format!(
+                    "`clifacet::commands!()` was written in {} but the build script scanned {}. \
+                     A call with no list registers the folder it is written in; name the \
+                     modules instead with `clifacet::commands!(..)` to register another one",
+                    file.display(),
+                    if scanned.is_empty() {
+                        String::from("nothing")
+                    } else {
+                        scanned.join(", ")
+                    }
+                ),
+            )
+        })?;
+    let (report, depth) = found;
+    let names = names(report);
+    if names.is_empty() {
+        // A folder with nothing to register is a real state — a folder before its first
+        // command — but registering nothing would generate an empty tree, so it is refused
+        // with the one thing the caller can do about it.
+        return Err(syn::Error::new(
+            call_site,
+            "`clifacet::commands!()` found no commands in this folder: add a `<name>.rs` \
+             beside `mod.rs`, or name the modules explicitly with \
+             `clifacet::commands!(list, show)`",
+        ));
+    }
+    let prefix = "super::".repeat(depth);
+    declared.modules = names
+        .iter()
+        .filter_map(|name| syn::parse_str(&format!("{prefix}{name}")).ok())
+        .collect();
+    declared.discovered = true;
+    Ok(())
+}
+
+/// How deep inside `folder` the file is, or `None` when it is not inside it at all.
+///
+/// The two paths are written from different roots: the report names a folder relative to the
+/// crate (`src/commands`), while the compiler names a file relative to the directory it was
+/// invoked in — usually the workspace root, so `examples/x/src/commands/mod.rs`. Matching by
+/// containment is what makes the two comparable without either side guessing the other's
+/// root; the depth then comes from what follows the folder's text, because everything before
+/// it says nothing about how many `super::`s a `mod` line needs.
+fn report_folder(file: &std::path::Path, folder: &std::path::Path) -> Option<usize> {
+    let file = file.to_str()?.replace('\\', "/");
+    let folder = folder.to_str()?.replace('\\', "/");
+    let (before, after) = file.split_once(&folder)?;
+    // The prefix has to end at a boundary, or `xsrc/commands` would match `src/commands`.
+    if !(before.is_empty() || before.ends_with('/')) {
+        return None;
+    }
+    Some(folder_of_call(after))
+}
+
+/// How many folder levels below the folder the file itself sits.
+///
+/// `mod.rs` is the folder itself; anything deeper counts its own `super::`s. The count comes
+/// from the part of the path after the folder's text, which the caller strips first:
+/// `src/commands/db/mod.rs` after `src/commands` leaves `/db/mod.rs`, so one level.
+fn folder_of_call(remainder: &str) -> usize {
+    let Some((folders, _file)) = remainder.trim_start_matches('/').rsplit_once('/') else {
+        return 0;
+    };
+    folders.matches('/').count() + 1
+}
+
 fn declaration(stream: ParseStream<'_>, declared: &mut Declared) -> syn::Result<()> {
     // A module name, or a nested path (`db::migrate`) that reaches into a group, unless
     // the first name is one this macro takes as a key.
@@ -381,9 +605,18 @@ fn tokens(declared: &Declared) -> syn::Result<TokenStream> {
     // folder's own modules and from an application that names them: `pub(crate)` where
     // the caller's visibility allows it, which is what makes one call work in an
     // application and in a test.
+    // Each re-export is spanned at the module it names, so a file without the struct it is
+    // supposed to hold reports at that file rather than at the `commands!` call above it —
+    // which is what makes "a command file without its struct" a mistake in the caller's own
+    // source (CLI-50, AC#4).
     let reexports = leaves.iter().map(|leaf| {
         let (path, name) = (&leaf.path, &leaf.leaf);
-        quote!(pub(crate) use #path::#name;)
+        let at = leaf
+            .path
+            .segments
+            .last()
+            .map_or_else(Span::call_site, |segment| segment.ident.span());
+        quote_spanned!(at=> pub(crate) use #path::#name;)
     });
 
     // The tree's attribute is the one `#[clifacet::subcommands]` parses, forwarded whole:

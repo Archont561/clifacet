@@ -94,6 +94,9 @@ fn a_handler_conflicts_with_a_command_and_planned_bridges_only_planned_with() {
 fn the_commands_macro_reports_what_it_cannot_register() {
     let cases = trybuild::TestCases::new();
     cases.compile_fail("tests/ui/commands_duplicate.rs");
+    // A module that does not hold the struct its name promises (also the discovery path,
+    // where the module was found rather than listed — CLI-50, AC#4).
+    cases.compile_fail("tests/ui/commands_module_without_struct.rs");
     cases.compile_fail("tests/ui/commands_missing_list.rs");
     cases.compile_fail("tests/ui/commands_unknown_key.rs");
     cases.compile_fail("tests/ui/commands_planned_with_context.rs");
