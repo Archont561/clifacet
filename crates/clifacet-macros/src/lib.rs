@@ -9,9 +9,11 @@
 //! that crate alone.
 
 mod command;
+mod commands;
 mod facet;
 mod field;
 mod input_type;
+mod planned;
 mod rules;
 mod subcommands;
 
@@ -79,6 +81,22 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 pub fn subcommands(attribute: TokenStream, item: TokenStream) -> TokenStream {
     subcommands::expand(attribute.into(), item.into())
         .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Adds the `Handler<Cx>` a `PlannedWith<Cx>` impl implies: `handle` executes the plan
+/// and `preview` returns it, so a dry run and a real run share one path. See
+/// `clifacet::command::PlannedWith`.
+#[proc_macro_attribute]
+pub fn planned(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    let item = proc_macro2::TokenStream::from(item);
+    planned::expand(&attribute.into(), item.clone())
+        .unwrap_or_else(|error| {
+            // The item is kept, so the only error is the one that says what to write.
+            let mut tokens = error.into_compile_error();
+            tokens.extend(item);
+            tokens
+        })
         .into()
 }
 
@@ -157,3 +175,29 @@ pub fn version(input: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 mod tests;
+
+/// Registers a folder of commands in one line (CLI-33).
+///
+/// ```ignore
+/// clifacet::commands!(list, show, new);
+/// ```
+///
+/// Expands to one `mod` and one `pub use` per module, a `Commands` tree, a `Request` with
+/// one variant per leaf input, an `Input`, and a `Cli` root that flattens
+/// `clifacet::Globals`. Each module holds a leaf whose struct is its stem in Pascal case
+/// (`search_history` → `SearchHistory`, named `search-history` by clap); the list is the
+/// whole registry, so nothing is discovered and nothing registers itself.
+///
+/// The keys after the module names — `globals = Type`, `output = Type`, `context = Type`,
+/// `planned`, `name = "…"`, `about = "…"`, `version_off` — are documented with the macro
+/// itself, in `clifacet::commands`. It is a `macro_rules!` there, so the expansion is
+/// readable next to the page that explains it.
+///
+/// # Panics
+///
+/// Panics only if Rust cannot parse fixed, compiler-generated tokens.
+#[doc(hidden)]
+#[proc_macro]
+pub fn __commands(input: TokenStream) -> TokenStream {
+    commands::expand(input.into()).into()
+}

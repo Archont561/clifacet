@@ -11,7 +11,10 @@
 //! - `Collect`, which lets the chosen leaf ask its own questions;
 //! - with `output = Type`, `Command`, which runs the chosen leaf with its own input;
 //! - with `planned` as well, `Planned` instead, which hands the chosen leaf's plan up,
-//!   so `Command` comes from the library's blanket impl and a dry run sees the leaf.
+//!   so `Command` comes from the library's blanket impl and a dry run sees the leaf;
+//! - with `context = Type` instead, `Handler<Type>`, which hands the context to the chosen
+//!   leaf's own `Handler` — and every `Command` is one, so a leaf without context still
+//!   runs — and previews through the leaf's own `Handler::preview` (decision-19 item 2).
 //!
 //! The rules it keeps, each a compile error that says what to write instead:
 //!
@@ -43,7 +46,8 @@ const ATTRIBUTE: &str = "clifacet::subcommands";
 const VARIANT_ATTRIBUTE: &str = "clifacet";
 
 /// The keys the attribute accepts, for messages.
-const SUPPORTED_KEYS: &str = "`input = Type`, `output = Type`, `planned`";
+pub(crate) const SUPPORTED_KEYS: &str =
+    "`input = Type`, `output = Type`, `planned`, `context = Type`";
 
 /// Variant keys that take a string, forwarded as `#[command(key = "…")]`.
 const VARIANT_VALUE_KEYS: &[&str] = &["alias", "name", "visible_alias"];
@@ -59,6 +63,7 @@ struct Declared {
     input: Type,
     output: Option<Type>,
     planned: Option<Span>,
+    context: Option<Type>,
 }
 
 /// One variant: the subcommand's leaf, and the names it answers to.
@@ -141,10 +146,13 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
     let name = &parsed.ident;
     let conversion = conversion(name, &declared.input, &leaves);
     let collect = collect(name, &leaves);
-    let run = match (&declared.output, declared.planned) {
-        (Some(output), Some(_)) => planned(name, &declared.input, output, &leaves),
-        (Some(output), None) => command(name, &declared.input, output, &leaves),
-        (None, _) => quote!(),
+    let run = match (&declared.output, declared.planned, &declared.context) {
+        (Some(output), _, Some(context)) => {
+            handler(name, &declared.input, output, context, &leaves)
+        }
+        (Some(output), Some(_), None) => planned(name, &declared.input, output, &leaves),
+        (Some(output), None, None) => command(name, &declared.input, output, &leaves),
+        (None, _, _) => quote!(),
     };
 
     Ok(quote! {
@@ -155,11 +163,13 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
     })
 }
 
-/// Reads `input = Type, output = Type, planned`, rejecting anything else by name.
+/// Reads `input = Type, output = Type, planned, context = Type`, rejecting anything else by
+/// name.
 fn parse_attribute(attribute: TokenStream) -> syn::Result<Declared> {
     let mut input: Option<Type> = None;
     let mut output: Option<Type> = None;
     let mut planned: Option<Span> = None;
+    let mut context: Option<(Type, Span)> = None;
     let parser = |stream: ParseStream<'_>| -> syn::Result<()> {
         while !stream.is_empty() {
             let key: Ident = stream.parse()?;
@@ -168,6 +178,7 @@ fn parse_attribute(attribute: TokenStream) -> syn::Result<Declared> {
                 "input" => input.is_some(),
                 "output" => output.is_some(),
                 "planned" => planned.is_some(),
+                "context" => context.is_some(),
                 unknown => {
                     return Err(syn::Error::new(
                         key.span(),
@@ -200,10 +211,10 @@ fn parse_attribute(attribute: TokenStream) -> syn::Result<Declared> {
                     )
                 })?;
                 let ty: Type = stream.parse()?;
-                if name == "input" {
-                    input = Some(ty);
-                } else {
-                    output = Some(ty);
+                match name.as_str() {
+                    "input" => input = Some(ty),
+                    "context" => context = Some((ty, key.span())),
+                    _ => output = Some(ty),
                 }
             }
             if !stream.is_empty() {
@@ -221,6 +232,23 @@ fn parse_attribute(attribute: TokenStream) -> syn::Result<Declared> {
              add `output = Type`, the type every leaf's output converts into",
         ));
     }
+    if let Some((_, span)) = &context {
+        if output.is_none() {
+            return Err(syn::Error::new(
+                *span,
+                "`context` hands the context to the leaf that runs, so the tree runs: add \
+                 `output = Type`, the type every leaf's output converts into",
+            ));
+        }
+        if planned.is_some() {
+            return Err(syn::Error::new(
+                *span,
+                "with `context`, the tree previews through each leaf's own \
+                 `Handler::preview` — a planned leaf describes itself and any other refuses — \
+                 so `planned` has nothing to add: drop it",
+            ));
+        }
+    }
     let input = input.ok_or_else(|| {
         syn::Error::new(
             Span::call_site(),
@@ -234,7 +262,18 @@ fn parse_attribute(attribute: TokenStream) -> syn::Result<Declared> {
         input,
         output,
         planned,
+        context: context.map(|(ty, _)| ty),
     })
+}
+
+/// The leaf type's span for an arm that binds values from it.
+///
+/// The *location* is the leaf, so an error about it points at the variant; the *hygiene*
+/// is the call site, so the bindings an arm introduces resolve in the caller's crate. That
+/// second half matters when the leaf type was itself named by a macro (`clifacet::commands!`):
+/// a span from another expansion cannot be seen from the caller's code.
+fn arm_span(leaf: &Type) -> Span {
+    Span::call_site().located_at(leaf.span())
 }
 
 /// The leaf of a `Name(Leaf)` variant, or what to write instead.
@@ -439,8 +478,9 @@ fn reject_duplicate_derive(attributes: &[Attribute]) -> syn::Result<()> {
 /// so is not exhaustive when `Request` has one more.
 fn conversion(name: &Ident, input: &Type, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
-        let validated = quote_spanned!(leaf.span()=> <#leaf as ::clifacet::Facet>::validate(leaf)?);
-        quote!(#name::#variant(leaf) => Self::#variant(#validated))
+        let validated =
+            quote_spanned!(arm_span(leaf)=> <#leaf as ::clifacet::Facet>::validate(leaf)?);
+        quote_spanned!(arm_span(leaf)=> #name::#variant(leaf) => Self::#variant(#validated))
     });
     let every = leaves
         .iter()
@@ -475,10 +515,10 @@ fn conversion(name: &Ident, input: &Type, leaves: &[Leaf]) -> TokenStream {
 /// `Collect` for the tree: the chosen leaf asks its own questions.
 fn collect(name: &Ident, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
-        let collected = quote_spanned!(leaf.span()=>
+        let collected = quote!(
             <#leaf as ::clifacet::prompt::Collect>::collect(leaf, session)?
         );
-        quote!(Self::#variant(leaf) => Self::#variant(#collected))
+        quote_spanned!(arm_span(leaf)=> Self::#variant(leaf) => Self::#variant(#collected))
     });
     quote! {
         impl ::clifacet::prompt::Collect for #name {
@@ -501,10 +541,10 @@ const MISMATCH: &str = "this request is for a different subcommand from the one 
 /// `Command` for the tree: the chosen leaf runs with its own input, its output converted.
 fn command(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
-        let run = quote_spanned!(leaf.span()=>
+        let run = quote!(
             <#leaf as ::clifacet::Command>::execute(leaf, input).map(::core::convert::Into::into)
         );
-        quote!((Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #run)
+        quote_spanned!(arm_span(leaf)=> (Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #run)
     });
     quote! {
         impl ::clifacet::Command for #name {
@@ -528,11 +568,11 @@ fn command(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenS
 /// `Planned` for the tree: the chosen leaf's plan, its output converted when it runs.
 fn planned(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenStream {
     let arms = leaves.iter().map(|Leaf { variant, leaf }| {
-        let plan = quote_spanned!(leaf.span()=>
+        let plan = quote!(
             <#leaf as ::clifacet::command::Planned>::plan(leaf, input)
                 .map(|plan| plan.map(::core::convert::Into::into))
         );
-        quote!((Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #plan)
+        quote_spanned!(arm_span(leaf)=> (Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #plan)
     });
     quote! {
         impl ::clifacet::command::Planned for #name {
@@ -549,6 +589,70 @@ fn planned(name: &Ident, input: &Type, output: &Type, leaves: &[Leaf]) -> TokenS
                 type __ClifacetRequest = #input;
                 match (self, input) {
                     #(#arms,)*
+                    (_, _) => ::core::result::Result::Err(::clifacet::Failure::execution(#MISMATCH)),
+                }
+            }
+        }
+    }
+}
+
+/// `Handler<Cx>` for the tree: the chosen leaf runs, or previews, with the context.
+///
+/// Each leaf is reached through its own `Handler<Cx>`: an application's handler, a
+/// `#[clifacet::planned]` one, or any `Command` through the library's blanket impl.
+fn handler(
+    name: &Ident,
+    input: &Type,
+    output: &Type,
+    context: &Type,
+    leaves: &[Leaf],
+) -> TokenStream {
+    let handled = leaves.iter().map(|Leaf { variant, leaf }| {
+        let run = quote!(
+            <#leaf as ::clifacet::Handler<#context>>::handle(leaf, input, cx)
+                .map(::core::convert::Into::into)
+        );
+        quote_spanned!(arm_span(leaf)=> (Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #run)
+    });
+    let previewed = leaves.iter().map(|Leaf { variant, leaf }| {
+        let plan = quote!(
+            <#leaf as ::clifacet::Handler<#context>>::preview(leaf, input, cx)
+                .map(|plan| plan.map(::core::convert::Into::into))
+        );
+        quote_spanned!(arm_span(leaf)=> (Self::#variant(leaf), __ClifacetRequest::#variant(input)) => #plan)
+    });
+    quote! {
+        impl ::clifacet::Handler<#context> for #name {
+            type Input = #input;
+            type Output = #output;
+
+            // As for `Command`: one leaf leaves the fallback unreachable, and a leaf whose
+            // output already is the tree's converts to itself.
+            #[allow(unreachable_patterns, clippy::useless_conversion)]
+            fn handle(
+                &self,
+                input: #input,
+                cx: &#context,
+            ) -> ::core::result::Result<#output, ::clifacet::Failure> {
+                type __ClifacetRequest = #input;
+                match (self, input) {
+                    #(#handled,)*
+                    (_, _) => ::core::result::Result::Err(::clifacet::Failure::execution(#MISMATCH)),
+                }
+            }
+
+            #[allow(unreachable_patterns, clippy::useless_conversion)]
+            fn preview<'__clifacet>(
+                &'__clifacet self,
+                input: #input,
+                cx: &'__clifacet #context,
+            ) -> ::core::result::Result<
+                ::clifacet::command::Plan<'__clifacet, #output>,
+                ::clifacet::Failure,
+            > {
+                type __ClifacetRequest = #input;
+                match (self, input) {
+                    #(#previewed,)*
                     (_, _) => ::core::result::Result::Err(::clifacet::Failure::execution(#MISMATCH)),
                 }
             }

@@ -59,15 +59,16 @@ use std::ffi::OsString;
 use std::fmt::Display;
 use std::io::Write;
 use std::process::ExitCode;
+use std::rc::Rc;
 
 use clap::{ArgMatches, Parser};
 
-use crate::command::Command;
+use crate::command::{Command, Handler};
 use crate::contract::ExitPolicy;
 use crate::facet::Facet;
 use crate::failure::Failure;
 use crate::policy::{Capabilities, Mode, Policy, Request};
-use crate::prompt::{Collect, Prompter, Session};
+use crate::prompt::{Collect, Lazy, Prompter, Session};
 use crate::report;
 
 /// The options every application gets: `--yes` and `--dry-run`.
@@ -186,12 +187,13 @@ enum Chosen<'c, Cli, C> {
 /// [`exit`]: App::exit
 /// [`mode_from`]: App::mode_from
 /// [`render`]: App::render
-pub struct App<'c, Cli, C = Cli, R = Plain> {
+pub struct App<'c, Cli, C = Cli, R = Plain, Cx = ()> {
     policy: Policy,
     exit: ExitPolicy,
     mode_from: fn(&Cli) -> Request,
     command: Chosen<'c, Cli, C>,
     render: R,
+    context: Rc<dyn Fn() -> Result<Cx, Failure>>,
 }
 
 impl<Cli: Clone> App<'_, Cli> {
@@ -204,6 +206,7 @@ impl<Cli: Clone> App<'_, Cli> {
             mode_from: |_| Request::none(),
             command: Chosen::Parsed(Cli::clone),
             render: Plain,
+            context: Rc::new(|| Ok(())),
         }
     }
 }
@@ -214,7 +217,7 @@ impl<Cli: Clone> Default for App<'_, Cli> {
     }
 }
 
-impl<'c, Cli, C, R> App<'c, Cli, C, R> {
+impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
     /// How interactive a run may be, and how interactive it is unasked.
     #[must_use]
     pub fn policy(mut self, policy: Policy) -> Self {
@@ -245,34 +248,65 @@ impl<'c, Cli, C, R> App<'c, Cli, C, R> {
     /// the same; only what runs changes. That is how a test observes a run — see
     /// [`harness::Recording`](crate::harness::Recording).
     #[must_use]
-    pub fn command<D>(self, command: &D) -> App<'_, Cli, D, R> {
+    pub fn command<D>(self, command: &D) -> App<'_, Cli, D, R, Cx> {
         App {
             policy: self.policy,
             exit: self.exit,
             mode_from: self.mode_from,
             command: Chosen::Given(command),
             render: self.render,
+            context: self.context,
         }
     }
 
     /// Writes the output with `render` instead of [`Plain`].
     #[must_use]
-    pub fn render<S>(self, render: S) -> App<'c, Cli, C, S> {
+    pub fn render<S>(self, render: S) -> App<'c, Cli, C, S, Cx> {
         App {
             policy: self.policy,
             exit: self.exit,
             mode_from: self.mode_from,
             command: self.command,
             render,
+            context: self.context,
+        }
+    }
+
+    /// How to build the application's context: what its commands depend on.
+    ///
+    /// The command runs as a [`Handler`] of that context, which every [`Command`] is. The
+    /// context is built after validation, on first use — by a question that reads it
+    /// ([`Session::context`]) or by the command — and once per run; so `--help`,
+    /// `--version`, a usage error, a rejected value or a declined question never build
+    /// it. A context that cannot be built is an execution failure, reported as
+    /// `cannot prepare the application: {error}`, and nothing runs.
+    #[must_use]
+    pub fn context<D, E, F>(self, build: F) -> App<'c, Cli, C, R, D>
+    where
+        F: Fn() -> Result<D, E> + 'static,
+        E: Display,
+    {
+        App {
+            policy: self.policy,
+            exit: self.exit,
+            mode_from: self.mode_from,
+            command: self.command,
+            render: self.render,
+            context: Rc::new(move || {
+                build().map_err(|error| {
+                    Failure::execution(format!("cannot prepare the application: {error}"))
+                })
+            }),
         }
     }
 }
 
-impl<Cli, C, R> App<'_, Cli, C, R>
+impl<Cli, C, R, Cx> App<'_, Cli, C, R, Cx>
 where
     Cli: Parser + Facet + Collect,
-    C: Command<Input = <Cli as Facet>::Input>,
-    R: Render<C::Output>,
+    C: Handler<Cx, Input = <Cli as Facet>::Input>,
+    R: Render<<C as Handler<Cx>>::Output>,
+    Cx: 'static,
 {
     /// Runs the process's own invocation and answers with its exit status.
     ///
@@ -339,12 +373,14 @@ where
     ) -> i32 {
         let requested = (self.mode_from)(&cli);
         let requested = requested.assuming_yes(requested.assumes_yes() || globals.yes);
+        // One context per run, shared by the questions and the command, built on first use.
+        let context = Rc::new(Lazy::new(Rc::clone(&self.context)));
         let outcome = match self.policy.resolve(requested, capabilities) {
-            Ok(plan) if plan.mode() == Mode::Tui => self.full_screen(globals, out, err),
+            Ok(plan) if plan.mode() == Mode::Tui => self.full_screen(globals, &context, out, err),
             Ok(plan) => {
-                let mut session = Session::start(plan, build_frontend);
+                let mut session = Session::start(plan, build_frontend).sharing(Rc::clone(&context));
                 cli.collect(&mut session)
-                    .and_then(|cli| self.settle(cli, globals, out))
+                    .and_then(|cli| self.settle(cli, globals, &context, out))
             }
             Err(refusal) => Err(Failure::validation(refusal.message())),
         };
@@ -362,6 +398,7 @@ where
     fn full_screen(
         &self,
         globals: Globals,
+        context: &Lazy<Cx>,
         out: &mut dyn Write,
         err: &mut dyn Write,
     ) -> Result<(), Failure> {
@@ -373,7 +410,7 @@ where
             let argv = std::iter::once(program::<Cli>()).chain(state.arguments());
             let cli = Cli::try_parse_from(argv).map_err(|error| error.to_string())?;
             rendered.clear();
-            self.settle(cli, globals, &mut rendered)
+            self.settle(cli, globals, context, &mut rendered)
                 .map_err(|failure| failure.message().to_owned())?;
             Ok(Vec::new())
         };
@@ -391,6 +428,7 @@ where
     fn full_screen(
         &self,
         _globals: Globals,
+        _context: &Lazy<Cx>,
         _out: &mut dyn Write,
         _err: &mut dyn Write,
     ) -> Result<(), Failure> {
@@ -400,7 +438,13 @@ where
     }
 
     /// Validates, then runs or previews, then renders: everything after the questions.
-    fn settle(&self, cli: Cli, globals: Globals, out: &mut dyn Write) -> Result<(), Failure> {
+    fn settle(
+        &self,
+        cli: Cli,
+        globals: Globals,
+        context: &Lazy<Cx>,
+        out: &mut dyn Write,
+    ) -> Result<(), Failure> {
         // The command is taken before validation consumes the command line it is
         // built from — the clone a declared tree keeps of itself.
         let parsed;
@@ -412,17 +456,20 @@ where
             Chosen::Given(command) => *command,
         };
         let input = cli.validate()?;
+        // Built only now that the input is valid — unless a question already needed it.
+        let cx = context.get()?;
         // A dry run previews through the same validated input a real run executes, so
         // what it prints is what the real run would do — or the reason it cannot say.
         let written = if globals.dry_run {
-            let steps = command.preview(input)?.describe();
+            let steps = Handler::<Cx>::preview(command, input, &cx)?.describe();
             if steps.is_empty() {
                 Ok(())
             } else {
                 writeln!(out, "{steps}")
             }
         } else {
-            self.render.render(command.execute(input)?, out)
+            self.render
+                .render(Handler::<Cx>::handle(command, input, &cx)?, out)
         };
         written.map_err(|error| Failure::execution(format!("cannot write the output: {error}")))
     }

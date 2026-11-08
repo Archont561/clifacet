@@ -7,9 +7,14 @@ use crate::status::{Status, parse_status};
 
 /// Filters for `bl list`, named the way a person asks the question.
 #[clifacet::command(input = Filter, bridge = filter, collect = choose_status)]
-#[derive(Debug, Default)]
-pub struct ListArgs {
+#[derive(Debug, Clone, Default)]
+pub struct List {
     /// Only tasks in this status; with no value, it is asked for as a choice.
+    //
+    // `Option<Option<_>>` on purpose: `Some(None)` is "the flag was written bare", which
+    // is a question to ask, and `None` is "no filter". Collapsing it would lose the
+    // difference between the user asking to be asked and the user saying nothing.
+    #[allow(clippy::option_option)]
     #[clifacet(long, value_parser = parse_status)]
     pub status: Option<Option<Status>>,
 
@@ -35,11 +40,11 @@ pub struct Filter {
 
 /// `bl list`'s input: a bare `--status` is refused unless it was asked about.
 fn filter(
-    ListArgs {
+    List {
         status,
         ready,
         limit,
-    }: ListArgs,
+    }: List,
 ) -> Result<Filter, Failure> {
     let status = status
         .map(|named| named.ok_or_else(unnamed_status))
@@ -52,7 +57,7 @@ fn filter(
 }
 
 /// Asks which status a bare `--status` meant; still bare when nothing may ask.
-fn choose_status(mut args: ListArgs, session: &mut Session) -> Result<ListArgs, Failure> {
+fn choose_status(mut args: List, session: &mut Session) -> Result<List, Failure> {
     if args.status == Some(None) {
         args.status = Some(session.choose(None, "Which status?", Status::ALL)?);
     }

@@ -80,3 +80,22 @@ fn a_command_tree_is_declared_where_its_commands_live_and_says_what_it_cannot_de
     cases.compile_fail("tests/ui/field_subcommands_with_rule.rs");
     cases.compile_fail("tests/ui/facet_collect_beside_ask.rs");
 }
+
+#[test]
+fn a_handler_conflicts_with_a_command_and_planned_bridges_only_planned_with() {
+    let cases = trybuild::TestCases::new();
+    cases.compile_fail("tests/ui/handler_beside_command.rs");
+    cases.compile_fail("tests/ui/planned_on_other_impl.rs");
+    cases.compile_fail("tests/ui/planned_on_struct.rs");
+}
+
+/// `clifacet::commands!` reports what it cannot register, and says what to write instead.
+#[test]
+fn the_commands_macro_reports_what_it_cannot_register() {
+    let cases = trybuild::TestCases::new();
+    cases.compile_fail("tests/ui/commands_duplicate.rs");
+    cases.compile_fail("tests/ui/commands_missing_list.rs");
+    cases.compile_fail("tests/ui/commands_unknown_key.rs");
+    cases.compile_fail("tests/ui/commands_planned_with_context.rs");
+    cases.compile_fail("tests/ui/commands_on_other_attribute.rs");
+}

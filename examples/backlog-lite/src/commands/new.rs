@@ -4,13 +4,12 @@ use clifacet::Facet;
 use clifacet::failure::Failure;
 use clifacet::prompt::{Collect, Session};
 
-use super::{Action, Request};
 use crate::status::{Status, parse_status};
 
 /// The fields of a new task.
 #[clifacet::command(input = NewTask, bridge = new_task, collect = ask_title)]
-#[derive(Debug)]
-pub struct NewArgs {
+#[derive(Debug, Clone)]
+pub struct New {
     /// The title. Omitted, it is asked for; with nothing able to answer, the run fails.
     pub title: Option<String>,
 
@@ -42,7 +41,7 @@ pub struct NewTask {
 
 /// `bl new`'s input. A blank title is the one thing that has to be caught here rather
 /// than by the wrapped tool, because the tool would happily create an untitled task.
-fn new_task(args: NewArgs) -> Result<NewTask, Failure> {
+fn new_task(args: New) -> Result<NewTask, Failure> {
     let Some(title) = args.title else {
         return Err(Failure::validation(
             "a task title is required: pass one, or run somewhere it can be asked for",
@@ -61,7 +60,7 @@ fn new_task(args: NewArgs) -> Result<NewTask, Failure> {
 }
 
 /// Asks for the title a bare `bl new` did not get; a positional cannot be `ask`ed.
-fn ask_title(mut args: NewArgs, session: &mut Session) -> Result<NewArgs, Failure> {
+fn ask_title(mut args: New, session: &mut Session) -> Result<New, Failure> {
     args.title = session.value(args.title, "Task title?")?;
     Ok(args)
 }
@@ -72,12 +71,8 @@ fn ask_title(mut args: NewArgs, session: &mut Session) -> Result<NewArgs, Failur
 ///
 /// Returns [`Failure::validation`] when nothing may ask and no title was supplied,
 /// and whatever the frontend reports for a cancelled or broken question.
-pub fn collect_new(args: NewArgs, session: &mut Session) -> Result<Request, Failure> {
-    let task = args.collect(session).and_then(Facet::validate)?;
-    Ok(Request {
-        json: false,
-        command: Some(Action::New(task)),
-    })
+pub fn collect_new(args: New, session: &mut Session) -> Result<NewTask, Failure> {
+    args.collect(session).and_then(Facet::validate)
 }
 
 /// `backlog task create TITLE` with its options, and the sentence for it.

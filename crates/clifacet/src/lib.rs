@@ -101,8 +101,50 @@ pub const fn version() -> &'static str {
     VERSION
 }
 
+/// Registers the commands of one folder in one line (decision-19 item 3, CLI-33).
+///
+/// ```ignore
+/// clifacet::commands!(list, show, new);
+/// clifacet::commands!(list, show; globals = Options, output = Report, context = Store);
+/// ```
+///
+/// Each module named holds one command — the file stem is its name in kebab case, the
+/// struct is that stem in Pascal case — and this call is the only place it is registered.
+/// It expands to the modules and their re-exports, `Commands` (the tree), `Request` (what
+/// the user asked for, validated), `Input` and `Cli` (the root, with `Globals` flattened).
+///
+/// Nothing is discovered and nothing registers itself: the list is the whole registry, and
+/// the compiler checks it — a `Request` variant left out is a compile error, a module
+/// listed twice is one too. The tree is `#[clifacet::subcommands]`, so dispatch is
+/// compile-time: no subcommand reaches a command as an untyped string.
+///
+/// The keys after the module names declare what the folder's commands share:
+///
+/// - `globals = Type` — the application's own global options, a `clap::Args` type,
+///   flattened beside [`Globals`] and kept out of `Input`;
+/// - `output = Type` — what every leaf's output converts into, so the tree is a
+///   [`Command`] (or a [`Handler`] of `context`) and the runner can run it;
+/// - `context = Type` — the application's context, threaded to the chosen leaf;
+/// - `planned` — the tree delegates `plan`, so a dry run sees each leaf's own plan;
+/// - `name = "…"`, `about = "…"` — the root's name and description, otherwise Cargo's;
+/// - `version_off` — no `--version`.
+///
+/// `$crate` is used for every path it emits, so a caller needs only `clifacet` and `clap`.
+/// The work is done by a proc macro (`#[doc(hidden)]`), because a `macro_rules!` cannot
+/// write an attribute that carries a type it was handed.
+#[macro_export]
+macro_rules! commands {
+    ($($tokens:tt)*) => {
+        $crate::__commands!($($tokens)*);
+    };
+}
+
+/// The proc macro behind [`commands!`]; hidden because calling it directly skips `$crate`.
+#[doc(hidden)]
+pub use clifacet_macros::__commands;
+
 pub use app::{App, Globals, Plain, Render, run};
-pub use command::Command;
+pub use command::{Command, Handler};
 pub use facet::Facet;
 pub use failure::{Failure, FailureKind};
 
@@ -231,6 +273,14 @@ pub use clifacet_macros::command;
 /// assert_eq!(tree.execute(request).unwrap(), "finished #7");
 /// ```
 pub use clifacet_macros::subcommands;
+
+/// Makes a [`PlannedWith`](command::PlannedWith) impl a [`Handler`] that runs through its plan.
+///
+/// The bridge a blanket impl cannot provide — it would overlap the one every [`Command`]
+/// has — written beside the impl it comes from: `handle` is `plan(input, cx)?.execute()`
+/// and `preview` is the plan, so `--dry-run` prints what a real run executes. See
+/// [`PlannedWith`](command::PlannedWith) for an example.
+pub use clifacet_macros::planned;
 
 /// Derives [`Facet`], the companion derive for a clap command.
 ///

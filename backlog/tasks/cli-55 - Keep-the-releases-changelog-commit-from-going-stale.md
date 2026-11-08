@@ -1,10 +1,10 @@
 ---
 id: CLI-55
 title: Keep the release's changelog commit from going stale
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08 11:15'
-updated_date: '2026-11-08 12:36'
+updated_date: '2026-11-08 12:52'
 labels: []
 milestone: m-12
 dependencies: []

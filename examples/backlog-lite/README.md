@@ -54,7 +54,7 @@ bl --dry-run done CLI-20        # print the exact command, run nothing
 One file per command, and one file per layer around them:
 
 ```text
-src/commands/mod.rs     the map: the root `Cli`, the `Verb` tree, `Request` and `Action`
+src/commands/mod.rs     the map: one `commands!` line, then the request and the runner's plan
 src/commands/list.rs    one leaf per file: its flags, its input, its questions, its argv
 src/commands/show.rs      (and new, start, done, search, doctor)
 src/commands/task.rs    what show, start and done share: a task ID and moving it
@@ -64,10 +64,11 @@ src/app.rs              modes, `--dry-run`, streams and exit codes
 src/lib.rs              the crate docs, the module list and the re-exports
 ```
 
-Adding a leaf is a new file plus three lines in `commands/mod.rs` — a `mod` line, a `Verb`
-variant and an `Action` variant — and one arm in `invocation_of`. Forgetting the `Action`
-variant fails to compile. The registration is written by hand on purpose (decision-15):
-the list in `mod.rs` is the map of the CLI that a reviewer reads.
+Adding a leaf is a new file, its name in the `commands!` list in `commands/mod.rs`, and one
+arm in `invocation_of` — which the compiler demands, because the generated `Action` gains a
+variant. `commands!` writes the `mod` lines, the re-exports, the `Commands` tree, `Action`
+and the root `Cli` from that one list (decision-19 item 3), so the list is still the map of
+the CLI a reviewer reads; it is just the only copy of it.
 
 ## Running it
 

@@ -12,6 +12,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* register a folder of commands in one line
+([ee8b93d](https://github.com/Archont561/clifacet/commit/ee8b93df81bcd4966b519b7e73bf4c5dc5b8ec0f))
+* give commands the application's context
+([2a993f4](https://github.com/Archont561/clifacet/commit/2a993f46eadffd1d6ff3707f603ca2ce0e78ee4b))
 * run an application through clifacet::App
 ([fab54ba](https://github.com/Archont561/clifacet/commit/fab54ba989497736d477016bf186c0126fc43c42))
 
