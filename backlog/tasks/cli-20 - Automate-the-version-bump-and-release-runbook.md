@@ -4,7 +4,7 @@ title: Automate the version bump and release runbook
 status: Done
 assignee: []
 created_date: '2026-10-30 16:30'
-updated_date: '2026-11-06 14:01'
+updated_date: '2026-11-08 11:02'
 labels: []
 milestone: m-10
 dependencies:
@@ -24,7 +24,7 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 - [x] #1 `scripts/bump_version.py` rewrites every recorded version site, with pytest coverage and no network.
 - [x] #2 The bump leaves `CHANGELOG.md` alone: it is rendered from the commits, and a release whose commits say nothing is refused before anything is packaged.
 - [x] #3 `release.yml` tags the release and attaches the rendered notes only after both crates publish.
-- [ ] #4 A full release is rehearsed end to end on a real version bump.
+- [x] #4 A full release is rehearsed end to end on a real version bump.
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -44,6 +44,8 @@ Turn "release a new version" from a multi-file manual chore into one command wit
 - Consequence, checked against the tree today: `scripts/bump_version.py --check` still reports the three version sites agreeing at 0.1.0, and there is one unreleased entry describing the next version, so the 'the next release has to describe itself' guard will not fire on an empty section. AC\#4 itself is unchanged and still open for the original reason: it needs `bump-version 0.1.1 --relock` to run through a `main` dispatch, which is CLI-38's first criterion.
 
 - 2026-11-04: 0.2.0 exercised two of AC#4's three remaining clauses. `bump-version 0.2.0 --relock` (PR #45) moved the manifest sites and refreshed the lock, and CI's `lock guard` proved it. The release was then dispatched from the resulting `main` (run [41841115583](https://github.com/Archont561/clifacet/actions/runs/41841115583)), and it published both crates and tagged `v0.2.0`. The third clause, 'the post-tag changelog commit lands', **failed silently**: the step never rendered the file, so `commit` found nothing changed and pushed nothing. That is fixed and tested in `scripts/release.py` (`regenerate_changelog`), and the `[0.2.0]` section was rendered with `pixi run changelog` and committed through a PR. AC#4 stays open, narrowed to that clause: the next release must show the changelog commit landing on `main` by itself.
+
+2026-11-08: AC#4 proven by 0.3.1 and checked. The last open clause, that the post-tag changelog commit lands on main by itself, held: run [42473663383](https://github.com/Archont561/clifacet/actions/runs/42473663383) published both crates, tagged v0.3.1 and pushed 1b7a1c4 `chore(release): regenerate the changelog` as github-actions[bot]. The rest of the criterion ran again too: a real `bump-version 0.3.1 --relock` through PR #60 (lock guard green) and a dispatch from the resulting main. Recorded from CLI-45 AC#4; the task's status is unchanged.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
