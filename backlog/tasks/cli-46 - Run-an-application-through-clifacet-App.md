@@ -1,10 +1,10 @@
 ---
 id: CLI-46
 title: 'Run an application through clifacet::App'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08 01:59'
-updated_date: '2026-11-08 11:39'
+updated_date: '2026-11-08 11:58'
 labels: []
 milestone: m-12
 dependencies: []
