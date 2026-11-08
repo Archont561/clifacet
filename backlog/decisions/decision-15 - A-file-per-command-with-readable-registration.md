@@ -167,3 +167,16 @@ proposed; this note records the verdict per item.
 - **The generated `Request` conflicts with decision-14** and is settled in decision-14's
   favour: `Request` is written by the application. A `commands!` macro, if built, emits the
   tree but not `Request`.
+
+## Amendment (2026-11-08, decision-19)
+
+- **Item 1 is un-deferred.** `clifacet::commands!(..)` is built in CLI-33, without waiting
+  for the re-measurement CLI-32 fed; it now also emits the root `Cli` and, for that path,
+  `Request` (decision-14 amended).
+- **Item 2's refusal is reversed, and narrowed differently.** Discovery is built as an
+  opt-in inside clifacet, behind a `build` feature (`clifacet::build`), not as a
+  `clifacet-build` crate: no third publish target, and decision-7 is unchanged. The measured
+  objections above do not arise, because the macro emits `mod` declarations at its own
+  invocation site from lists the build script reports — no `include!`, no `#[path]`, no error
+  in `OUT_DIR` (CLI-50).
+- **Items 3 and 4 stand.** No proc macro reads the directory; the build script does.

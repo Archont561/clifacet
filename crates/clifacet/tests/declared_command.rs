@@ -201,6 +201,49 @@ fn the_secret_fields_are_listed_in_declaration_order() {
     );
 }
 
+/// A credential that can also come from the environment. `PATH` stands in for the
+/// variable because every platform the tests run on sets it, so no test has to mutate
+/// the process environment to have a value clap could print.
+#[clifacet::command(input = Deploy)]
+#[command(name = "deploy")]
+struct DeployCli {
+    /// The API token
+    #[clifacet(long, env = "PATH", secret)]
+    token: Option<clifacet::secret::Secret<String>>,
+}
+
+struct Deploy {
+    token: Option<clifacet::secret::Secret<String>>,
+}
+
+/// clap's help prints an environment variable's current value beside its name, so a
+/// secret read from one would be shown by `--help` (decision-12): the help names the
+/// variable and never its value.
+#[test]
+fn help_names_a_secret_environment_variable_but_never_shows_its_value() {
+    let value = std::env::var("PATH").expect("PATH is set wherever the tests run");
+    let help = <DeployCli as Facet>::command().render_help().to_string();
+
+    assert!(
+        help.contains("[env: PATH]"),
+        "the variable is still named: {help}"
+    );
+    assert!(
+        !help.contains(&value),
+        "the value leaked into --help: {help}"
+    );
+
+    // Hiding is presentation only: the credential still arrives, and a flag still wins.
+    let deploy = DeployCli::try_parse_from(["deploy", "--token", "s3cret"])
+        .expect("the flag parses")
+        .validate()
+        .expect("nothing to reject");
+    assert_eq!(
+        deploy.token.as_ref().map(|token| token.expose().as_str()),
+        Some("s3cret")
+    );
+}
+
 /// A form built from the declarations masks a `secret` field by itself: forgetting a
 /// `mark_secret` call must not be how a token ends up on the screen.
 #[cfg(feature = "tui")]

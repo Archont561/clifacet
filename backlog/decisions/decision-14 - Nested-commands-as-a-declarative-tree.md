@@ -196,3 +196,10 @@ Sequencing: after CLI-31 and the 0.3.0 release, because CLI-31 adds `Command::pl
 the tree's generated `Command` impl delegates every method of the trait. CLI-32 carries
 it, and moves `examples/backlog-lite` — the repository's only tree — rather than
 `examples/simple`, which has no subcommands.
+
+## Amendment (2026-11-08, decision-19 item 3)
+
+Item 4 of the acceptance note still holds for `#[clifacet::subcommands]`: there `Request` is
+hand-written and the generated code checks it. Under `clifacet::commands!` — one line per
+command, with `input` defaulting to `Self` — the `Request` is generated from the leaves'
+inputs, because nothing is left for the application to say in it (CLI-33).

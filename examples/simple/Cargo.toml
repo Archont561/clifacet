@@ -15,7 +15,8 @@ publish = false
 [dependencies]
 # The derive expands to `::clap::…` paths, so a crate that parses a derived command
 # needs `clap` itself; the workspace pins one version for both.
-clap.workspace = true
+# The workspace leaves colour and suggestions off; an application turns them on.
+clap = { workspace = true, features = ["color", "suggestions"] }
 clifacet = { path = "../../crates/clifacet", features = ["interactive", "tui"] }
 
 [dev-dependencies]

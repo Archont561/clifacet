@@ -12,3 +12,10 @@ Carry secrets in a `Secret<T>` newtype whose `Debug` and `Display` are a fixed `
 
 ## Consequences
 Applications mark their own secrets by using `Secret<T>`, and a value that stays a plain `String` is not protected — the guarantee is about the framework's types, not about a policy the framework can enforce. `Secret::expose` is the only read, so every place that touches a credential is visible in review. Masking in a form is presentation only; the submission still carries the value. Secrets supplied on the command line are visible to other processes on most systems, a prompted secret is echoed by the terminal, and application-owned logs are the application's responsibility; all three are documented as limitations rather than papered over. Tests assert the absence of a canary without printing it, so a failing redaction test does not leak the value it is protecting.
+
+## Amendment (2026-11-08, decision-19 item 8)
+
+`--help` is a covered surface. clap's help prints an environment variable's current value
+beside its name, so a field declared `#[clifacet(.., secret)]` gets `hide_env_values = true`,
+and `#[derive(Facet)]` refuses a `#[facet(secret)]` field whose `#[arg(env)]` would show it
+(CLI-43).

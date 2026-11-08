@@ -36,6 +36,7 @@ fn a_field_rule_on_the_wrong_field_fails_to_compile_and_says_why() {
     cases.compile_fail("tests/ui/field_confirm_not_bool.rs");
     cases.compile_fail("tests/ui/field_ask_not_option.rs");
     cases.compile_fail("tests/ui/field_ask_secret.rs");
+    cases.compile_fail("tests/ui/facet_secret_env_shown.rs");
     cases.compile_fail("tests/ui/field_ask_positional.rs");
     cases.compile_fail("tests/ui/field_rule_wrong_type.rs");
     cases.compile_fail("tests/ui/field_rule_beside_bridge.rs");

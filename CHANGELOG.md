@@ -17,6 +17,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **deps:** depend on clap without its default features
+([d7bc6e4](https://github.com/Archont561/clifacet/commit/d7bc6e4a5a62cd64ed60902b3d93da049daadd75))
+* hide a secret's environment value from --help
+([885403c](https://github.com/Archont561/clifacet/commit/885403c4d96808c21ac58f8e9692dcf01b3c86c1))
 * **release:** commit the changelog as the workflow's bot
 ([4e2f139](https://github.com/Archont561/clifacet/commit/4e2f139e3a2c2d39c5561ac33d537cbddba3f4bf))
 

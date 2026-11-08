@@ -1,10 +1,10 @@
 ---
 id: CLI-32
 title: Nested commands as a declarative tree
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01 22:46'
-updated_date: '2026-11-06 20:01'
+updated_date: '2026-11-08 01:56'
 labels: []
 milestone: m-7
 dependencies:
@@ -44,3 +44,9 @@ AC#8: there is no page titled command authoring guide; the rule went into docs/d
 
 AC#7 line counts for decision-15's re-measurement (examples/backlog-lite, tests unchanged: git diff of tests/ is empty): before (adab86a8) lib.rs 717 + main.rs 17 = 734; after lib.rs 709 + main.rs 17 = 726 (-8). Without blank and comment lines, lib.rs 503 -> 472 (-31, about -6%). The hand-written TryFrom<Cli> and collect dispatch (about 110 lines) are gone; most of the saving is spent on one named input struct per leaf (Filter, TaskRef, NewTask, Query, Checkup) where Action held inline fields. One message changed wording: a blank show ID or search query now reports the generated non_empty message instead of the hand-written one (start and done still check the ID with task_id while confirming); no test asserts either.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed on maintainer authorisation (2026-11-08). All eight ACs met in PR #58: `#[clifacet::subcommands(input = Request, output = …)]` declares the tree where the leaves live, clap owns parsing, and the generated `TryFrom`, `Collect` and `Command` (or, with `planned`, `Planned`) delegate to the chosen leaf (leaf-is-command dispatch). `Request` stays the application's (decision-14), with trybuild cases for a missing, extra or mistyped variant and for repeated names, unknown keys and inline or unit variants; `collect = path` is the escape hatch. backlog-lite declares its tree, its tests unchanged, and the before/after line count is in the notes. The decision-15 re-measurement it fed is superseded by decision-19.
+<!-- SECTION:FINAL_SUMMARY:END -->

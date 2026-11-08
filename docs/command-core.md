@@ -563,6 +563,7 @@ Redaction is a property of the type, not a scrubbing pass:
 | a `Debug` record, such as a parity harness effect | `Secret([redacted])` |
 | a preview, such as a form field | a secret field draws `[redacted]`, and its length is not reported |
 | a failing test's panic message | the record it prints is the `Debug` above |
+| `--help` for a secret read from the environment | clap's help prints a variable's current value beside its name (`[env: TOKEN=…]`); a field declared `#[clifacet(env, secret)]` gets `hide_env_values = true`, so help shows `[env: TOKEN]` only, and the derive refuses a `#[facet(secret)]` field whose `#[arg(env)]` would show it |
 
 - **Nothing keeps a list of secret values.** A registry of live credentials would
   itself be a place to leak them, and it would have to be cleansed. Since the marker
