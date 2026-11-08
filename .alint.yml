@@ -187,6 +187,14 @@ rules:
     level: error
     message: "The supported feature matrix script is missing; compatibility would be a claim again."
 
+  # `backlog-check` runs this after `backlog doctor`. Deleting it would not fail the gate
+  # by accident: the task would run a command that no longer exists.
+  - id: require-check-backlog-status
+    kind: file_exists
+    paths: "scripts/check_backlog_status.py"
+    level: error
+    message: "The task-status check is missing; a card could finish and never say so."
+
   # The prose check (decision-20). Vale reads the generated pair; the authored source and
   # the script that renders it are the two files a writer could break the check by deleting.
   - id: require-prose-config

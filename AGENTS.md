@@ -124,6 +124,17 @@ start. Use the `backlog`, `audit`, `refactor`, `grill-me`, `writing-for-agents`,
 and `skill-creator` skills as relevant. Do not install or update unreviewed
 remote skills, or overwrite local skills, without maintainer authorization.
 
+## The board: close the card when the work is done
+
+A task's status is checked, not remembered. `backlog-check` fails when a card in
+`Done` has an unchecked acceptance criterion, and when a card with every
+criterion checked is still in `To Do` or `In Progress`.
+
+The last step of a task is therefore not the green CI run — it is checking the
+criteria and setting the status, in the same change as the work. When a criterion stays
+open because its proof belongs to another card, record the proof here and say
+where it is; that is what CLI-38 needed and did not have.
+
 ## Regain direction
 
 When unsure about the goal, priority, or next step, read and follow

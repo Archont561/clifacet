@@ -4,7 +4,7 @@ title: Prepare and publish 0.2.0
 status: Done
 assignee: []
 created_date: '2026-11-01 22:46'
-updated_date: '2026-11-06 14:02'
+updated_date: '2026-11-08 18:41'
 labels: []
 milestone: m-10
 dependencies:
@@ -25,7 +25,7 @@ Run the second release through the runbook that was built for the first, includi
 - [x] #2 Every quality gate passes on the release commit before the tag exists.
 - [x] #3 The changelog and the release notes are rendered from the commits; no section is written by hand.
 - [x] #4 Both crates publish from one authorized dispatch through the `crates` environment, in order, with the tag matching the published version.
-- [ ] #5 The remaining acceptance criterion of CLI-20 is satisfied here: the relock path is exercised from a `main` dispatch, and the evidence is recorded on that card.
+- [x] #5 The remaining acceptance criterion of CLI-20 is satisfied here: the relock path is exercised from a `main` dispatch, and the evidence is recorded on that card.
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -38,6 +38,10 @@ Run the second release through the runbook that was built for the first, includi
 - **AC#4.** One authorised dispatch through the `crates` environment published `clifacet-macros`, then `clifacet`, then tagged `v0.2.0`, matching the recorded version.
 - **AC#5 stays open.** CLI-20 AC#4 also requires the post-tag changelog commit to land, and it did not. `release changelog` fetched the tag and went straight to `commit`, which only commits a changed file. It never rendered, so it reported 'already matches the tag' and pushed nothing. This is the step's first real run, because the changelog tooling arrived after 0.1.0. Fixed test-first in `scripts/release.py`: a new `regenerate_changelog` does fetch → render → write → commit, with four tests in `test_release.py`, and a `ChangelogError` is now a message instead of a traceback. It can only be proven by the next release.
 - **Found on the way.** In PR #45, a `bump_version` test rewrote the real manifests back to 0.1.0 after the bump. It now runs on fixtures.
+
+2026-11-08: AC#5 satisfied and closed. It required the relock path to be exercised from a `main` dispatch, with the evidence recorded on CLI-20. Both are now true, and the dependency ran in the other direction for once: CLI-20's AC#4 was proven on 2026-11-08 (run [42473663383](https://github.com/Archont561/clifacet/actions/runs/42473663383) — `bump-version 0.3.1 --relock` through PR #60 with the lock guard green, then a dispatch from the resulting `main` that published both crates, tagged `v0.3.1`, and pushed the post-tag `chore(release): regenerate the changelog` commit by itself), and CLI-20's notes record it. The 0.4.0 release repeated the whole path afterwards.
+
+The criterion stayed unchecked because proving it was recorded on the other card, which is a gap the guard added today (a `Done` task with unchecked criteria now fails `backlog-check`) exists to surface.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
