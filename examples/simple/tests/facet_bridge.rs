@@ -7,11 +7,11 @@
 
 use clifacet::Facet;
 use clifacet::clap::Parser as _;
-use clifacet_example::{Cli, ExampleInput, Level};
+use clifacet_example::{Example, ExampleInput, Level};
 
 /// Parses and validates one command line, failing the test on a parse error.
 fn validated(args: &[&str]) -> ExampleInput {
-    let cli = Cli::try_parse_from(std::iter::once("example").chain(args.iter().copied()))
+    let cli = Example::try_parse_from(std::iter::once("example").chain(args.iter().copied()))
         .unwrap_or_else(|error| panic!("{args:?} should parse: {error}"));
 
     // The derived bridge is the only path from clap's parsed struct to input.
@@ -35,13 +35,13 @@ fn the_generated_command_is_clap_owned_grammar() {
     // Same value, not a copy: the derive reports clap's command, so aliases,
     // help and value parsers cannot drift into a second grammar.
     assert_eq!(
-        <Cli as Facet>::command().render_long_help().to_string(),
-        <Cli as clap::CommandFactory>::command()
+        <Example as Facet>::command().render_long_help().to_string(),
+        <Example as clap::CommandFactory>::command()
             .render_long_help()
             .to_string(),
     );
 
-    let command = <Cli as Facet>::command();
+    let command = <Example as Facet>::command();
     let name = command
         .get_arguments()
         .find(|argument| argument.get_id() == "name")
@@ -67,7 +67,7 @@ fn a_custom_value_parser_decides_what_is_valid_before_validation() {
 
     assert_eq!(input.level, Level::Verbose);
 
-    let error = Cli::try_parse_from(["example", "--level", "chatty"])
+    let error = Example::try_parse_from(["example", "--level", "chatty"])
         .expect_err("clap rejects a level that is not one of the possible values");
     assert!(
         error.to_string().contains("chatty") || error.to_string().contains("level"),
@@ -77,7 +77,7 @@ fn a_custom_value_parser_decides_what_is_valid_before_validation() {
 
 #[test]
 fn the_validation_hook_still_rejects_what_the_parser_cannot() {
-    let cli = Cli::try_parse_from(["example", "--repeat", "9"]).expect("9 parses as a u8");
+    let cli = Example::try_parse_from(["example", "--repeat", "9"]).expect("9 parses as a u8");
 
     let failure = cli
         .validate()

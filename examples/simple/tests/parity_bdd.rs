@@ -7,7 +7,7 @@ use clifacet::harness::{Outcome, Parity, Recording, Subject};
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
 use clifacet::tui::Key;
-use clifacet_example::{self as example, Example, ExampleInput};
+use clifacet_example::{self as example, ExampleInput, example_command};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 
@@ -36,7 +36,8 @@ fn describe(input: &ExampleInput) -> String {
 }
 
 fn flags(flags: &[&str]) -> Outcome {
-    let (command, effects) = Recording::new(Example, describe as fn(&ExampleInput) -> String);
+    let (command, effects) =
+        Recording::new(example_command(), describe as fn(&ExampleInput) -> String);
     let argv = argv(flags);
     Outcome::measured(|out, err| {
         example::main_with_command(
@@ -52,7 +53,8 @@ fn flags(flags: &[&str]) -> Outcome {
 }
 
 fn prompted(flags: &[&str], answers: impl IntoIterator<Item = Answer>) -> Outcome {
-    let (command, effects) = Recording::new(Example, describe as fn(&ExampleInput) -> String);
+    let (command, effects) =
+        Recording::new(example_command(), describe as fn(&ExampleInput) -> String);
     let argv = argv(flags);
     let script = Scripted::new(answers);
     Outcome::measured(|out, err| {
@@ -69,7 +71,8 @@ fn prompted(flags: &[&str], answers: impl IntoIterator<Item = Answer>) -> Outcom
 }
 
 fn form(keys: Vec<Key>) -> Outcome {
-    let (command, effects) = Recording::new(Example, describe as fn(&ExampleInput) -> String);
+    let (command, effects) =
+        Recording::new(example_command(), describe as fn(&ExampleInput) -> String);
     Outcome::measured(|out, err| example::run_tui_with(&command, Vec::new(), keys, out, err))
         .with_effects(effects.recorded())
 }

@@ -6,16 +6,19 @@ use clifacet::prompt::Session;
 use super::task::{self, TaskRef};
 use crate::status::Status;
 
-/// `bl start`: confirmed before anything moves.
-#[clifacet::command(input = TaskRef, collect = confirm_start)]
-#[derive(Debug, Clone)]
-pub struct Start {
-    /// The task ID.
-    #[clifacet(trim, non_empty)]
-    pub id: String,
+/// Move a task to In Progress.
+///
+/// A confirmation that cannot be asked is not an answer, so the leaf refuses instead of moving
+/// the task: `collect = confirm` is where that rule lives, and the generated command keeps it.
+#[clifacet::command(input = TaskRef, collect = confirm)]
+pub fn start(#[clifacet(trim, non_empty)] id: String) -> Result<TaskRef, Failure> {
+    Ok(TaskRef {
+        id: task::task_id(&id)?,
+    })
 }
 
-fn confirm_start(start: Start, session: &mut Session) -> Result<Start, Failure> {
+/// Confirms before anything moves.
+fn confirm(start: Start, session: &mut Session) -> Result<Start, Failure> {
     task::confirm_status(&task::task_id(&start.id)?, Status::InProgress, session)?;
     Ok(start)
 }

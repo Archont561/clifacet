@@ -227,6 +227,21 @@ fn ranged(arguments: Vec<Meta>, ty: &Type) -> syn::Result<Vec<Meta>> {
         .collect())
 }
 
+/// The `T` of an `Option<T>`, for a declaration that fills one in.
+pub(crate) fn optional_inner(path: &syn::TypePath) -> Option<&Type> {
+    let last = path.path.segments.last()?;
+    if last.ident != "Option" {
+        return None;
+    }
+    let PathArguments::AngleBracketed(arguments) = &last.arguments else {
+        return None;
+    };
+    match (arguments.args.len(), arguments.args.first()) {
+        (1, Some(GenericArgument::Type(inner))) => Some(inner),
+        _ => None,
+    }
+}
+
 /// The type clap parses one value of this field as: `Option<T>` and `Vec<T>` peeled.
 fn parsed_type(ty: &Type) -> &Type {
     peeled(ty).map_or(ty, parsed_type)

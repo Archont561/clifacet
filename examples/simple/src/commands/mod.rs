@@ -7,4 +7,6 @@
 
 mod example;
 
-pub use example::{Cli, Example, ExampleInput, ExampleOutput, Level, MAX_REPEAT, check_input};
+pub use example::{
+    Example, ExampleInput, ExampleOutput, Level, MAX_REPEAT, check_input, example_command,
+};

@@ -3,17 +3,19 @@
 //! This crate is the worked example M1 asks for, and the shape an application is
 //! meant to copy. It depends on `clifacet` the way any application does — through
 //! the published API and nothing else — which is what makes it a proof of that API
-//! rather than a part of it. It holds the three layers apart on purpose:
+//! rather than a part of it. It holds the three layers apart on purpose, and the command
+//! is one function:
 //!
-//! 1. [`Cli`] is the `clap` surface: flags, help and usage errors. Each argument is
-//!    declared once, with `#[clifacet(..)]`: its grammar, its question, its
-//!    normalisation and its place on the form sit on the one field (decision-13).
-//! 2. [`ExampleInput`] is validated input, built by the [`TryFrom<Cli>`] those
-//!    declarations generate, which ends in [`check_input`] for the one rule that is
-//!    the application's own. Everything that can be wrong with a value is rejected
-//!    there, so [`Input`] is total.
-//! 3. [`Example`] is the command: it implements [`Command`], touches no stream and
-//!    knows nothing about `clap`.
+//! 1. **the declaration** is the parameter list of [`example`], each argument declared once
+//!    with `#[clifacet(..)]`: its grammar, its question, its normalisation and its place on
+//!    the form (decision-13). The doc comment is the command's description.
+//! 2. [`ExampleInput`] is validated input, generated from those same declarations by
+//!    `#[clifacet::command]`, which ends in [`check_input`] for the one rule that is the
+//!    application's own. Everything that can be wrong with a value is rejected there, so
+//!    the input is total.
+//! 3. [`Example`] is the command — the macro's name for the leaf — generated beside the
+//!    function: it parses (`clap`'s grammar, unchanged), validates, and calls the function.
+//!    The body touches no stream and knows nothing about `clap`.
 //!
 //! [`app`] is the application layer that joins them: one [`clifacet::App`] that
 //! parses, settles the interaction mode against [`POLICY`], asks, validates, runs,
@@ -27,7 +29,7 @@
 //!
 //! ```text
 //! src/commands/mod.rs      the registry: one `mod` line per command
-//! src/commands/example.rs  the command: `Cli`, `ExampleInput`, `Example`
+//! src/commands/example.rs  the command: `example`, `ExampleInput`, `Example`
 //! src/interaction.rs       the interaction flags and the mode `POLICY`
 //! src/exit.rs              the exit codes, and the one place an outcome is written
 //! src/entry.rs             the application as one `App`, and the entry points
@@ -46,7 +48,9 @@ mod exit;
 mod form;
 mod interaction;
 
-pub use commands::{Cli, Example, ExampleInput, ExampleOutput, Level, MAX_REPEAT, check_input};
+pub use commands::{
+    Example, ExampleInput, ExampleOutput, Level, MAX_REPEAT, check_input, example_command,
+};
 pub use entry::{
     app, dialog_frontend, main, main_with, main_with_command, run, run_with, run_with_command,
     terminal_frontend,

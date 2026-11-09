@@ -12,7 +12,7 @@ use clifacet::harness::{Outcome, Parity, Recording, Subject};
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Answer, Scripted};
 use clifacet::tui::Key;
-use clifacet_example::{self as example, Example, ExampleInput};
+use clifacet_example::{self as example, ExampleInput, example_command};
 
 /// How a run is described to a reader: the validated input, which is what the
 /// command actually received.
@@ -29,7 +29,8 @@ fn argv(flags: &[&str]) -> Vec<String> {
 
 /// Runs the command as if the flags had been typed, recording what it received.
 fn flags(flags: &[&str]) -> Outcome {
-    let (command, effects) = Recording::new(Example, describe as fn(&ExampleInput) -> String);
+    let (command, effects) =
+        Recording::new(example_command(), describe as fn(&ExampleInput) -> String);
     let argv = argv(flags);
 
     Outcome::measured(|out, err| {
@@ -47,7 +48,8 @@ fn flags(flags: &[&str]) -> Outcome {
 
 /// Runs the command with a scripted prompt frontend, recording what it received.
 fn prompted(flags: &[&str], answers: impl IntoIterator<Item = Answer>) -> Outcome {
-    let (command, effects) = Recording::new(Example, describe as fn(&ExampleInput) -> String);
+    let (command, effects) =
+        Recording::new(example_command(), describe as fn(&ExampleInput) -> String);
     let argv = argv(flags);
     let script = Scripted::new(answers);
 
@@ -66,7 +68,8 @@ fn prompted(flags: &[&str], answers: impl IntoIterator<Item = Answer>) -> Outcom
 
 /// Runs the command through the headless form, recording what it received.
 fn form(keys: &[Key]) -> Outcome {
-    let (command, effects) = Recording::new(Example, describe as fn(&ExampleInput) -> String);
+    let (command, effects) =
+        Recording::new(example_command(), describe as fn(&ExampleInput) -> String);
     let keys = keys.to_vec();
 
     Outcome::measured(|out, err| example::run_tui_with(&command, Vec::new(), keys, out, err))
@@ -104,7 +107,7 @@ fn the_recorded_input_is_the_validated_input() {
     assert_eq!(
         outcome.effects(),
         [String::from(
-            "ExampleInput { name: \"ada\", repeat: 2, explode: false, level: Basic, token: None }"
+            "ExampleInput { name: \"ada\", repeat: 2, level: Basic, explode: false, token: None }"
         )],
         "what reached the command is the same value every mode builds"
     );
@@ -142,7 +145,8 @@ fn a_validation_failure_is_reported_in_the_same_words_on_the_command_line() {
 
 #[test]
 fn the_form_refuses_with_the_same_words_and_runs_nothing() {
-    let (command, effects) = Recording::new(Example, describe as fn(&ExampleInput) -> String);
+    let (command, effects) =
+        Recording::new(example_command(), describe as fn(&ExampleInput) -> String);
     let mut state = example::tui_form();
     let mut terminal = clifacet::tui::ratatui::Terminal::new(
         clifacet::tui::ratatui::backend::TestBackend::new(60, 10),

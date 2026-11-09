@@ -17,7 +17,7 @@ use clifacet::policy::Capabilities;
 use clifacet::prompt::Scripted;
 use clifacet::provenance::{Provenance, Source};
 use clifacet::secret::{REDACTED, Secret};
-use clifacet_example::{self as example, Example, ExampleInput};
+use clifacet_example::{self as example, ExampleInput, example_command};
 
 /// A value that must not survive into any framework-owned output.
 const CANARY: &str = "sk-canary-7f3a9d";
@@ -123,7 +123,7 @@ fn a_blank_credential_is_absent_rather_than_empty() {
     use clifacet::Facet;
     use clifacet::clap::Parser;
 
-    let input = example::Cli::try_parse_from(["example", "--token", "  "])
+    let input = example::Example::try_parse_from(["example", "--token", "  "])
         .expect("a blank value parses")
         .validate()
         .expect("a blank credential is not an error");
@@ -171,7 +171,9 @@ fn every_source_has_a_name_a_person_can_read() {
 fn a_failed_parity_comparison_does_not_print_a_secret() {
     // The effects are the framework's own record: `Recording` describes the input it
     // received, and a secret in that input is redacted by its `Debug`.
-    let (command, effects) = Recording::new(Example, |input: &ExampleInput| format!("{input:?}"));
+    let (command, effects) = Recording::new(example_command(), |input: &ExampleInput| {
+        format!("{input:?}")
+    });
 
     let accepted = ExampleInput {
         name: String::from("ada"),

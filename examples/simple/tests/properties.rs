@@ -16,7 +16,7 @@
 use clifacet::Facet;
 use clifacet::clap::Parser as _;
 use clifacet::prompt::Scripted;
-use clifacet_example::{self as example, Cli, ExampleInput, Level, MAX_REPEAT};
+use clifacet_example::{self as example, Example, ExampleInput, Level, MAX_REPEAT};
 use proptest::prelude::*;
 
 /// A name validation accepts unchanged: non-empty, already trimmed.
@@ -97,7 +97,7 @@ proptest! {
     #[test]
     fn a_canonical_input_round_trips_through_argv(input in canonical_input()) {
         let argv = argv_for(&input);
-        let draft = Cli::try_parse_from(&argv)
+        let draft = Example::try_parse_from(&argv)
             .map_err(|error| TestCaseError::fail(format!("{argv:?} should parse: {error}")))?;
         let validated = draft
             .validate()
@@ -148,7 +148,7 @@ proptest! {
             String::from("--name"),
             name.clone(),
         ];
-        let Some(draft) = Cli::try_parse_from(&argv).ok() else {
+        let Some(draft) = Example::try_parse_from(&argv).ok() else {
             return Ok(());
         };
 

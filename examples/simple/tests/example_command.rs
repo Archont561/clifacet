@@ -8,7 +8,9 @@
 use clifacet::clap::Parser as _;
 use clifacet::policy::Mode;
 use clifacet::{Command, Failure, FailureKind};
-use clifacet_example::{self as example, Cli, Example, ExampleInput, Level, MAX_REPEAT};
+use clifacet_example::{
+    self as example, Example, ExampleInput, Level, MAX_REPEAT, example_command,
+};
 
 /// Runs one invocation and returns its exit code, data stream and diagnostic stream.
 #[allow(
@@ -83,7 +85,8 @@ fn a_failing_operation_is_an_execution_failure_with_no_data() {
 #[test]
 fn unbounded_values_are_rejected_by_the_library_not_by_the_parser() {
     // `u8` parsing would accept 255, so the range check has to be ours.
-    let parsed = Cli::try_parse_from(["example", "--repeat", "255"]).expect("255 is a valid u8");
+    let parsed =
+        Example::try_parse_from(["example", "--repeat", "255"]).expect("255 is a valid u8");
     let failure = ExampleInput::try_from(parsed).expect_err("255 is out of range");
 
     assert_eq!(failure.kind(), FailureKind::Validation);
@@ -100,7 +103,9 @@ fn the_command_seam_runs_without_the_application_layer() {
         token: None,
     };
 
-    let output = Example.execute(input).expect("a valid input runs");
+    let output = example_command()
+        .execute(input)
+        .expect("a valid input runs");
 
     assert_eq!(output.lines, vec!["hello, seam", "hello, seam"]);
 }
@@ -115,7 +120,9 @@ fn a_verbose_run_reports_how_far_it_has_got() {
         token: None,
     };
 
-    let output = Example.execute(input).expect("a valid input runs");
+    let output = example_command()
+        .execute(input)
+        .expect("a valid input runs");
 
     assert_eq!(
         output.lines,
@@ -126,7 +133,7 @@ fn a_verbose_run_reports_how_far_it_has_got() {
 
 #[test]
 fn the_command_seam_reports_execution_failures_as_that_kind() {
-    let failure = Example
+    let failure = example_command()
         .execute(ExampleInput {
             name: String::from("seam"),
             repeat: 1,
@@ -141,6 +148,18 @@ fn the_command_seam_reports_execution_failures_as_that_kind() {
         failure.kind(),
         FailureKind::Validation,
         "an execution failure must not look like validation to the application"
+    );
+}
+
+#[test]
+fn a_dry_run_is_refused_rather_than_silently_ignored() {
+    let (code, out, err) = invoke(&["--dry-run"]);
+
+    assert_eq!(code, example::EXIT_VALIDATION_FAILED, "got {err:?}");
+    assert_eq!(out, "", "a refused run writes no machine data");
+    assert!(
+        err.contains("cannot show what it would do"),
+        "the refusal says why: got {err:?}"
     );
 }
 
@@ -192,7 +211,7 @@ fn a_closed_data_stream_becomes_an_execution_failure() {
 
     let mut err = Vec::new();
     let code = example::run(
-        Cli {
+        Example {
             name: None,
             repeat: 1,
             level: Level::Basic,

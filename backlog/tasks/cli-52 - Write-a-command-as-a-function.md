@@ -177,17 +177,40 @@ Decisions the build forced, each recorded where it can be argued with:
 
 ### What is proven
 
-- `crates/clifacet/tests/function_command.rs` (6 tests): identical `--help`, identical
+- `crates/clifacet/tests/function_command.rs` (11 tests): identical `--help`, identical
   `about`, identical input and output against a hand-written struct; a bare parameter is
   a positional and is not accepted as a flag; the context reaches the function through
   `Handler`; a tree mixes a function leaf with a struct leaf and its `--help` lists both.
-- `crates/clifacet/tests/ui/function_*.rs` (7 cases): not a `Result`, a pattern
+- `crates/clifacet/tests/ui/function_*.rs` (8 cases): not a `Result`, a pattern
   parameter, a reference that is not a context, a context that is not last, a flag with
-  no `help`, `input = ..` on a function, and a value type marked `context`.
+  no `help`, `bridge = ..` on a function, a `skip` parameter carrying a rule, and a value
+  type marked `context`.
 - `examples/backlog-lite/src/commands/doctor.rs` is now a function, registered by the
   same `commands!` line as its seven struct neighbours, with `bl`'s whole flow suite
   passing unchanged: AC#3's "explicitly and through discovery" is the same call for both
   forms because both expose the same type name.
+
+### Added while converting the examples
+
+Two things the function form needed before an existing application could be moved onto
+it, both found by converting `examples/simple` rather than by reasoning about it:
+
+- **`skip` on a parameter.** A value clap parses but the input does not carry: the body
+  receives it from the command instead. It is what lets the interaction flags stay on the
+  command, where the application reads them, without becoming part of what the command
+  runs on. A skipped parameter takes no other key — a rule on a value that never reaches
+  the input would apply to nothing — and the emitted function carries
+  `#[allow(unused_variables)]`, because not reading it is the declaration working.
+- **The author's own `#[command(..)]`.** `name`, `version`, `about`, `long_about` and
+  clap's other struct-level attributes are forwarded onto the generated struct, beside the
+  doc comment and after the derives, and stripped from the `fn`: clap's helper attributes
+  on a function are an error, and "used before it is introduced" besides.
+
+The generated input also derives `PartialEq` and `Eq`, as a hand-written input does, so a
+test can assert what a command line validated into without comparing field by field. And
+the call into the function now names its parameters rather than the input's patterns: a
+skipped parameter is an argument of `__clifacet_call` that comes from the struct, so the
+call cannot be spelled from the input's destructuring alone.
 
 ### Left for the next task
 

@@ -13,20 +13,22 @@ use clifacet::Command;
 use clifacet::policy::Capabilities;
 use clifacet::prompt::{Dialog, Prompter, Terminal};
 
-use crate::commands::{Cli, Example, ExampleInput, ExampleOutput};
+use crate::commands::example_command;
+use crate::commands::{Example, ExampleInput, ExampleOutput};
 use crate::exit::EXIT;
 use crate::interaction::{POLICY, requested_mode};
 
-/// The application: parse [`Cli`], settle the mode against [`POLICY`], ask, validate,
+/// The application: parse [`Example`], settle the mode against [`POLICY`], ask, validate,
 /// run [`Example`], write its output and answer with [`EXIT`]'s codes.
 ///
 /// `main.rs` is `app().run()`. The output is written with the runner's default — its
 /// `Display`, one greeting per line — and `--tui` is hosted by the runner, which draws
-/// the form generated from `Cli`'s `form` fields on the diagnostic stream.
+/// the form generated from `Example`'s `form` fields on the diagnostic stream.
 #[must_use]
-pub fn app() -> App<'static, Cli, Example> {
-    App::<Cli>::new()
-        .command(&Example)
+pub fn app() -> App<'static, Example, Example> {
+    // No `.command(..)`: the parsed command line *is* the command, which is what a declared
+    // tree does too. The command is the one type here, so a run is one value parsed once.
+    App::<Example>::new()
         .policy(POLICY)
         .mode_from(requested_mode)
         .exit(EXIT)
@@ -36,7 +38,7 @@ pub fn app() -> App<'static, Cli, Example> {
 ///
 /// Data goes to `out` only, diagnostics to `err` only. Prompts, when the mode permits
 /// them, come from the process's terminal.
-pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
+pub fn run(cli: Example, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     run_with(cli, Capabilities::detected(), dialog_frontend, out, err)
 }
 
@@ -74,13 +76,16 @@ pub fn terminal_frontend() -> Box<dyn Prompter> {
 /// is called only when the resolved plan asks the user something, so a scripted
 /// frontend exercises exactly the code a terminal frontend would.
 pub fn run_with(
-    cli: Cli,
+    cli: Example,
     capabilities: Capabilities,
     build_frontend: impl FnOnce() -> Box<dyn Prompter>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
-    run_with_command(&Example, cli, capabilities, build_frontend, out, err)
+    // The command is the parsed line, and its own input is the values on it: one value, read
+    // twice, rather than a second parse to get a command out of a line.
+    let command = cli.clone();
+    run_with_command(&command, cli, capabilities, build_frontend, out, err)
 }
 
 /// Runs one parsed invocation of any command that accepts this example's input.
@@ -91,7 +96,7 @@ pub fn run_with(
 /// command" cannot quietly be a different pipeline: it is the same runner.
 pub fn run_with_command<C>(
     command: &C,
-    cli: Cli,
+    cli: Example,
     capabilities: Capabilities,
     build_frontend: impl FnOnce() -> Box<dyn Prompter>,
     out: &mut dyn Write,
@@ -130,7 +135,14 @@ pub fn main_with(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
-    main_with_command(&Example, argv, capabilities, build_frontend, out, err)
+    main_with_command(
+        &example_command(),
+        argv,
+        capabilities,
+        build_frontend,
+        out,
+        err,
+    )
 }
 
 /// Parses `argv`, then runs it against `command`.

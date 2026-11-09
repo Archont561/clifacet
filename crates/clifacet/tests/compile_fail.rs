@@ -21,7 +21,8 @@ fn a_function_command_reports_what_it_cannot_be() {
     cases.compile_fail("tests/ui/function_context_not_last.rs");
     cases.compile_fail("tests/ui/function_context_marked.rs");
     cases.compile_fail("tests/ui/function_flag_without_help.rs");
-    cases.compile_fail("tests/ui/function_input_key.rs");
+    cases.compile_fail("tests/ui/function_bridge_key.rs");
+    cases.compile_fail("tests/ui/function_skip_with_rule.rs");
 }
 
 #[test]

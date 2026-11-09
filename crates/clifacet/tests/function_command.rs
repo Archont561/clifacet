@@ -234,3 +234,117 @@ fn a_tree_mixes_a_function_leaf_with_a_struct_leaf() {
     assert!(help.contains("add"), "{help}");
     assert!(help.contains("Count what is on the shelf"), "{help}");
 }
+
+// --- what a parameter can declare beyond the grammar -----------------------------
+
+/// `greet`: a filled value, a question, and a rule across the input.
+mod greet {
+    use clifacet::Failure;
+
+    /// Greet someone.
+    #[clifacet::command(check = crate::check_greeting)]
+    pub fn greet(
+        #[clifacet(
+            long,
+            help = "Who to greet",
+            ask = "Who should I greet?",
+            fill = "world",
+            trim,
+            non_empty
+        )]
+        name: String,
+        #[clifacet(long, help = "How many times", default_value_t = 1)] repeat: u8,
+    ) -> Result<String, Failure> {
+        Ok(format!("{name} x{repeat}"))
+    }
+}
+
+/// The one rule the declarations cannot state: `--repeat` is at least one.
+fn check_greeting(input: &greet::GreetInput) -> Result<(), Failure> {
+    if input.repeat == 0 {
+        return Err(Failure::validation("--repeat must be at least 1"));
+    }
+    Ok(())
+}
+
+#[test]
+fn a_filled_parameter_is_the_value_and_the_flag_stays_optional() {
+    let parsed = greet::Greet::try_parse_from(["greet"]).expect("no flag is needed");
+    let input = Facet::validate(parsed).expect("the fallback supplied the value");
+
+    // `fill` is the declaration the struct form makes on an `Option` field, and the body still
+    // receives a `String`: the parameter's type is the value, not the flag's.
+    assert_eq!(input.name, "world");
+    assert_eq!(input.repeat, 1);
+}
+
+#[test]
+fn a_question_declared_on_a_parameter_is_asked_before_the_fallback() {
+    use clifacet::policy::{Capabilities, Mode, Policy, Request as ModeRequest};
+    use clifacet::prompt::{Answer, Collect as _, Scripted, Session};
+
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(ModeRequest::none(), Capabilities::terminal())
+        .expect("a terminal may be asked");
+    let mut session = Session::start(plan, || {
+        Box::new(Scripted::new([Answer::Text(String::from("  ada "))]))
+    });
+
+    let input = greet::Greet::try_parse_from(["greet"])
+        .expect("parsed")
+        .collect(&mut session)
+        .and_then(Facet::validate)
+        .expect("the answer was trimmed and accepted");
+    assert_eq!(input.name, "ada", "an answer goes through the same rules");
+}
+
+#[test]
+fn a_check_across_the_whole_input_is_forwarded() {
+    let parsed = greet::Greet::try_parse_from(["greet", "--repeat", "0"]).expect("parsed");
+    let refused = Facet::validate(parsed).expect_err("zero is refused by the check");
+    assert_eq!(refused.kind(), clifacet::FailureKind::Validation);
+    assert!(refused.to_string().contains("at least 1"), "{refused}");
+}
+
+// --- a value the command carries, not the input -------------------------------------
+
+/// `announce`: a skipped parameter beside an input one.
+mod announce {
+    use clifacet::Failure;
+
+    /// Announce something.
+    #[clifacet::command]
+    pub fn announce(
+        #[clifacet(long, help = "What to announce")] what: String,
+        #[command(flatten)]
+        #[clifacet(skip)]
+        globals: clifacet::Globals,
+    ) -> Result<String, Failure> {
+        Ok(what)
+    }
+}
+
+#[test]
+fn a_skipped_parameter_is_parsed_but_is_not_input() {
+    let parsed = announce::Announce::try_parse_from(["announce", "--what", "news", "--dry-run"])
+        .expect("the skipped group still parses its flag");
+
+    // The value is on the command — the application reads it there — and the input the command
+    // runs on does not mention it: `skip` is the difference between the two.
+    assert!(parsed.globals.dry_run);
+    let input = Facet::validate(parsed).expect("a valid input");
+    assert_eq!(
+        input,
+        announce::AnnounceInput {
+            what: String::from("news")
+        }
+    );
+}
+
+#[test]
+fn a_skipped_parameter_carries_no_rule() {
+    let parsed = announce::Announce::try_parse_from(["announce", "--what", ""])
+        .expect("the empty value is the check's business, not the parser's");
+    let input = Facet::validate(parsed).expect("no rule was declared for it");
+    assert_eq!(input.what, "");
+}

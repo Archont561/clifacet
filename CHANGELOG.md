@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* write backlog-lite and the reference application as functions
+([71e46c1](https://github.com/Archont561/clifacet/commit/71e46c1065a6f55fea9b42c89c5be37f9941d288))
 * write a command as a function
 ([f9e842d](https://github.com/Archont561/clifacet/commit/f9e842d9ecf11697b5c53ce7fd5a90dc159f9bc7))
 * **settings:** layer a config file under the flags and the environment

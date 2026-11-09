@@ -14,7 +14,7 @@
 
 use clifacet::clap::Parser as _;
 use clifacet::{Command, Facet, Failure, FailureKind};
-use clifacet_example::{Cli, Example, ExampleInput, Level, MAX_REPEAT};
+use clifacet_example::{Example, ExampleInput, Level, MAX_REPEAT, example_command};
 use rstest::{fixture, rstest};
 
 /// Parses the given argv into the draft `clap` produced.
@@ -24,8 +24,8 @@ use rstest::{fixture, rstest};
 /// Panics when `clap` rejects the arguments: this fixture is only used by cases
 /// that are expected to parse, so a parse error there is a broken case.
 #[fixture]
-fn draft(#[default(&[])] argv: &[&str]) -> Cli {
-    Cli::try_parse_from(std::iter::once("example").chain(argv.iter().copied()))
+fn draft(#[default(&[])] argv: &[&str]) -> Example {
+    Example::try_parse_from(std::iter::once("example").chain(argv.iter().copied()))
         .unwrap_or_else(|error| panic!("{argv:?} should parse: {error}"))
 }
 
@@ -63,7 +63,7 @@ fn rejects(argv: &[&str]) -> Failure {
 #[case::out_of_range_draft(&["--repeat", "9"], None, 9, Level::Basic, false)]
 fn the_draft_is_what_clap_collected(
     #[case] argv: &[&str],
-    #[with(argv)] draft: Cli,
+    #[with(argv)] draft: Example,
     #[case] name: Option<&str>,
     #[case] repeat: u8,
     #[case] level: Level,
@@ -123,7 +123,7 @@ fn the_input_is_the_validated_form(
 #[case::every_flag(&["--name", "ada", "--repeat", "8", "--level", "verbose"])]
 #[case::trimmed(&["--name", " ada "])]
 fn the_input_runs_without_a_terminal(#[case] argv: &[&str], #[with(argv)] input: ExampleInput) {
-    let output = Example
+    let output = example_command()
         .execute(input)
         .unwrap_or_else(|failure| panic!("{argv:?} produced runnable input: {failure}"));
 
@@ -153,7 +153,7 @@ fn validation_refuses_and_says_why(#[case] argv: &[&str], #[case] expected: &str
 #[case::bad_level(&["--level", "chatty"])]
 #[case::not_a_number(&["--repeat", "many"])]
 fn a_usage_error_never_becomes_a_validation_failure(#[case] argv: &[&str]) {
-    let error = Cli::try_parse_from(std::iter::once("example").chain(argv.iter().copied()))
+    let error = Example::try_parse_from(std::iter::once("example").chain(argv.iter().copied()))
         .expect_err("clap refuses this");
 
     assert_eq!(error.exit_code(), clifacet_example::EXIT_USAGE, "{argv:?}");

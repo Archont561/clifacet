@@ -8,7 +8,7 @@ use clifacet::clap::Parser as _;
 use clifacet::policy::{Capabilities, Mode, Policy, Request};
 use clifacet::prompt::{Answer, Scripted, Session};
 use clifacet::{Command, Facet};
-use clifacet_example::{Cli, Example, ExampleInput};
+use clifacet_example::{Example, ExampleInput, example_command};
 use rstest::fixture;
 use rstest_bdd_macros::{given, scenario, then, when};
 
@@ -35,7 +35,7 @@ fn world() -> AppWorld {
 fn the_application_has_an_alias(world: &mut AppWorld, alias: String) {
     // Read the alias out of clap's own command: if the derive invented a grammar,
     // this is where the two would diverge.
-    let command = <Cli as Facet>::command();
+    let command = <Example as Facet>::command();
     let name = command
         .get_arguments()
         .find(|argument| argument.get_id() == "name")
@@ -55,7 +55,7 @@ fn the_user_runs_with_the_alias(world: &mut AppWorld, flag: String, value: Strin
         flag, world.alias,
         "the scenario drives the alias it declared"
     );
-    let cli = Cli::try_parse_from(["example", &format!("--{flag}"), &value])
+    let cli = Example::try_parse_from(["example", &format!("--{flag}"), &value])
         .expect("an alias parses through clap");
     world.input = Some(cli.validate().expect("a valid alias value is valid input"));
 }
@@ -72,7 +72,9 @@ fn the_input_carries_the_name(world: &mut AppWorld, name: String) {
 #[then("the command runs without a terminal")]
 fn the_command_runs_without_a_terminal(world: &mut AppWorld) {
     let input = world.input.take().expect("a previous step validated input");
-    let output = Example.execute(input).expect("the command succeeds");
+    let output = example_command()
+        .execute(input)
+        .expect("the command succeeds");
     let mut rendered = Vec::new();
     output
         .write_to(&mut rendered)
@@ -284,13 +286,13 @@ fn without_a_terminal_the_declared_default_fills_in(world: AppWorld) {
 
 #[given("the reference application, declared one attribute per field")]
 fn the_reference_application(_world: &mut AppWorld) {
-    // The fixture is `clifacet_example::Cli` itself: its fields carry `#[clifacet(..)]`,
+    // The fixture is `clifacet_example::Example` itself: its fields carry `#[clifacet(..)]`,
     // so the rules and the form below come from its declarations or not at all.
 }
 
 /// Validates an invocation of the reference application, keeping the failure message.
 fn validation_message(argv: &[&str]) -> String {
-    let cli = Cli::try_parse_from(std::iter::once("example").chain(argv.iter().copied()))
+    let cli = Example::try_parse_from(std::iter::once("example").chain(argv.iter().copied()))
         .expect("the reference grammar parses");
     let failure = cli.validate().expect_err("this invocation is refused");
     assert_eq!(failure.kind(), clifacet::FailureKind::Validation);
@@ -338,7 +340,7 @@ fn the_form_asks_for(world: &mut AppWorld, first: String, second: String, third:
     assert_eq!(world.form, [first, second, third]);
     assert_eq!(
         world.form,
-        <Cli as Facet>::form_fields(),
+        <Example as Facet>::form_fields(),
         "the form is the declarations' list, not a second one"
     );
 }
