@@ -30,6 +30,12 @@ const PARSER: &str = "Parser";
 const FACET: &str = "Facet";
 
 pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
+    // A function is the same command with its parameters as the declaration: the arm hands the
+    // item to its own module, which emits the struct the derive below would have wrapped.
+    if let syn::Item::Fn(function) = syn::parse2::<syn::Item>(item.clone())? {
+        return crate::function::expand(attribute, quote!(#function));
+    }
+
     let mut parsed = syn::parse2::<DeriveInput>(item)?;
     if !matches!(parsed.data, Data::Struct(_)) {
         return Err(syn::Error::new_spanned(

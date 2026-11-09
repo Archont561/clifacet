@@ -12,6 +12,7 @@ mod command;
 mod commands;
 mod facet;
 mod field;
+mod function;
 mod input_type;
 mod planned;
 mod rules;

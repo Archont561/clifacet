@@ -1,9 +1,15 @@
 //! `bl doctor`: the backlog's health check, which takes nothing.
+//!
+//! Written as a function, which is what CLI-52 adds: the signature is the whole declaration,
+//! and the type `commands!` registers — `doctor::Doctor` — is generated from it.
 
-/// `bl doctor`, which takes nothing.
-#[clifacet::command(input = Checkup)]
-#[derive(Debug, Clone)]
-pub struct Doctor {}
+use clifacet::failure::Failure;
+
+/// Run the backlog's health check.
+#[clifacet::command]
+pub fn doctor() -> Result<Checkup, Failure> {
+    Ok(Checkup {})
+}
 
 /// A health check, which needs nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]

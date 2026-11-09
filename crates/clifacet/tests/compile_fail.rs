@@ -12,6 +12,19 @@ fn the_command_attribute_wraps_clap_and_reports_what_it_cannot_wrap() {
 }
 
 #[test]
+fn a_function_command_reports_what_it_cannot_be() {
+    let cases = trybuild::TestCases::new();
+    cases.pass("tests/ui/function_valid.rs");
+    cases.compile_fail("tests/ui/function_not_result.rs");
+    cases.compile_fail("tests/ui/function_pattern.rs");
+    cases.compile_fail("tests/ui/function_reference.rs");
+    cases.compile_fail("tests/ui/function_context_not_last.rs");
+    cases.compile_fail("tests/ui/function_context_marked.rs");
+    cases.compile_fail("tests/ui/function_flag_without_help.rs");
+    cases.compile_fail("tests/ui/function_input_key.rs");
+}
+
+#[test]
 fn the_facet_derive_reports_what_it_cannot_bridge() {
     let cases = trybuild::TestCases::new();
     cases.pass("tests/ui/facet_valid.rs");

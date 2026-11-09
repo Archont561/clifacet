@@ -72,7 +72,7 @@ pub fn invocation_of(request: Request, program: &Program) -> Invocation {
         Action::Start(task) => commands::forward_start(task, &mut argv),
         Action::Done(task) => commands::forward_done(task, &mut argv),
         Action::Search(query) => commands::forward_search(query, &mut argv),
-        Action::Doctor(checkup) => commands::forward_doctor(checkup, &mut argv),
+        Action::Doctor(_) => commands::forward_doctor(commands::Checkup {}, &mut argv),
     };
     // One `--json` for the whole run, whatever the leaf forwards: the flag is the root's,
     // so it is appended here rather than repeated per subcommand.

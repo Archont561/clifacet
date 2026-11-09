@@ -79,6 +79,94 @@ contribute impls — which is why this one is an attribute rather than a third d
 name lives in the macro namespace, so it does not collide with the `clifacet::command`
 module.
 
+## A command as a function
+
+A leaf is often a small function with two or three arguments, and writing it as a struct
+means writing the same thing twice: the `clap` struct for the grammar, and the input type
+for the body. `#[clifacet::command]` accepts a function instead, and generates both from
+the parameters:
+
+```rust
+use clifacet::Failure;
+
+/// Add a task.
+///
+/// The title is stored as given.
+#[clifacet::command]
+pub fn add_task(
+    #[clifacet(long, help = "The title to store")]
+    title: String,
+    #[clifacet(long, help = "Show what would happen")]
+    dry_run: bool,
+) -> Result<String, Failure> {
+    Ok(format!("{title} ({dry_run})"))
+}
+```
+
+The function is left as it was written. Beside it the macro emits the type a folder
+registers — `add_task` becomes `AddTask`, the type `commands!` looks for in
+`add_task.rs` — the input type `AddTaskInput`, and the impls that connect them, so the
+body receives its arguments by name and nothing is copied by hand. The doc comment moves
+to the generated struct, where `clap` reads it: the first paragraph is the subcommand's
+one-line description, the rest is its long help.
+
+The same command, written as a struct, is the form the rest of this page describes:
+
+```rust
+#[clifacet::command(input = AddTaskInput)]
+#[command(name = "add-task", about = "Add a task.")]
+struct AddTask {
+    #[clifacet(long, help = "The title to store")]
+    title: String,
+    #[clifacet(long, help = "Show what would happen")]
+    dry_run: bool,
+}
+
+struct AddTaskInput {
+    title: String,
+    dry_run: bool,
+}
+```
+
+Both register the same way and dispatch the same way, and a folder may mix them leaf by
+leaf. The difference is what an author writes: the struct form declares the fields twice
+and lets the derive bridge them, while the function form declares them once.
+
+Three rules decide what a parameter means, and each one is the struct form's rule
+applied to a signature:
+
+- **A bare parameter is a positional**, exactly as a bare field is. `limit: Option<u32>`
+  with no attribute is a positional argument; a flag needs `long`.
+- **A flag needs `help`.** A parameter cannot carry a doc comment — Rust rejects one with
+  "documentation comments cannot be applied to function parameters" — so `help` is the
+  only place its description can live, and a `long` without it is a compile error rather
+  than a blank line in `--help`.
+- **A reference is not input.** `clap` builds the value from the argument, and a borrowed
+  value would have nothing to borrow; take it by value.
+
+A command that needs the application's context takes it as the last parameter:
+
+```rust
+# use clifacet::Failure;
+# struct App { records: Vec<String> }
+/// Count the records.
+#[clifacet::command]
+pub fn count(cx: &App) -> Result<usize, Failure> {
+    Ok(cx.records.len())
+}
+```
+
+The parameter is named `cx`, and the folder's `commands!(..)` line has to declare the
+type — `commands!(context = crate::App, ..)`. Neither is guessed from the other: a `&App`
+in a folder that declared no context is an error saying which line to add, and a `&App`
+that is not the last parameter is an error saying where it belongs. A name other than
+`cx` is available by marking the parameter `#[clifacet(context)]`.
+
+What the function form does not do: it asks no questions, so there is no `ask`,
+`confirm`, `form` or `collect`; it is not `planned`; and the attribute itself takes no
+keys, because the parameters are the declaration. Those are the reasons to write the
+struct form, and the two coexist in one folder.
+
 ## Declaring one field once
 
 `#[clifacet(..)]` on a field is the whole argument in one attribute: its grammar, the
