@@ -58,7 +58,7 @@
                   What this adds is the three things everyone retypes: a status \
                   shortcut, one --json for the whole run, and --dry-run."
 )]
-mod commands;
+mod commands {}
 mod invocation;
 mod program;
 mod status;

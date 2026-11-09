@@ -4,6 +4,6 @@
 //! inner attributes or `//!` docs. Rust's own message for that is about the fragment and never
 //! mentions the attribute, so the macro reads the header first and says what to do instead.
 #[clifacet::registry(output = String)]
-mod commands;
+mod commands {}
 
 fn main() {}

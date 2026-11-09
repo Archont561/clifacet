@@ -1646,16 +1646,16 @@ fn fixture() -> (String, String) {
     (folder, report)
 }
 
-/// Expands `#[clifacet::registry(..)] mod commands;` against the fixture folder.
+/// Expands `#[clifacet::registry(..)] mod commands {}` against the fixture folder.
 fn registry(attribute: &str) -> String {
     let (folder, report) = fixture();
-    expand_registry(attribute, "pub mod commands;", &folder, &report)
+    expand_registry(attribute, "pub mod commands {}", &folder, &report)
 }
 
 /// The same, returning the message instead when the attribute is refused.
 fn rejected_registry(attribute: &str) -> String {
     let (folder, report) = fixture();
-    expand_registry(attribute, "pub mod commands;", &folder, &report)
+    expand_registry(attribute, "pub mod commands {}", &folder, &report)
 }
 
 /// One expansion, with the report passed rather than read from `CLIFACET_COMMANDS`.
@@ -1723,6 +1723,42 @@ fn a_registry_declares_a_helper_and_never_registers_or_reexports_it() {
 }
 
 #[test]
+fn an_empty_inline_module_is_filled_from_the_folders_file() {
+    // `mod commands {}` is how a folder is declared: outlined modules are unstable in an
+    // attribute's input below Rust 1.99, and the crate's floor is 1.88 (decision-21). The
+    // braces are what make the module inline; the folder's file is still what fills it.
+    let tokens = registry("");
+    assert!(tokens.contains("mod commands {"), "{tokens}");
+    assert!(tokens.contains("include ! ("), "{tokens}");
+    assert!(tokens.contains("/commands/mod.rs\")"), "{tokens}");
+
+    // A body written in place is kept as written and *is* the folder, so nothing is
+    // included: the items are already where Rust would have put them.
+    let (folder, report) = fixture();
+    let inline = expand_registry(
+        "",
+        "pub mod commands { pub use crate::Said; }",
+        &folder,
+        &report,
+    );
+    assert!(inline.contains("pub use crate :: Said ;"), "{inline}");
+    assert!(!inline.contains("include ! ("), "{inline}");
+    assert!(inline.contains("# [path = \""), "{inline}");
+
+    // The folder's file is the folder, so a module pointing at nothing says so. The path is
+    // the one the report names, or the report lookup would answer first — and it does not
+    // exist, which is the mistake this message is about.
+    let missing = expand_registry(
+        "",
+        "pub mod commands {}",
+        "/nonexistent/src/commands",
+        &report,
+    );
+    assert!(missing.contains("which does not exist"), "{missing}");
+    assert!(missing.contains("path = "), "{missing}");
+}
+
+#[test]
 fn a_registry_defaults_the_request_to_action_so_the_folder_may_keep_its_own() {
     // The registry's folder is where a hand-written `Request` lives, so the generated one has
     // a name of its own unless the call says otherwise.
@@ -1784,7 +1820,7 @@ fn a_registry_takes_no_list_of_modules_and_says_why() {
 #[test]
 fn a_registry_refuses_a_module_under_another_name() {
     let (folder, report) = fixture();
-    let message = expand_registry("", "pub mod store;", &folder, &report);
+    let message = expand_registry("", "pub mod store {}", &folder, &report);
     assert!(message.contains("is named `commands`"), "{message}");
     assert!(
         message.contains("call `clifacet::commands!(..)` inside it"),
@@ -1798,13 +1834,13 @@ fn a_registry_that_finds_no_folder_for_its_report_says_which_ones_there_are() {
     // and says where a registry looks.
     let (folder, _) = fixture();
     let report = "clifacet-commands/1;folder=src/elsewhere;command=other";
-    let message = expand_registry("", "pub mod commands;", &folder, report);
+    let message = expand_registry("", "pub mod commands {}", &folder, report);
     assert!(
         message.contains("registers") && message.contains("the build script scanned"),
         "{message}"
     );
     assert!(message.contains("src/elsewhere"), "{message}");
     // And a report that is not the protocol at all is the other mistake: no build script.
-    let message = expand_registry("", "pub mod commands;", &folder, "whatever");
+    let message = expand_registry("", "pub mod commands {}", &folder, "whatever");
     assert!(message.contains("clifacet-commands/1"), "{message}");
 }

@@ -17,13 +17,19 @@
 ///
 /// The folder's file is included, which is what makes this work and what it costs: a file
 /// pulled in that way may not begin with `//!`, so the folder documents itself with `//`.
+///
+/// `mod commands {}` rather than `mod commands;`: an *outlined* module in an attribute's
+/// input is unstable below Rust 1.99, and this crate's floor is lower than that, so the
+/// braces are what make the declaration legal on every supported compiler. The body stays
+/// empty — `include!` fills it from the folder — and writing items here would replace the
+/// folder instead of adding to it.
 #[clifacet::registry(
     output = crate::Said,
     request = Request,
     name = "discovered",
     about = "A proof that a folder registers itself"
 )]
-pub mod commands;
+pub mod commands {}
 
 pub use commands::{Cli, Commands, Input, Request};
 

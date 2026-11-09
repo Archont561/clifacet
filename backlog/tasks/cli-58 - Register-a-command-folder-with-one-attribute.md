@@ -19,7 +19,7 @@ A folder of commands is registered by a call inside it, so its `mod.rs` opens wi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 `#[clifacet::registry(..)] mod commands;` emits the folder's `mod` lines, `Commands`, the request, `Input` and `Cli`, from the report `clifacet::build::commands()` writes
+- [x] #1 `#[clifacet::registry(..)] mod commands {}` emits the folder's `mod` lines, `Commands`, the request, `Input` and `Cli`, from the report `clifacet::build::commands()` writes
 - [x] #2 The folder's `mod.rs` is included, so a `Request`, an `impl` or a re-export written there means what it meant before; a `//!` header is refused with a message that says to use `//`
 - [x] #3 A helper is declared and not re-exported, so reaching it from outside is `E0603`; the golden case is regenerated and the accepted diagnostic cost is recorded in decision-21
 - [x] #4 The keys are the folder's — `output`, `globals`, `planned`, `version_off`, `name`, `about`, `long_about`, `root`, `path` — with no module list and no `context`; a module name is refused as a key
@@ -40,6 +40,15 @@ A folder of commands is registered by a call inside it, so its `mod.rs` opens wi
 **A helper is not a command.** `examples/backlog-lite`'s shared code was `task.rs`; a file without an `_` prefix is a command by CLI-50's convention, so it became a phantom `Action::Task` with an `Input` missing `json`. Renaming it `_task.rs` is the fix the convention asks for, not a special case in the scanner.
 
 **The accepted cost, recorded rather than hidden.** A proc macro cannot put a span on another file's line, so the private helper's `mod` line carries the attribute's span and the `E0603` note points at `src/lib.rs`. Faking a span would be a lie; the error itself is unchanged. Decision-21 says so, and the regenerated golden shows it.
+
+**The MSRV, found by CI and not by the sandbox.** `#[clifacet::registry] mod commands;` compiled
+everywhere except the MSRV job, which reports `error[E0658]: non-inline modules in proc macro
+input are unstable`: an outlined module in an attribute's input was stabilized only in Rust
+1.99 ([rust-lang/rust#157857](https://github.com/rust-lang/rust/pull/157857)). The pinned
+compiler here is 1.99.1, so nothing local could have caught it. The floor was kept and the
+module is written `mod commands {}` instead — inline, accepted by every supported compiler,
+with the empty body meaning "fill this from the folder's file". Recorded in decision-21
+with the way back: once the floor reaches 1.99, the braces come off and nothing else changes.
 
 **Verification.** `cargo test --workspace` passes with the same count as before the feature; `fmt-check`, `alint`, `lint` (with `-D warnings`, expansions and both examples included), `check-docs`, `prose-check` and `backlog-check` pass. Both example folders were converted and their own test suites — discovery, privacy, reaching — are unchanged.
 <!-- SECTION:NOTES:END -->

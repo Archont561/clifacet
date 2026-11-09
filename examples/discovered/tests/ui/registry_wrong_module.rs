@@ -4,6 +4,6 @@
 //! folder and its name is how the folder is found. A module called anything else has no
 //! registration to receive, and the message says what to write instead.
 #[clifacet::registry(name = "discovered")]
-mod store;
+mod store {}
 
 fn main() {}

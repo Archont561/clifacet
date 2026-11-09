@@ -48,14 +48,36 @@ Compiled in this repository while the change was made, not on paper:
    re-export is `E0603` from outside, which is exactly what CLI-50 promised, and the message
    now points at the attribute rather than at a `mod` line in the folder.
 
+7. **An outlined module in an attribute's input was unstable until Rust 1.99.** CI's MSRV
+   job compiled `#[clifacet::registry] mod commands;` with 1.88 and reported
+
+   ```
+   error[E0658]: non-inline modules in proc macro input are unstable
+    --> examples/discovered/src/lib.rs:26:1
+     |
+   26 | pub mod commands;
+     | ^^^^^^^^^^^^^^^^^
+   ```
+
+   The fix landed as a partial stabilization of `proc_macro_hygiene`
+   ([rust-lang/rust#157857](https://github.com/rust-lang/rust/pull/157857), in 1.99.0):
+   attribute and derive macros now receive an outlined module in its unloaded form. The
+   workspace's floor is 1.88 and its pinned compiler is 1.99.1, which is exactly why every
+   other job was green and only the MSRV job caught it — the ordinary case for a feature the
+   pinned toolchain accepts.
+
 ## Decision
 
-1. **`#[clifacet::registry(..)]` on `mod commands;` is the registration.** One line in
+1. **`#[clifacet::registry(..)]` on `mod commands {}` is the registration.** One line in
    `src/lib.rs` replaces the call inside the folder, and it needs no list: the folder is the
    list, read from the build script's report as discovery already does.
 2. **The folder's `mod.rs` is `include!`d**, so everything that is not registration stays
    where it was written — the folder's own `Request`, its `impl`s, its re-exports, its
    documentation in `//` comments. The macro emits the registration, then the `include!`.
+   **The module is written with empty braces** — `mod commands {}` — because inline is the
+   only spelling every supported compiler accepts. The braces carry no items; an empty body
+   means "this module is the folder's file", and a body written there is the folder itself,
+   kept as written beside the registration.
 3. **This supersedes decision-15's requirement that registration be a call in the folder.**
    Its reasoning about `mod` resolution stands and is why `#[path]` is written per leaf; the
    conclusion that the call therefore has to live in the folder does not, because `include!`
@@ -66,11 +88,19 @@ Compiled in this repository while the change was made, not on paper:
    needs the application's context declares `cx: &Cx` itself (CLI-52), so this line has
    nothing to repeat. There is **no module list** — the folder is the list, and a name written
    here is rejected with the message saying so.
+5. **The MSRV is not raised for this.** 1.88 stays, because a registration syntax is not worth
+   an eleven-release floor jump in a published 0.4 library, and `mod commands {}` costs one
+   pair of braces and a sentence of explanation.
 
 ## Consequences
 
 - **The registration can be read in one line.** `src/lib.rs` says the folder is the CLI, and
   `src/commands/` holds the commands and the folder's own types, with no machinery in it.
+- **`mod commands {}` looks like an empty module and is not one.** That is the whole cost of
+  keeping 1.88, so every place it is documented says so in a sentence: the attribute's own
+  documentation, `docs/derive.md`, and both example crates. If clifacet's floor ever reaches
+  1.99, the braces can be dropped with no other change — the macro and its tests treat the
+  two forms alike, and `mod commands;` then works unchanged.
 - **A `mod.rs` header is prose, not documentation.** `//!` is refused by `include!`; the
   folder documents itself in `//` comments and its documentation goes on the attribute's
   module. Enforced by a check that reads only the file's header, with a golden message.

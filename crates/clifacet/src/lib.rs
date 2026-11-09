@@ -159,7 +159,7 @@ pub use clifacet_macros::__commands;
 /// ```ignore
 /// // src/lib.rs
 /// #[clifacet::registry]
-/// mod commands;
+/// mod commands {}
 /// ```
 ///
 /// The same registration as [`commands!`], written where the folder is declared rather than
@@ -170,8 +170,13 @@ pub use clifacet_macros::__commands;
 ///
 /// ```ignore
 /// #[clifacet::registry(output = crate::Report, planned)]
-/// mod commands;
+/// mod commands {}
 /// ```
+///
+/// The braces are not decoration: an *outlined* module (`mod commands;`) in an attribute's
+/// input is unstable below Rust 1.99, and this crate supports older compilers than that. An
+/// empty body is filled from the folder's `mod.rs`; a body written here is the folder itself,
+/// and is kept as written beside the registration.
 ///
 /// A context is not declared here. A command that needs one takes it as a `cx: &Cx`
 /// parameter, so the type is written once, where it is used, and the tree threads it to

@@ -220,11 +220,15 @@ pub fn __commands(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// // src/lib.rs: the whole registration
 /// #[clifacet::registry]
-/// mod commands;
+/// mod commands {}
 ///
 /// // src/commands/mod.rs: everything else about the folder, and no `commands!(..)` call
 /// pub struct Request { .. }
 /// ```
+///
+/// The braces are what make the declaration legal on every supported compiler: an *outlined*
+/// module (`mod commands;`) in an attribute's input is unstable below Rust 1.99. An empty
+/// body is filled from the folder's `mod.rs`; a body written here is the folder itself.
 ///
 /// Expands to the folder's module — its own `mod.rs`, pulled in so its `mod` lines resolve
 /// against its own directory — and beside it the same registration `clifacet::commands!(..)`

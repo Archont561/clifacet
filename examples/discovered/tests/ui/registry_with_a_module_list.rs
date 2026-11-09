@@ -4,6 +4,6 @@
 //! folder *is* the list, read from the build script's report. Writing a name here is the
 //! mistake a reader of the list form makes first, so it is reported as a key that is not one.
 #[clifacet::registry(list, echo)]
-mod commands;
+mod commands {}
 
 fn main() {}

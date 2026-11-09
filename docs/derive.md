@@ -548,7 +548,7 @@ declared, and nothing inside it (decision-21, CLI-58):
     name = "discovered",
     about = "A proof that a folder registers itself"
 )]
-pub mod commands;
+pub mod commands {}
 ```
 
 ```rust,ignore
@@ -567,6 +567,12 @@ answer itself:
 | the tree and the request | `Commands`, and `Action` — one variant per leaf input — unless `request = Name` names it, so the folder may keep a `Request` of its own |
 | `Input` and `Cli` | the root, with `clifacet::Globals` and the keys this line declares |
 | the folder itself | its `mod.rs`, pulled in with `include!` beside the registration, so its `impl`s, its re-exports and its own types are written in its scope and mean what they meant |
+
+The braces are part of the spelling, and not decoration: an *outlined* module
+(`mod commands;`) in an attribute's input is unstable below Rust 1.99, and clifacet supports
+older compilers than that. `mod commands {}` is inline, which every supported compiler
+accepts, and its empty body is filled from the folder's `mod.rs`. A body written there is
+the folder instead — kept as written, with the registration beside it.
 
 What the folder gives up, and what it gains:
 
@@ -694,7 +700,7 @@ fn main() {
 ```rust,ignore
 // src/lib.rs — the registration, and the folder holds no call at all
 #[clifacet::registry(output = crate::Said, name = "discovered")]
-mod commands;
+mod commands {}
 ```
 
 The same report can be read by a call inside the folder rather than by the attribute:

@@ -39,7 +39,7 @@
 //!
 //! # The same registration, on the module instead (CLI-58)
 //!
-//! `#[clifacet::registry(..)]` on `mod commands;` writes all of the above from the folder's
+//! `#[clifacet::registry(..)]` on `mod commands {}` writes all of the above from the folder's
 //! report, and pulls the folder's `mod.rs` in beside it — so the folder holds its commands
 //! and its own types, and the registration is one line in `src/lib.rs` (decision-21). This
 //! is the mechanism it uses. An attribute cannot name a directory, and a declarative macro
@@ -49,6 +49,11 @@
 //!
 //! What changes for a caller, and why:
 //!
+//! - **The module is written `mod commands {}`, with empty braces.** An outlined module
+//!   (`mod commands;`) in an attribute's input was unstable until Rust 1.99, and a proc macro
+//!   cannot ask for a newer compiler than the crate's floor. The braces make the module
+//!   inline, which every supported compiler accepts; the empty body is filled from the
+//!   folder's file, and a body written here means the folder *is* this module.
 //! - **No list.** The folder is the list, read from the same report `commands!()` reads, so a
 //!   module name written as a key is refused with a message saying so.
 //! - **No `context`.** A command that needs the application's context declares `cx: &Cx` on
@@ -1188,15 +1193,16 @@ fn declaration_from(tokens: TokenStream, declared: &mut Declared) -> syn::Result
 
 /// The folder the module registers, and the file whose `mod` lines reach it.
 ///
-/// For `mod commands;` in `src/lib.rs` that is `src/commands` and `src/commands/mod.rs`: the
+/// For `mod commands {}` in `src/lib.rs` that is `src/commands` and
+/// `src/commands/mod.rs`: the
 /// module's own file, which is what `local_file()` names, including under `#[path]`.
 ///
 /// A module written inline — `#[clifacet::registry] mod commands { .. }` — has no file of its
 /// own. Its folder is `src/commands` beside the file *it* is written in, which is where the
 /// `commands` name points anyway; `path = "…"` says so explicitly for anything else.
-fn locate(attribute: &Declared, module: &ItemMod) -> syn::Result<Located> {
+fn locate(attribute: &Declared, module: &ItemMod) -> Located {
     // The file the declaration is written in, which is what a relative folder is relative to:
-    // for `mod commands;` that is the *parent*'s file — `lib.rs` or `mod.rs` — and the folder
+    // for `mod commands {}` that is the *parent*'s file — `lib.rs` or `mod.rs` — and the folder
     // is `commands` beside it.
     // Absolute, because the path is written into an `include!` that the compiler resolves
     // against the file the macro ran in — and a span names the file relative to wherever cargo
@@ -1229,20 +1235,10 @@ fn locate(attribute: &Declared, module: &ItemMod) -> syn::Result<Located> {
         ),
         None => folder.join("mod.rs"),
     };
-    if !file.is_file() && written.is_none() {
-        return Err(syn::Error::new_spanned(
-            module,
-            format!(
-                "`#[clifacet::registry]` could not find {}, so there is nothing to include; \
-                 give the folder with `path = \"…\"`",
-                file.display()
-            ),
-        ));
-    }
-    Ok(Located {
+    Located {
         file,
         folder: relative,
-    })
+    }
 }
 
 /// `folder/mod.rs` when it exists, otherwise `folder.rs` — how Rust itself looks.
@@ -1267,7 +1263,7 @@ struct Located {
     folder: PathBuf,
 }
 
-/// Expands `#[clifacet::registry(..)] mod commands;` into the registration *and* the folder.
+/// Expands `#[clifacet::registry(..)] mod commands {}` into the registration *and* the folder.
 ///
 /// The attribute owns the registration, so the folder writes no `commands!(..)` call and
 /// declares no context: one line in `lib.rs` says what the commands are and what they are
@@ -1286,7 +1282,7 @@ pub(crate) fn registry_expand(
 ) -> syn::Result<TokenStream> {
     let module: ItemMod = syn::parse2(item)?;
     let keys = registry_attribute(attribute)?;
-    let located = locate(&keys, &module)?;
+    let located = locate(&keys, &module);
     expand_registry(&keys, &module, &located, None)
 }
 
@@ -1303,7 +1299,7 @@ pub(crate) fn registry_for_test(
 ) -> syn::Result<TokenStream> {
     let module: ItemMod = syn::parse2(item.clone())?;
     let keys = registry_attribute(attribute)?;
-    // The folder as a path, which is what `locate` would have produced for `mod commands;`
+    // The folder as a path, which is what `locate` would have produced for `mod commands {}`
     // written beside it: the file the leaves are declared from, and the report's name for it.
     let located = Located {
         file: PathBuf::from(folder).join("mod.rs"),
@@ -1356,9 +1352,15 @@ fn expand_registry(
 
     // Two cases, and they differ only in where the folder's contents come from.
     //
-    // Inline, the module *is* the folder: its items are declared where Rust would have
-    // declared them, and the leaves are `mod` lines beside them.
-    if let Some((_, items)) = module.content.take() {
+    // Written in place, the module *is* the folder: its items are declared where Rust would
+    // have declared them, and the leaves are `mod` lines beside them. An empty body is the
+    // other case — `mod commands {}` is how a folder is declared, because an *outlined*
+    // module in an attribute's input is unstable below Rust 1.99 and this crate's floor is
+    // 1.88 (decision-21). The braces make the module inline, which every supported compiler
+    // accepts, and the folder's file is included into it.
+    if let Some((_, items)) = module.content.take()
+        && !items.is_empty()
+    {
         let kept = items
             .iter()
             .filter(|item| !is_registration_call(item))
@@ -1376,10 +1378,24 @@ fn expand_registry(
         });
     }
 
-    // A file module: `mod.rs` is pulled in as it was written, and the registration sits beside
-    // it. The leaves' own `mod` lines are the registration's, each with the `#[path]` of its
-    // file, because a keyword a macro emits resolves against the file the macro ran in rather
-    // than against the folder.
+    // The folder's own file: `mod.rs` is pulled in as it was written, and the registration
+    // sits beside it. The leaves' own `mod` lines are the registration's, each with the
+    // `#[path]` of its file, because a keyword a macro emits resolves against the file the
+    // macro ran in rather than against the folder.
+    //
+    // Checked here rather than in `locate`, because this is the path that reads the file,
+    // and an `include!` of nothing says less than a sentence does.
+    if !located.file.is_file() {
+        return Err(syn::Error::new_spanned(
+            &module.ident,
+            format!(
+                "`#[clifacet::registry]` fills this module from {}, which does not exist. \
+                 That file is the folder; create it, or say where the folder is with \
+                 `path = \"…\"`",
+                located.file.display()
+            ),
+        ));
+    }
     let file = LitStr::new(&located.file.display().to_string(), module.ident.span());
     let name = &module.ident;
     let visibility = &module.vis;
