@@ -35,6 +35,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **macros:** name the folder, not its path, when it cannot be included
+([eaca858](https://github.com/Archont561/clifacet/commit/eaca858a51a5ba13bca33c7325b0de4c27cad6cd))
 * **macros:** name the folder's file relative to the crate in messages
 ([cc76070](https://github.com/Archont561/clifacet/commit/cc76070eb9c3b4866b7da700844083c34c25b63f))
 * **macros:** write the folder module inline so the MSRV accepts it
