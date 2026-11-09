@@ -1,0 +1,26 @@
+# TEMPORARY: reports the Windows failure as a check annotation, because job logs are not
+# readable from this environment. Deleted once the answer is in.
+name: probe-win
+on:
+  push:
+    branches: [arena/6534ab48-clifacet]
+permissions:
+  contents: read
+jobs:
+  win:
+    name: probe the Windows failure
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Test every frontend together
+        shell: bash
+        run: |
+          set +e
+          cargo test --workspace --all-features --locked > out.log 2>&1
+          echo "exit=$?" >> out.log
+      - name: Annotate the failure
+        if: always()
+        shell: bash
+        run: |
+          tail=$(grep -E "panicked at|^failures:|FAILED|^error|exit=|expected|actual|mismatch|EXPECTED|ACTUAL" -A4 out.log | tail -c 3200 | tr '\n' '|')
+          echo "::error title=WIN FAILURE::$(echo "$tail" | sed 's/%/%25/g; s/\r//g')"
