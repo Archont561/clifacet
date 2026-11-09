@@ -24,10 +24,17 @@ clifacet-macros = { version = "0.4.0", path = "crates/clifacet-macros" }
 # Without clap's defaults: colour and "did you mean" suggestions are an application's
 # choice, not something a library forces on it. An application that depends on clap with
 # its defaults keeps both, because Cargo unifies features (CLI-44, decision-19 item 7).
-clap = { version = "4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive", "env"] }
+# `string`: a settings file's value is a default, and `Arg::default_values` needs an owned
+# one to carry it. Without the feature clap accepts only `'static` values, which would mean
+# leaking one per run (CLI-51).
+clap = { version = "4.6.7", default-features = false, features = ["std", "help", "usage", "error-context", "derive", "env", "string"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
+# The optional settings loader (CLI-51). `toml_edit` rather than `toml`: a value's span is
+# what lets an invalid setting be reported at the line it was written on, and a loader that
+# can only say "your file is wrong" sends the reader back to the whole file.
+toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
 
 # Optional frontend adapters. Keep a single crossterm major/minor across both.
 inquire = { version = "0.9.4", default-features = false, features = ["crossterm"] }

@@ -9,7 +9,7 @@ use crate::commands::Cli;
 ///
 /// `--interactive` and `--tui` are this application's; `--yes` and `--dry-run` are the
 /// ones every clifacet application gets, from [`Globals`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::Args)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, clap::Args)]
 pub struct InteractionFlags {
     /// Ask for prompts rather than flags.
     #[arg(long, conflicts_with = "tui")]

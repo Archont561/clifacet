@@ -63,7 +63,7 @@ fn previews_a_new_task(world: &mut World, title: String) {
     let probe = script.clone();
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let cli = parsed(&world.arguments, true);
-    let globals = cli.globals;
+    let globals = cli.globals.clone();
     world.code = app(|| Ok::<_, Infallible>(Program::default())).run_parsed(
         cli,
         globals,

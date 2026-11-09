@@ -100,7 +100,7 @@ pub fn run_with_command<C>(
 where
     C: Command<Input = ExampleInput, Output = ExampleOutput>,
 {
-    let globals = cli.interaction.globals;
+    let globals = cli.interaction.globals.clone();
     app()
         .command(command)
         .run_parsed(cli, globals, capabilities, build_frontend, out, err)

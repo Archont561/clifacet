@@ -70,6 +70,7 @@ use crate::failure::Failure;
 use crate::policy::{Capabilities, Mode, Policy, Request};
 use crate::prompt::{Collect, Lazy, Prompter, Session};
 use crate::report;
+use crate::settings;
 
 /// The options every application gets: `--yes` and `--dry-run`.
 ///
@@ -95,7 +96,7 @@ use crate::report;
 /// with `#[clifacet(skip)]`. The runner reads them from `clap`'s matches by their ids,
 /// `yes` and `dry_run`, so an application that declared its own flags with those ids
 /// before this type existed keeps working unchanged.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::Args)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, clap::Args)]
 pub struct Globals {
     /// Answer every confirmation with yes instead of asking.
     #[arg(long, global = true)]
@@ -104,6 +105,19 @@ pub struct Globals {
     /// Show what would run, and run nothing.
     #[arg(long, global = true)]
     pub dry_run: bool,
+
+    /// Read settings from this file instead of the default location.
+    ///
+    /// Recognised because [`App::settings`] reads it before the parse; declared here so
+    /// `clap` accepts it too, and so an application that never calls `settings` gets a
+    /// flag that parses rather than one that fails as unknown.
+    #[arg(long, global = true, value_name = "PATH")]
+    pub config: Option<std::path::PathBuf>,
+
+    /// Read no settings file at all, ignoring `--config`, the environment and the default
+    /// location.
+    #[arg(long, global = true, conflicts_with = "config")]
+    pub no_config: bool,
 }
 
 impl Globals {
@@ -113,6 +127,12 @@ impl Globals {
         Self {
             yes: on("yes"),
             dry_run: on("dry_run"),
+            config: matches
+                .try_get_one::<std::path::PathBuf>("config")
+                .ok()
+                .flatten()
+                .cloned(),
+            no_config: on("no_config"),
         }
     }
 }
@@ -194,7 +214,14 @@ pub struct App<'c, Cli, C = Cli, R = Plain, Cx = ()> {
     command: Chosen<'c, Cli, C>,
     render: R,
     context: Rc<dyn Fn() -> Result<Cx, Failure>>,
+    settings: Option<Settings>,
 }
+
+/// Reads the settings file for a given argument list.
+///
+/// A function of the arguments rather than a value, because `--config` is in them: the file
+/// cannot be read until the run says which file it means.
+type Settings = Rc<dyn Fn(&[OsString]) -> Result<settings::Settings, crate::failure::Failure>>;
 
 impl<Cli: Clone> App<'_, Cli> {
     /// The pipeline for `Cli`, with the parsed command line as the command that runs.
@@ -207,6 +234,7 @@ impl<Cli: Clone> App<'_, Cli> {
             command: Chosen::Parsed(Cli::clone),
             render: Plain,
             context: Rc::new(|| Ok(())),
+            settings: None,
         }
     }
 }
@@ -256,6 +284,7 @@ impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
             command: Chosen::Given(command),
             render: self.render,
             context: self.context,
+            settings: self.settings,
         }
     }
 
@@ -269,6 +298,7 @@ impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
             command: self.command,
             render,
             context: self.context,
+            settings: self.settings,
         }
     }
 
@@ -297,6 +327,7 @@ impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
                     Failure::execution(format!("cannot prepare the application: {error}"))
                 })
             }),
+            settings: self.settings,
         }
     }
 }
@@ -332,6 +363,35 @@ where
         ExitCode::from(u8::try_from(code).unwrap_or(1))
     }
 
+    /// Layers a settings file under the flags and the environment.
+    ///
+    /// The file is chosen the way a user expects — `--config PATH`, then `<APP>_CONFIG`,
+    /// then the platform's config directory — and every entry it holds becomes a `clap`
+    /// default, so the precedence is flag > environment > file > built-in default and each
+    /// value is parsed by its argument's own parser (see [`settings`](crate::settings)).
+    ///
+    /// `loader` decides the format, so the library does not choose an application's
+    /// configuration language; `crate::settings::toml::Toml` is the one it ships with the
+    /// `settings-toml` feature.
+    ///
+    /// `--help` and `--version` never read the file: they are answered before any parse, so
+    /// the defaults they document are the built-in ones and one machine's settings never
+    /// leak into another's documentation. A file that cannot be read or applied fails the
+    /// run as a rejected invocation, before anything executes.
+    #[must_use]
+    pub fn settings<L>(mut self, application: &'static str, loader: L) -> Self
+    where
+        L: crate::settings::Loader + 'static,
+    {
+        self.settings = Some(Rc::new(move |argv: &[std::ffi::OsString]| {
+            let asked = settings::source::Asked::in_argv(argv.iter().cloned());
+            asked
+                .read(application, &settings::Process, &loader)
+                .map_err(|error| Failure::validation(error.message()))
+        }));
+        self
+    }
+
     /// Runs `argv` against explicit capabilities, frontend and streams.
     ///
     /// The same pipeline as [`run`](Self::run), with nothing taken from the process: a
@@ -349,7 +409,31 @@ where
         I: IntoIterator<Item = T>,
         T: Into<OsString> + Clone,
     {
-        match parse::<Cli, _, _>(argv) {
+        // The settings file has to be read before the parse, because a file's value is a
+        // default and `clap` needs the default before it reads the argument list. The
+        // argument list is collected once so it can be looked at twice: `--config` is in
+        // it, and the parse still receives it (clap ignores what it does not declare, and
+        // the two flags below are declared by this module's own readers).
+        let argv: Vec<OsString> = argv.into_iter().map(Into::into).collect();
+
+        // `--help` and `--version` are answered from the command as the application built
+        // it, before the settings file is read. That is AC#7: help documents the built-in
+        // defaults and never one machine's settings file. It is also the one place where
+        // precedence does not matter, because neither flag is a value.
+        if self.settings.is_some() && asks_for_help_or_version(&argv) {
+            match <Cli as Facet>::command().try_get_matches_from(argv.iter().cloned()) {
+                // `DisplayHelp` and `DisplayVersion` arrive here as an `Err` clap has
+                // already rendered, which `report::render` writes on the data stream with
+                // the policy's success code — the same rendering a run without settings
+                // produces, because it is the same command.
+                Ok(_) => {}
+                Err(error) => {
+                    return report::render(&program::<Cli>(), &error, &self.exit, out, err);
+                }
+            }
+        }
+
+        match self.parse_with_settings(&argv) {
             Ok((cli, globals)) => {
                 self.run_parsed(cli, globals, capabilities, build_frontend, out, err)
             }
@@ -357,11 +441,58 @@ where
         }
     }
 
+    /// Parses `argv`, with the settings file applied to the command when one is configured.
+    ///
+    /// Without settings this is [`parse`] and nothing else: an application that never calls
+    /// [`settings`](Self::settings) pays for one `Option` check.
+    fn parse_with_settings(&self, argv: &[OsString]) -> Result<(Cli, Globals), clap::Error> {
+        let Some(read) = &self.settings else {
+            return parse::<Cli, _, _>(argv.iter().cloned());
+        };
+        let settings = match read(argv) {
+            Ok(settings) => settings,
+            // A settings file that cannot be read is a rejected invocation: nothing ran,
+            // and the argument list the user typed was not the problem. Reporting it as a
+            // `clap` error keeps one path to the diagnostic stream and one exit code.
+            Err(failure) => {
+                return Err(clap::Error::raw(
+                    clap::error::ErrorKind::ValueValidation,
+                    failure.message(),
+                ));
+            }
+        };
+        let command = settings::source::declare(<Cli as Facet>::command());
+        let applied = match settings.apply(command, <Cli as Facet>::secret_fields()) {
+            Ok(applied) => applied,
+            Err(error) => {
+                return Err(clap::Error::raw(
+                    clap::error::ErrorKind::ValueValidation,
+                    error.message(),
+                ));
+            }
+        };
+        let mut matches = applied
+            .into_command()
+            .try_get_matches_from(argv.iter().cloned())?;
+        let globals = Globals::matched(&matches);
+        let cli = Cli::from_arg_matches_mut(&mut matches)
+            .map_err(|error| error.format(&mut <Cli as Facet>::command()))?;
+        Ok((cli, globals))
+    }
+
     /// Runs an already-parsed command line: every step after parsing.
     ///
     /// For an application that holds a `Cli` it parsed itself. `globals` are passed
     /// rather than read, because a parsed `Cli` no longer has `clap`'s matches to read
     /// them from.
+    ///
+    /// `globals` is taken by value because this is a published signature: an application
+    /// calls it, and a future `Globals` may well be consumed here. Changing it to a
+    /// reference to satisfy a lint would be a breaking change for no gain.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "a published signature, kept stable for callers"
+    )]
     pub fn run_parsed(
         &self,
         cli: Cli,
@@ -376,11 +507,11 @@ where
         // One context per run, shared by the questions and the command, built on first use.
         let context = Rc::new(Lazy::new(Rc::clone(&self.context)));
         let outcome = match self.policy.resolve(requested, capabilities) {
-            Ok(plan) if plan.mode() == Mode::Tui => self.full_screen(globals, &context, out, err),
+            Ok(plan) if plan.mode() == Mode::Tui => self.full_screen(&globals, &context, out, err),
             Ok(plan) => {
                 let mut session = Session::start(plan, build_frontend).sharing(Rc::clone(&context));
                 cli.collect(&mut session)
-                    .and_then(|cli| self.settle(cli, globals, &context, out))
+                    .and_then(|cli| self.settle(cli, &globals, &context, out))
             }
             Err(refusal) => Err(Failure::validation(refusal.message())),
         };
@@ -397,7 +528,7 @@ where
     #[cfg(feature = "tui")]
     fn full_screen(
         &self,
-        globals: Globals,
+        globals: &Globals,
         context: &Lazy<Cx>,
         out: &mut dyn Write,
         err: &mut dyn Write,
@@ -406,6 +537,8 @@ where
 
         let mut form = tui::FormState::of::<Cli>()?;
         let mut rendered = Vec::new();
+        // The globals are borrowed rather than copied: the settings flags mean `Globals` is
+        // no longer `Copy`, and a form submission is the same run as the one that opened it.
         let submit = |state: &tui::FormState| -> Result<Vec<String>, String> {
             let argv = std::iter::once(program::<Cli>()).chain(state.arguments());
             let cli = Cli::try_parse_from(argv).map_err(|error| error.to_string())?;
@@ -427,7 +560,7 @@ where
     )]
     fn full_screen(
         &self,
-        _globals: Globals,
+        _globals: &Globals,
         _context: &Lazy<Cx>,
         _out: &mut dyn Write,
         _err: &mut dyn Write,
@@ -441,7 +574,7 @@ where
     fn settle(
         &self,
         cli: Cli,
-        globals: Globals,
+        globals: &Globals,
         context: &Lazy<Cx>,
         out: &mut dyn Write,
     ) -> Result<(), Failure> {
@@ -499,6 +632,23 @@ where
     <Cli as Command>::Output: Display,
 {
     App::<Cli>::new().run()
+}
+
+/// Whether the argument list asks for help or a version, which is answered without a file.
+///
+/// `--` ends the flags, so anything after it names a value rather than asking a question.
+fn asks_for_help_or_version(argv: &[OsString]) -> bool {
+    for argument in argv {
+        let Some(text) = argument.to_str() else {
+            continue;
+        };
+        match text {
+            "--" => return false,
+            "--help" | "-h" | "--version" | "-V" => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Parses `argv` into the command line and the global options it carried.

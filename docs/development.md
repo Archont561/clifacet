@@ -139,6 +139,7 @@ from `crates/clifacet/Cargo.toml` and checks each one against the committed lock
 | `interactive` | `--no-default-features --features interactive` | the prompt frontend compiles by itself |
 | `tui` | `--no-default-features --features tui` | the full-screen frontend compiles by itself |
 | `serde` | `--no-default-features --features serde` | serialization of failures and secrets compiles by itself |
+| `settings-toml` | `--no-default-features --features settings-toml` | the TOML settings loader compiles by itself |
 | `all-features` | `--all-features` (workspace-wide) | every frontend together, which is what the tests build |
 
 A row that compiles proves a feature *can* be enabled, not that enabling it does

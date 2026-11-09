@@ -279,6 +279,54 @@ resolves to the full-screen form is hosted by the runner too: the form generated
 the fields declared `form` is drawn on stderr, and a submission goes through the same
 validation, command and output as the flags.
 
+### Settings from a file, under the flags
+
+A flag is one place a value comes from. The other three, in the order they win, are the
+environment, a settings file, and the built-in default. `App::settings` supplies the third,
+and nothing else changes: the file's values become `clap` defaults, so the order is `clap`'s
+own and each value is parsed by the same parser as the flag.
+
+```rust,ignore
+use clifacet::settings::toml::Toml;
+
+App::<Cli>::new()
+    .settings("my-app", Toml)
+    .run();
+```
+
+The file is chosen the way a user expects:
+
+| Where | How |
+| --- | --- |
+| `--config PATH` | before or after the subcommand; a file that is not there is an error |
+| `MY_APP_CONFIG` | the application's name upper-cased, which is `my-app` here |
+| `<config>/my-app/settings.toml` | the platform's config directory; a file that is not there is skipped |
+| `--no-config` | none of the above, and an error if `--config` was also given |
+
+A table is a section — the subcommand path — and a key is a long flag name, so this file
+sets `--port` and `--host` on `serve`, and `--attempts` on `serve retry`:
+
+```toml
+[serve]
+port = 8080
+host = "0.0.0.0"
+
+[serve.retry]
+attempts = 3
+```
+
+Three properties are worth knowing before relying on it. A value the file supplies is
+validated by the argument's own parser, so `port = 99999` fails at the line it was written
+on. A file value is still validated when a flag overrides it, because a settings file that
+is wrong is worth knowing about on the run that did not depend on it. And `--help` never
+reads the file, so the defaults it documents are the built-in ones rather than one machine's
+settings.
+
+The core takes `Entry` values, not TOML, so an application with its own format writes a
+`Loader` and the layering is unchanged; the `settings-toml` feature is the format most
+applications already have. `Source::File` in the provenance record says a value came from
+the file, and a secret from a file is recorded `file (secret)` without its value.
+
 The reference application in `examples/simple` runs this way, and is the shortcut to
 seeing each mode work:
 
