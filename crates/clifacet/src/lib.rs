@@ -154,6 +154,50 @@ macro_rules! commands {
 #[doc(hidden)]
 pub use clifacet_macros::__commands;
 
+/// Registers a folder of commands on the module that holds it (CLI-58).
+///
+/// ```ignore
+/// // src/lib.rs
+/// #[clifacet::registry]
+/// mod commands {}
+/// ```
+///
+/// The same registration as [`commands!`], written where the folder is declared rather than
+/// inside it: the module list comes from the folder's build report (so this needs the same
+/// `build.rs` call and `build` feature discovery does), and the folder's `mod.rs` keeps
+/// everything that is not registration — its `Request`, its helpers, its `impl`s — with no
+/// `commands!(..)` call left in it.
+///
+/// ```ignore
+/// #[clifacet::registry(output = crate::Report, planned)]
+/// mod commands {}
+/// ```
+///
+/// The braces are not decoration: an *outlined* module (`mod commands;`) in an attribute's
+/// input is unstable below Rust 1.99, and this crate supports older compilers than that. An
+/// empty body is filled from the folder's `mod.rs`; a body written here is the folder itself,
+/// and is kept as written beside the registration.
+///
+/// A context is not declared here. A command that needs one takes it as a `cx: &Cx`
+/// parameter, so the type is written once, where it is used, and the tree threads it to
+/// whichever leaf is chosen.
+///
+/// # What the folder may not start with
+///
+/// The folder's `mod.rs` is pulled in with an `include!`, which cannot carry inner attributes
+/// or `//!` docs. A file that begins with them is refused with a message saying to move the
+/// documentation onto this line and to use `//` comments inside the folder — rather than
+/// Rust's own message, which is about the fragment and never names the attribute.
+///
+/// # Keys
+///
+/// `output = Type`, `globals = Type`, `planned`, `version_off`, `name = "…"`,
+/// `about = "…"`, `long_about = "…"`, `root = { "field": Type }`, and `path = "…"` for a
+/// folder whose name does not say where it is. There is no module list — the folder is the
+/// list — and the generated enum is `Action` unless `request = Ident` names it, so a folder
+/// may keep a hand-written `Request` of its own beside it.
+pub use clifacet_macros::registry;
+
 pub use app::{App, Globals, Plain, Render, run};
 pub use command::{Command, Handler};
 pub use facet::Facet;

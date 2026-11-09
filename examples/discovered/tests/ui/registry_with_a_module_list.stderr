@@ -1,0 +1,5 @@
+error: `list` is not a key of `#[clifacet::registry(..)]`, and a module name is not written here: the folder is the list, and every command file in it is registered from the build script's report
+ --> tests/ui/registry_with_a_module_list.rs:6:22
+  |
+6 | #[clifacet::registry(list, echo)]
+  |                      ^^^^

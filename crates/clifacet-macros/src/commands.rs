@@ -36,13 +36,45 @@
 //! - `name = "…"`, `about = "…"`: the root's name and description, otherwise taken from
 //!   Cargo at compile time;
 //! - `version_off`: no `--version`, for a root that forwards version queries elsewhere.
+//!
+//! # The same registration, on the module instead (CLI-58)
+//!
+//! `#[clifacet::registry(..)]` on `mod commands {}` writes all of the above from the folder's
+//! report, and pulls the folder's `mod.rs` in beside it — so the folder holds its commands
+//! and its own types, and the registration is one line in `src/lib.rs` (decision-21). This
+//! is the mechanism it uses. An attribute cannot name a directory, and a declarative macro
+//! cannot be reached under the name of an attribute macro, so the registration runs as a
+//! proc macro; `include!` is what puts the folder's file back in its own directory, where its
+//! nested `mod` lines still mean the files beside it.
+//!
+//! What changes for a caller, and why:
+//!
+//! - **The module is written `mod commands {}`, with empty braces.** An outlined module
+//!   (`mod commands;`) in an attribute's input was unstable until Rust 1.99, and a proc macro
+//!   cannot ask for a newer compiler than the crate's floor. The braces make the module
+//!   inline, which every supported compiler accepts; the empty body is filled from the
+//!   folder's file, and a body written here means the folder *is* this module.
+//! - **No list.** The folder is the list, read from the same report `commands!()` reads, so a
+//!   module name written as a key is refused with a message saying so.
+//! - **No `context`.** A command that needs the application's context declares `cx: &Cx` on
+//!   itself, so there is nothing for this line to repeat.
+//! - **`Action`, not `Request`, by default.** The folder is where a hand-written `Request`
+//!   lives; `request = Ident` names the generated one when an application wants otherwise.
+//! - **The folder's `mod.rs` may not start with `//!` or `#![..]`**, because an included
+//!   fragment may not carry inner attributes. It is checked first, and reported with the fix.
+//! - **A helper is private.** Its `mod` line is written by the registry and never re-exported,
+//!   so reaching one from outside the folder is `E0603`. The note for that error points at
+//!   the attribute rather than at the folder, because a proc macro cannot place a span in
+//!   another file — decision-21 records the trade.
+
+use std::path::{Path, PathBuf};
 
 use heck::ToUpperCamelCase as _;
 use proc_macro2::{Span, TokenStream};
-use quote::{quote, quote_spanned};
+use quote::{ToTokens as _, quote, quote_spanned};
 use syn::parse::{ParseStream, Parser as _};
 use syn::spanned::Spanned as _;
-use syn::{Ident, LitStr, Token, Type};
+use syn::{Ident, Item, ItemMod, LitStr, Token, Type};
 
 use crate::subcommands;
 
@@ -62,6 +94,10 @@ mod protocol {
         pub(super) folder: std::path::PathBuf,
         pub(super) commands: Vec<String>,
         pub(super) groups: Vec<String>,
+        /// Helpers too: `commands!(..)` declares only commands and groups (a helper is not a
+        /// leaf), but `#[clifacet::registry]` also has to declare the helpers it may not
+        /// re-export, because the folder's own `include!` no longer writes those `mod` lines.
+        pub(super) helpers: Vec<String>,
     }
 
     impl Report {
@@ -90,20 +126,19 @@ mod protocol {
                         folder: std::path::PathBuf::from(value),
                         commands: Vec::new(),
                         groups: Vec::new(),
+                        helpers: Vec::new(),
                     }),
-                    "command" | "group" => {
+                    "command" | "group" | "helper" => {
                         let Some(report) = reports.last_mut() else {
                             continue;
                         };
-                        let names = if key == "command" {
-                            &mut report.commands
-                        } else {
-                            &mut report.groups
+                        let names = match key {
+                            "command" => &mut report.commands,
+                            "group" => &mut report.groups,
+                            _ => &mut report.helpers,
                         };
                         names.push(value.to_owned());
                     }
-                    // `helper` records are read and kept out of the list on purpose: a helper
-                    // is declared beside the tree, never registered in it.
                     _ => {}
                 }
             }
@@ -113,6 +148,14 @@ mod protocol {
 }
 
 use protocol::{Report, VARIABLE};
+
+/// What the generated request is called when nothing names it.
+///
+/// `Action`, not `Request`: a folder registers itself so that it may hold its own `Request` —
+/// the application's own type, with its own conversions — beside the generated one, which is
+/// the list of variants. `commands!(..)` writes into a file that is registration only, so
+/// `Request` is free there and stays the default for it.
+const DEFAULT_REQUEST: &str = "Request";
 
 /// Said when the call is in a file the compiler did not name to us.
 const NO_LOCAL_FILE: &str = "`clifacet::commands!()` with no list finds its folder from the file \
@@ -132,6 +175,7 @@ const SUPPORTED_KEYS: &str = "`globals = Type`, `output = Type`, `context = Type
                               `version_off`, `root = { \"field\": Type }`, `request = Ident`";
 
 /// One call: the modules it registers, and the keys it sets.
+#[derive(Clone, Default)]
 struct Declared {
     modules: Vec<syn::Path>,
     globals: Option<Type>,
@@ -142,38 +186,57 @@ struct Declared {
     about: Option<LitStr>,
     long_about: Option<LitStr>,
     version_off: bool,
-    /// What the generated request enum is called; `Request` unless a name is given.
-    request: Ident,
+    /// What the generated request enum is called, when the call names it. `None` leaves the
+    /// default to whoever emits the registration: `Request` for `commands!(..)`, `Action` for
+    /// `#[clifacet::registry]`, whose folder may hold a `Request` of its own.
+    request: Option<Ident>,
     /// The root's own fields, declared the way a `#[clifacet::command]` struct declares
     /// them and folded into the generated input by name: `root = {"json": bool}`.
     root: Vec<(Ident, Type)>,
     /// Where the call was written, so a call with no list can find its own folder.
     call_site: Option<Span>,
+    /// `path = "…"`: the folder, when the attribute names one rather than guessing it.
+    path: Option<LitStr>,
+    /// The folder's helper modules, when this declaration is a registry: helpers are declared
+    /// with the leaves, and never registered in the tree.
+    helpers: Vec<String>,
+    /// The folder as the build report names it, when the caller already knows it.
+    report_folder: Option<PathBuf>,
+    /// The folder's absolute path, when a registry writes the leaves' `mod` lines outside the
+    /// folder: a macro's `mod x;` resolves against the file the macro ran in, so each
+    /// declaration says where its file is instead.
+    in_folder: Option<PathBuf>,
     /// Whether the module list came from the folder's report rather than the call.
     discovered: bool,
 }
 
-impl Default for Declared {
-    fn default() -> Self {
-        Self {
-            modules: Vec::new(),
-            globals: None,
-            output: None,
-            context: None,
-            planned: false,
-            name: None,
-            about: None,
-            long_about: None,
-            version_off: false,
-            root: Vec::new(),
-            call_site: None,
-            discovered: false,
-            request: Ident::new("Request", Span::call_site()),
-        }
-    }
-}
-
 impl Declared {
+    /// This declaration with another's *keys* — the modules are the registry's own, and a
+    /// duplicate name is the registry's to refuse, not something to copy over.
+    fn merge(mut self, keys: Self) -> Self {
+        self.globals = keys.globals.or(self.globals);
+        self.output = keys.output.or(self.output);
+        self.context = keys.context.or(self.context);
+        self.planned = keys.planned || self.planned;
+        self.name = keys.name.or(self.name);
+        self.about = keys.about.or(self.about);
+        self.long_about = keys.long_about.or(self.long_about);
+        self.version_off = keys.version_off || self.version_off;
+        self.in_folder = keys.in_folder.or(self.in_folder);
+        // The report's helpers stand unless the keys brought their own: an attribute never
+        // lists helpers, and the folder's report does.
+        if !keys.helpers.is_empty() {
+            self.helpers = keys.helpers;
+        }
+        if !keys.root.is_empty() {
+            self.root = keys.root;
+        }
+        // Only when the keys named one: an entry that says nothing about the request must not
+        // put a default back.
+        self.request = keys.request.or(self.request);
+        self
+    }
+
     /// Rejects what a valid call cannot mean: no command, a command twice, `planned`
     /// with a context.
     fn finish(self) -> syn::Result<Self> {
@@ -272,6 +335,7 @@ impl Declared {
                     path: module.clone(),
                     leaf: pascal(&last),
                     variant: pascal(&last),
+                    name: last,
                 }
             })
             .collect()
@@ -283,6 +347,8 @@ struct LeafPath {
     path: syn::Path,
     leaf: Ident,
     variant: Ident,
+    /// The module's own name, which a declaration outside the folder needs for its file.
+    name: Ident,
 }
 
 /// `list` as `List`, `search_history` as `SearchHistory`.
@@ -295,19 +361,59 @@ fn pascal(module: &Ident) -> Ident {
 
 /// Expands one `commands!(..)` call into the registration, or an error saying what to write.
 pub(crate) fn expand(input: TokenStream, call_site: Span) -> TokenStream {
-    match parse(input, call_site).and_then(|declared| tokens(&declared)) {
+    match parse(input, call_site, None, None, None).and_then(|declared| tokens(&declared)) {
         Ok(tokens) => tokens,
         Err(error) => error.into_compile_error(),
     }
 }
 
+/// Like [`parse`], for a caller that has already said where the folder is.
+fn parse_into(
+    declared: Declared,
+    file: Option<PathBuf>,
+    folder: Option<PathBuf>,
+    report: Option<&str>,
+) -> syn::Result<Declared> {
+    let mut parsed = parse(
+        quote!(),
+        declared.call_site.unwrap_or_else(Span::call_site),
+        file,
+        folder,
+        report,
+    )?;
+    parsed.path = declared.path;
+    parsed.in_folder = declared.in_folder;
+    // Discovery's own answer, which the caller set and `parse` cannot know: the folder the
+    // leaves are declared in and the name the report uses for it.
+    parsed.report_folder = parsed.report_folder.or(declared.report_folder);
+    parsed.call_site = declared.call_site.or(parsed.call_site);
+    Ok(parsed)
+}
+
 /// Reads the module list and the keys after it.
-fn parse(input: TokenStream, call_site: Span) -> syn::Result<Declared> {
+///
+/// `folder` is the file whose folder a call with no list registers. A `commands!(..)`
+/// invocation has no file of its own — the macro only sees a span — so it passes `None` and
+/// the span is asked instead. The `#[clifacet::registry]` attribute *is* written in the file,
+/// so it says which one, which is also how the same shared reader serves both.
+fn parse(
+    input: TokenStream,
+    call_site: Span,
+    file: Option<PathBuf>,
+    folder: Option<PathBuf>,
+    report: Option<&str>,
+) -> syn::Result<Declared> {
+    let mut file = file;
+    let mut folder = folder;
     let parser = |stream: ParseStream<'_>| -> syn::Result<Declared> {
         let mut declared = Declared {
             call_site: Some(call_site),
             ..Declared::default()
         };
+        // One entry per comma-separated position, in the order written. A position that
+        // *starts* with a comma is an empty entry — `output = X, , planned` — and skipping it
+        // silently dropped whatever was meant there, which is how a bare `planned` between two
+        // value keys used to disappear.
         let mut first = true;
         while !stream.is_empty() {
             if !first {
@@ -318,11 +424,15 @@ fn parse(input: TokenStream, call_site: Span) -> syn::Result<Declared> {
             }
             first = false;
             if stream.peek(Token![,]) {
-                continue;
+                return Err(syn::Error::new(
+                    stream.span(),
+                    "an empty entry: `clifacet::commands!(..)` takes one declaration per \
+                     position, so drop the extra comma",
+                ));
             }
             declaration(stream, &mut declared)?;
         }
-        discover(&mut declared)?;
+        discover(&mut declared, file.take(), folder.take(), report)?;
         declared.finish()
     };
     parser.parse2(input)
@@ -357,51 +467,96 @@ fn names(report: &Report) -> Vec<String> {
 ///
 /// A call that named modules is left exactly as it was: moving between the two forms
 /// changes only the call, which is what CLI-50's last acceptance criterion asks for.
-fn discover(declared: &mut Declared) -> syn::Result<()> {
+fn discover(
+    declared: &mut Declared,
+    file: Option<PathBuf>,
+    folder: Option<PathBuf>,
+    report: Option<&str>,
+) -> syn::Result<()> {
+    // A call that names its modules needs nothing else.
+    if !declared.modules.is_empty() {
+        return Ok(());
+    }
+    // The report is checked first: "no build script" is the mistake a caller makes most
+    // often, and it is the one whose fix is a line in another file.
+    let call_site = declared.call_site.unwrap_or_else(Span::call_site);
+    let from_environment;
+    let value = if let Some(report) = report {
+        report
+    } else {
+        from_environment =
+            std::env::var(VARIABLE).map_err(|_| syn::Error::new(call_site, NO_REPORT))?;
+        &from_environment
+    };
+    discover_from(declared, file, folder, value)
+}
+
+/// Discovery, given the report: what [`discover`] does once the environment has been read.
+///
+/// The two are split so a report can be tested by passing one. Writing it into
+/// `CLIFACET_COMMANDS` instead would mean `set_var`, which is `unsafe` in edition 2024 and
+/// cannot appear in this crate — and would let two tests race over one variable.
+fn discover_from(
+    declared: &mut Declared,
+    file: Option<PathBuf>,
+    folder: Option<PathBuf>,
+    value: &str,
+) -> syn::Result<()> {
+    // The folder is absolute when a registry found it; the report names it from the crate root.
+    let folder = folder.or_else(|| declared.report_folder.clone());
     if !declared.modules.is_empty() {
         return Ok(());
     }
     let call_site = declared.call_site.unwrap_or_else(Span::call_site);
-    // The report is checked first: "no build script" is the mistake a caller makes most
-    // often, and it is the one whose fix is a line in another file. A missing *file* is a
-    // compiler quirk by comparison, so it is reported second, when the report did arrive.
-    let value = std::env::var(VARIABLE).map_err(|_| syn::Error::new(call_site, NO_REPORT))?;
-    let reports = Report::decode(&value).map_err(|error| syn::Error::new(call_site, error))?;
-    let Some(file) = call_site.local_file() else {
-        return Err(syn::Error::new(call_site, NO_LOCAL_FILE));
+    let reports = Report::decode(value).map_err(|error| syn::Error::new(call_site, error))?;
+    // Which report is this call, and how many folders above its leaves it sits. A registry
+    // module knows the folder outright, so it is matched as it is. A `commands!(..)` call
+    // only has the file it was written in, and recovers its folder from the file the
+    // compiler named — which is how its own position decides what it registers.
+    let (report, depth) = if let Some(folder) = folder {
+        let found = reports
+            .iter()
+            .find(|report| same_folder(&report.folder, &folder))
+            .ok_or_else(|| {
+                syn::Error::new(
+                    call_site,
+                    format!(
+                        "`#[clifacet::registry]` registers {} but the build script scanned {}. \
+                         A registry line registers the folder its module is in; give another \
+                         folder with `path = \"…\"`, or call \
+                         `clifacet::build::commands_in(..)` for it",
+                        folder.display(),
+                        scanned(&reports)
+                    ),
+                )
+            })?;
+        (found, 0)
+    } else {
+        let Some(file) = file.or_else(|| call_site.local_file()) else {
+            return Err(syn::Error::new(call_site, NO_LOCAL_FILE));
+        };
+        // The deepest folder wins: a file in `src/commands/db/` is inside `src/commands` too,
+        // and taking the first match would register the group's commands in the folder above.
+        reports
+            .iter()
+            .filter_map(|report| report_folder(&file, &report.folder).map(|depth| (report, depth)))
+            .max_by_key(|(report, _)| report.folder.as_os_str().len())
+            .ok_or_else(|| {
+                syn::Error::new(
+                    call_site,
+                    format!(
+                        "`clifacet::commands!()` was written in {} but the build script \
+                         scanned {}. A call with no list registers the folder it is written \
+                         in; name the modules instead with `clifacet::commands!(..)` to \
+                         register another one",
+                        file.display(),
+                        scanned(&reports)
+                    ),
+                )
+            })?
     };
-    // The build script scanned a whole tree; the call belongs to exactly one of its folders,
-    // and which one is what the file it was written in says.
-    // The deepest folder wins: a file in `src/commands/db/` is inside `src/commands` too,
-    // and taking the first match would register the group's commands in the folder above it.
-    // Depth is compared by the folder's own length, so a nested group beats its parent.
-    let found = reports
-        .iter()
-        .filter_map(|report| report_folder(&file, &report.folder).map(|depth| (report, depth)))
-        .max_by_key(|(report, _)| report.folder.as_os_str().len())
-        .ok_or_else(|| {
-            let scanned: Vec<String> = reports
-                .iter()
-                .map(|report| report.folder.display().to_string())
-                .collect();
-            syn::Error::new(
-                call_site,
-                format!(
-                    "`clifacet::commands!()` was written in {} but the build script scanned {}. \
-                     A call with no list registers the folder it is written in; name the \
-                     modules instead with `clifacet::commands!(..)` to register another one",
-                    file.display(),
-                    if scanned.is_empty() {
-                        String::from("nothing")
-                    } else {
-                        scanned.join(", ")
-                    }
-                ),
-            )
-        })?;
-    let (report, depth) = found;
-    let names = names(report);
-    if names.is_empty() {
+    let registered = names(report);
+    if registered.is_empty() {
         // A folder with nothing to register is a real state — a folder before its first
         // command — but registering nothing would generate an empty tree, so it is refused
         // with the one thing the caller can do about it.
@@ -412,13 +567,72 @@ fn discover(declared: &mut Declared) -> syn::Result<()> {
              `clifacet::commands!(list, show)`",
         ));
     }
-    let prefix = "super::".repeat(depth);
-    declared.modules = names
+    // A helper is declared where the leaves are, so it is named plainly: the prefix discovery
+    // computes is for a `commands!` call written above the leaves, and the registry writes its
+    // declarations inside the folder.
+    let prefix = if declared.in_folder.is_some() {
+        String::new()
+    } else {
+        "super::".repeat(depth)
+    };
+    declared.helpers = report
+        .helpers
+        .iter()
+        .map(|name| format!("{prefix}{name}"))
+        .collect();
+    declared.modules = registered
         .iter()
         .filter_map(|name| syn::parse_str(&format!("{prefix}{name}")).ok())
         .collect();
     declared.discovered = true;
     Ok(())
+}
+
+/// Where a declared module's file is, by the rule Rust uses for `mod <name>;`.
+fn leaf_file(folder: &Path, name: &Ident) -> String {
+    let nested = folder.join(name.to_string());
+    let file = if nested.join("mod.rs").is_file() {
+        nested.join("mod.rs")
+    } else {
+        folder.join(format!("{name}.rs"))
+    };
+    file.display().to_string()
+}
+
+/// A declared helper's name.
+///
+/// The span is this macro's: a helper's `mod` line is written by the attribute, so an error
+/// about reaching the helper from outside the folder points at the registration rather than
+/// at the folder's own file. `commands!()` placed that error on `mod _shared;` because it
+/// emitted that line from its own expansion; the registry cannot, and the trade is recorded
+/// in decision-20 — the error still names the helper and says it is private, in the folder's
+/// own vocabulary.
+fn helper_name(helper: &str) -> Ident {
+    let name = helper.rsplit("::").next().unwrap_or(helper);
+    Ident::new(name, Span::call_site())
+}
+
+/// The folders a report carries, for a message that says what was scanned.
+fn scanned(reports: &[Report]) -> String {
+    if reports.is_empty() {
+        return String::from("nothing");
+    }
+    reports
+        .iter()
+        .map(|report| report.folder.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Whether a reported folder is the one a registry module's file lives in.
+///
+/// The two are written from different roots — the report names a folder relative to the crate
+/// (`src/commands`), while the compiler names an absolute path — so the comparison is a
+/// suffix one, at a folder boundary so `x/src/commands` cannot answer for `src/commands`.
+fn same_folder(reported: &Path, folder: &Path) -> bool {
+    let reported = reported.to_str().unwrap_or_default().replace('\\', "/");
+    let folder = folder.to_str().unwrap_or_default().replace('\\', "/");
+    folder == reported || folder.ends_with(&format!("/{reported}"))
 }
 
 /// How deep inside `folder` the file is, or `None` when it is not inside it at all.
@@ -589,10 +803,26 @@ fn unknown_key(key: &str, span: Span) -> syn::Error {
     )
 }
 
+/// What the generated request enum is called.
+///
+/// `Request` unless the call names one, and `Action` for a registry — whose folder may hold a
+/// `Request` of its own, the application's type with its own conversions, beside the generated
+/// list of variants.
+fn request_name(declared: &Declared) -> Ident {
+    declared.request.clone().unwrap_or_else(|| {
+        let fallback = if declared.in_folder.is_some() {
+            "Action"
+        } else {
+            DEFAULT_REQUEST
+        };
+        Ident::new(fallback, Span::call_site())
+    })
+}
+
 /// The registration: modules, re-exports, the tree, the request, the input and the root.
 fn tokens(declared: &Declared) -> syn::Result<TokenStream> {
-    let modules = &declared.modules;
     let leaves = declared.leaves();
+    let declarations = declarations(declared, &leaves);
     let variants = leaves.iter().map(|leaf| {
         let (variant, name) = (&leaf.variant, &leaf.leaf);
         quote!(#variant(#name))
@@ -601,27 +831,11 @@ fn tokens(declared: &Declared) -> syn::Result<TokenStream> {
         let (variant, path, name) = (&leaf.variant, &leaf.path, &leaf.leaf);
         quote!(#variant(<#path::#name as ::clifacet::Facet>::Input))
     });
-    // Re-exported, so the leaf, its payload and its `forward` are reachable from the
-    // folder's own modules and from an application that names them: `pub(crate)` where
-    // the caller's visibility allows it, which is what makes one call work in an
-    // application and in a test.
-    // Each re-export is spanned at the module it names, so a file without the struct it is
-    // supposed to hold reports at that file rather than at the `commands!` call above it —
-    // which is what makes "a command file without its struct" a mistake in the caller's own
-    // source (CLI-50, AC#4).
-    let reexports = leaves.iter().map(|leaf| {
-        let (path, name) = (&leaf.path, &leaf.leaf);
-        let at = leaf
-            .path
-            .segments
-            .last()
-            .map_or_else(Span::call_site, |segment| segment.ident.span());
-        quote_spanned!(at=> pub(crate) use #path::#name;)
-    });
+    let reexports = reexports(&leaves);
 
-    // The tree's attribute is the one `#[clifacet::subcommands]` parses, forwarded whole:
-    // this macro never re-implements the tree, it only says what to declare.
-    let request = &declared.request;
+    // The tree's attribute is the one `#[clifacet::subcommands]` parses, forwarded whole: this
+    // macro never re-implements the tree, it only says what to declare.
+    let request = request_name(declared);
     let mut attribute = quote!(input = #request);
     if let Some(output) = &declared.output {
         attribute.extend(quote!(, output = #output));
@@ -632,9 +846,9 @@ fn tokens(declared: &Declared) -> syn::Result<TokenStream> {
     if let Some(context) = &declared.context {
         attribute.extend(quote!(, context = #context));
     }
-    // The tree is expanded here, with the attribute's own parser: forwarding the
-    // attribute as tokens would expand it in the attribute's context, where the leaf types
-    // this macro named are invisible ("cannot find value `leaf`").
+    // The tree is expanded here, with the attribute's own parser: forwarding the attribute as
+    // tokens would expand it in the attribute's context, where the leaf types this macro named
+    // are invisible ("cannot find value `leaf`").
     let tree = subcommands::expand(
         attribute,
         quote! {
@@ -675,11 +889,9 @@ fn tokens(declared: &Declared) -> syn::Result<TokenStream> {
     // an application's `main` hands the runner one command and a dry run reaches the leaf.
     let root_run = root(declared);
 
-    // The order is the order the macro is written in, so a leaf's variant sits where its
-    // module is listed and the compiler's messages follow the file.
     Ok(quote! {
-        #(mod #modules;)*
-        #(#reexports)*
+        #declarations
+        #reexports
 
         /// What the user asked for, validated: one variant per command.
         // Prints and clones; equality is the payload's to offer, so it is not derived here.
@@ -728,6 +940,58 @@ fn tokens(declared: &Declared) -> syn::Result<TokenStream> {
 
         #root_run
     })
+}
+
+/// The leaf modules: declared where the leaves are, or each with the file it means.
+///
+/// `commands!(..)` writes `mod x;` in the folder, which is where the leaves are. A registry
+/// writes it from outside the folder, where that keyword would look beside the attribute, so
+/// each declaration carries its own `#[path]` — still the compiled file, so an edit inside the
+/// folder rebuilds the crate.
+fn declarations(declared: &Declared, leaves: &[LeafPath]) -> TokenStream {
+    let modules = &declared.modules;
+    let helpers = helper_modules(declared);
+    let Some(folder) = &declared.in_folder else {
+        return quote!(#(mod #modules;)* #helpers);
+    };
+    let leaves = leaves.iter().map(|leaf| {
+        let file = leaf_file(folder, &leaf.name);
+        let name = &leaf.name;
+        quote!(#[path = #file] mod #name;)
+    });
+    let helpers = declared.helpers.iter().map(|helper| {
+        let name = helper_name(helper);
+        let file = leaf_file(folder, &name);
+        quote!(#[path = #file] #[allow(unused_imports)] mod #name;)
+    });
+    quote!(#(#leaves)* #(#helpers)*)
+}
+
+/// A helper is the folder's own business: declared, never re-exported.
+fn helper_modules(declared: &Declared) -> TokenStream {
+    let helpers = declared.helpers.iter().map(|helper| {
+        let name = helper_name(helper);
+        quote!(#[allow(unused_imports)] mod #name;)
+    });
+    quote!(#(#helpers)*)
+}
+
+/// The leaf re-exports, each spanned at the module it names.
+///
+/// A file without the struct it is supposed to hold then reports at that file rather than at
+/// the call above it, which is what makes "a command file without its struct" a mistake in the
+/// caller's own source (CLI-50, AC#4).
+fn reexports(leaves: &[LeafPath]) -> TokenStream {
+    let reexports = leaves.iter().map(|leaf| {
+        let (path, name) = (&leaf.path, &leaf.leaf);
+        let at = leaf
+            .path
+            .segments
+            .last()
+            .map_or_else(Span::call_site, |segment| segment.ident.span());
+        quote_spanned!(at=> pub(crate) use #path::#name;)
+    });
+    quote!(#(#reexports)*)
 }
 
 /// The root's dispatch: it runs what its tree runs, so `main` hands the runner one command.
@@ -820,4 +1084,388 @@ fn root(declared: &Declared) -> TokenStream {
         },
         (None, None) => quote!(),
     }
+}
+
+// --- `#[clifacet::registry(..)]` on a module (CLI-58) --------------------------------
+
+/// Reads `#[clifacet::registry(..)]`.
+///
+/// One entry per comma-separated key, read by the same `declaration` that reads
+/// `clifacet::commands!(..)` — so one grammar, one set of messages, and no second dialect to
+/// keep in step. Two things differ, both about the list: a module name is refused, because the
+/// folder is the list, and `path = "…"` is accepted, because an inline module has to say where
+/// its folder is.
+fn registry_attribute(attribute: &TokenStream) -> syn::Result<Declared> {
+    let mut declared = Declared::default();
+    let parser = |stream: ParseStream<'_>, declared: &mut Declared| -> syn::Result<()> {
+        let mut first = true;
+        while !stream.is_empty() {
+            if !first {
+                stream.parse::<Token![,]>()?;
+                if stream.is_empty() {
+                    break;
+                }
+            }
+            first = false;
+            if !stream.peek(syn::Ident) {
+                return Err(syn::Error::new(
+                    stream.span(),
+                    "`#[clifacet::registry(..)]` takes comma-separated keys, each one written \
+                     `key` or `key = value`",
+                ));
+            }
+            let key: Ident = stream.parse()?;
+            if key == "path" {
+                stream.parse::<Token![=]>()?;
+                declared.path = Some(stream.parse()?);
+                continue;
+            }
+            if !is_key(&key) {
+                return Err(syn::Error::new(
+                    key.span(),
+                    format!(
+                        "`{key}` is not a key of `#[clifacet::registry(..)]`, and a module name \
+                         is not written here: the folder is the list, and every command file in \
+                         it is registered from the build script's report"
+                    ),
+                ));
+            }
+            let mut entry = Declared::default();
+            // `declaration` reads a key and what follows it; it needs the key to be first, and
+            // it was already consumed to check that it is one.
+            let rest = entry_of(stream, &key)?;
+            declaration_from(rest, &mut entry)?;
+            *declared = std::mem::take(declared).merge(entry);
+        }
+        Ok(())
+    };
+    let reader = |stream: ParseStream<'_>| parser(stream, &mut declared);
+    syn::parse::Parser::parse2(reader, attribute.clone())?;
+    Ok(declared)
+}
+
+/// Whether an identifier is a key `commands!(..)` — and so `registry(..)` — takes.
+fn is_key(name: &Ident) -> bool {
+    matches!(
+        name.to_string().as_str(),
+        "globals"
+            | "output"
+            | "context"
+            | "planned"
+            | "name"
+            | "about"
+            | "long_about"
+            | "version_off"
+            | "root"
+            | "request"
+    )
+}
+
+/// The entry `declaration` expects, reassembled from a key already read and what follows it.
+fn entry_of(stream: ParseStream<'_>, key: &Ident) -> syn::Result<TokenStream> {
+    let mut entry = key.to_token_stream();
+    if stream.peek(Token![=]) {
+        stream.parse::<Token![=]>()?;
+        entry.extend(quote!(=));
+        if stream.peek(syn::token::Brace) {
+            let group: proc_macro2::Group = stream.parse()?;
+            entry.extend(group.to_token_stream());
+        } else {
+            // A type for `output = MyType`, a literal for `name = "bl"`: both are read here,
+            // and `declaration` decides which it expected.
+            let value: proc_macro2::TokenStream = if stream.peek(syn::Lit) {
+                let literal: syn::Lit = stream.parse()?;
+                literal.to_token_stream()
+            } else {
+                stream.parse::<Type>()?.to_token_stream()
+            };
+            entry.extend(value);
+        }
+    }
+    Ok(entry)
+}
+
+/// `declaration`, for an entry that is already a token stream.
+fn declaration_from(tokens: TokenStream, declared: &mut Declared) -> syn::Result<()> {
+    let parser = |stream: ParseStream<'_>| declaration(stream, declared);
+    parser.parse2(tokens)
+}
+
+/// The folder the module registers, and the file whose `mod` lines reach it.
+///
+/// For `mod commands {}` in `src/lib.rs` that is `src/commands` and
+/// `src/commands/mod.rs`: the
+/// module's own file, which is what `local_file()` names, including under `#[path]`.
+///
+/// A module written inline — `#[clifacet::registry] mod commands { .. }` — has no file of its
+/// own. Its folder is `src/commands` beside the file *it* is written in, which is where the
+/// `commands` name points anyway; `path = "…"` says so explicitly for anything else.
+fn locate(attribute: &Declared, module: &ItemMod) -> Located {
+    // The file the declaration is written in, which is what a relative folder is relative to:
+    // for `mod commands {}` that is the *parent*'s file — `lib.rs` or `mod.rs` — and the folder
+    // is `commands` beside it.
+    // Absolute, because the path is written into an `include!` that the compiler resolves
+    // against the file the macro ran in — and a span names the file relative to wherever cargo
+    // was invoked, which is not the same directory.
+    let written = module
+        .span()
+        .local_file()
+        .map(|file| std::fs::canonicalize(&file).unwrap_or(file));
+    let root = std::env::var("CARGO_MANIFEST_DIR").ok().map(PathBuf::from);
+    let relative = attribute.path.as_ref().map_or_else(
+        || Path::new("src").join(module.ident.to_string()),
+        |path| PathBuf::from(path.value()),
+    );
+    // The report names folders relative to the crate root, so the folder is known from the
+    // manifest alone. The *file* has to be found where Rust finds it, which is relative to the
+    // file the module is declared in.
+    let folder = root
+        .as_ref()
+        .map_or_else(|| relative.clone(), |root| root.join(&relative));
+    let file = match written.clone().filter(|_| attribute.path.is_none()) {
+        // Inline: the module has no file, so the folder is beside this one.
+        Some(written) if module.content.is_some() => {
+            let parent = written.parent().unwrap_or(Path::new(""));
+            parent_file(parent, &module.ident.to_string())
+        }
+        // Declared in a file: the folder is beside that file.
+        Some(written) => written.parent().map_or_else(
+            || folder.join("mod.rs"),
+            |parent| parent_file(&parent.join(module.ident.to_string()), "mod"),
+        ),
+        None => folder.join("mod.rs"),
+    };
+    Located {
+        file,
+        folder: relative,
+    }
+}
+
+/// `folder/mod.rs` when it exists, otherwise `folder.rs` — how Rust itself looks.
+fn parent_file(folder: &Path, name: &str) -> PathBuf {
+    let folder = if name == "mod" {
+        folder.to_path_buf()
+    } else {
+        folder.join(name)
+    };
+    if folder.join("mod.rs").is_file() {
+        folder.join("mod.rs")
+    } else {
+        folder.with_extension("rs")
+    }
+}
+
+/// Where a registry module's contents are.
+struct Located {
+    /// The file whose `mod` lines declare the leaves.
+    file: PathBuf,
+    /// The folder it sits in, as the build report names it.
+    folder: PathBuf,
+}
+
+/// Expands `#[clifacet::registry(..)] mod commands {}` into the registration *and* the folder.
+///
+/// The attribute owns the registration, so the folder writes no `commands!(..)` call and
+/// declares no context: one line in `lib.rs` says what the commands are and what they are
+/// given. `mod.rs` keeps everything else — its helpers, its `Request`, its `From` impls —
+/// because it is still a module file, and still where its own types live.
+///
+/// Two mechanisms, because neither does the job alone. A macro sees tokens, not files, so it
+/// cannot open the folder; and an attribute cannot name a directory (`#[path = "commands"]` is
+/// refused: "is a directory"). So the folder's `mod.rs` is pulled in with `include!`, whose
+/// `mod` lines resolve against the included file's own directory (decision-20), and the
+/// registration is generated from the folder's build report — the one `commands!()` with no
+/// list already reads (CLI-50).
+pub(crate) fn registry_expand(
+    attribute: &TokenStream,
+    item: TokenStream,
+) -> syn::Result<TokenStream> {
+    let module: ItemMod = syn::parse2(item)?;
+    let keys = registry_attribute(attribute)?;
+    let located = locate(&keys, &module);
+    expand_registry(&keys, &module, &located, None)
+}
+
+/// A registry's expansion with the folder's report given rather than read, for the tests.
+///
+/// The folder is the fixture's, and the `mod` line is the one an application writes, because
+/// what is being tested is the expansion a user gets — not an arrangement only a test makes.
+#[cfg(test)]
+pub(crate) fn registry_for_test(
+    attribute: &TokenStream,
+    item: &TokenStream,
+    folder: &str,
+    report: &str,
+) -> syn::Result<TokenStream> {
+    let module: ItemMod = syn::parse2(item.clone())?;
+    let keys = registry_attribute(attribute)?;
+    // The folder as a path, which is what `locate` would have produced for `mod commands {}`
+    // written beside it: the file the leaves are declared from, and the report's name for it.
+    let located = Located {
+        file: PathBuf::from(folder).join("mod.rs"),
+        folder: PathBuf::from(folder),
+    };
+    expand_registry(&keys, &module, &located, Some(report))
+}
+
+/// The expansion both entry points share: the registration, and the folder it belongs to.
+fn expand_registry(
+    keys: &Declared,
+    module: &ItemMod,
+    located: &Located,
+    report: Option<&str>,
+) -> syn::Result<TokenStream> {
+    let mut module = module.clone();
+    // The file's header is checked before anything is read from it: a `mod.rs` that cannot be
+    // included is not worth registering, and this is the one mistake whose fix is in the file
+    // the attribute names.
+    reject_inner_docs(&located.file, &module)?;
+    if module.ident != "commands" {
+        return Err(syn::Error::new_spanned(
+            &module.ident,
+            "`#[clifacet::registry]` declares the folder's `mod` lines, `Cli`, `Commands`, \
+             `Request` and `Input` in the module it is written on, so that module is the \
+             folder and is named `commands`; for a module under another name, write its types \
+             and call `clifacet::commands!(..)` inside it",
+        ));
+    }
+    let folder = located.folder.clone();
+
+    // The module list comes from the folder's report, read here because the attribute *is*
+    // the call inside the folder: leaving a `commands!(..)` there too would register twice.
+    // `folder` is the report's own name for the folder, so it also selects the entry, and the
+    // declarations are written from inside the folder.
+    let mut declared = Declared {
+        path: keys.path.clone(),
+        // The report's own name for the folder, which is what selects its entry — a name given
+        // by `path = ".."` is relative to the crate, and this one is what the build script wrote.
+        report_folder: Some(folder.clone()),
+        // The leaves are beside the file being included, which is where the `#[path]`
+        // declarations have to point.
+        in_folder: located.file.parent().map(Path::to_path_buf),
+        ..Declared::default()
+    };
+    declared.call_site = Some(module.ident.span());
+    let mut declared = parse_into(declared, Some(located.file.clone()), Some(folder), report)?;
+    declared = declared.merge(keys.clone());
+    let registration = tokens(&declared)?;
+
+    // Two cases, and they differ only in where the folder's contents come from.
+    //
+    // Written in place, the module *is* the folder: its items are declared where Rust would
+    // have declared them, and the leaves are `mod` lines beside them. An empty body is the
+    // other case — `mod commands {}` is how a folder is declared, because an *outlined*
+    // module in an attribute's input is unstable below Rust 1.99 and this crate's floor is
+    // 1.88 (decision-21). The braces make the module inline, which every supported compiler
+    // accepts, and the folder's file is included into it.
+    if let Some((_, items)) = module.content.take()
+        && !items.is_empty()
+    {
+        let kept = items
+            .iter()
+            .filter(|item| !is_registration_call(item))
+            .map(Item::to_token_stream)
+            .collect::<Vec<_>>();
+        let name = &module.ident;
+        let visibility = &module.vis;
+        let attrs = &module.attrs;
+        return Ok(quote! {
+            #(#attrs)*
+            #visibility mod #name {
+                #(#kept)*
+                #registration
+            }
+        });
+    }
+
+    // The folder's own file: `mod.rs` is pulled in as it was written, and the registration
+    // sits beside it. The leaves' own `mod` lines are the registration's, each with the
+    // `#[path]` of its file, because a keyword a macro emits resolves against the file the
+    // macro ran in rather than against the folder.
+    //
+    // Checked here rather than in `locate`, because this is the path that reads the file,
+    // and an `include!` of nothing says less than a sentence does.
+    if !located.file.is_file() {
+        return Err(syn::Error::new_spanned(
+            &module.ident,
+            format!(
+                "`#[clifacet::registry]` fills this module from {}, which does not exist. \
+                 That file is the folder; create it, or say where the folder is with \
+                 `path = \"…\"`",
+                shown(&located.file)
+            ),
+        ));
+    }
+    let file = LitStr::new(&located.file.display().to_string(), module.ident.span());
+    let name = &module.ident;
+    let visibility = &module.vis;
+    let attrs = &module.attrs;
+    Ok(quote! {
+        #(#attrs)*
+        #visibility mod #name {
+            #registration
+            #[allow(unused_imports)]
+            include!(#file);
+        }
+    })
+}
+
+/// A path as a message should name it: relative to the crate, with `/` separators.
+///
+/// An absolute path is long, machine-specific, and differs between platforms — which would
+/// make every golden compile-fail case a per-platform file. `src/commands/mod.rs` says the
+/// same thing to the reader and to the test.
+fn shown(file: &Path) -> String {
+    let relative = std::env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .ok()
+        .and_then(|root| file.strip_prefix(&root).ok().map(Path::to_path_buf))
+        .unwrap_or_else(|| file.to_path_buf());
+    relative.to_string_lossy().replace('\\', "/")
+}
+
+/// Refuses a folder file whose header an `include!` cannot carry.
+///
+/// The file is read for this one check, and for nothing else: what is emitted comes from
+/// `include!`, which the compiler tracks, so an edit inside the folder rebuilds the crate. A
+/// proc macro reading the file's *contents* would not be tracked, which is why the registration
+/// is included rather than pasted (decision-15 item 4 stays true for this reason).
+fn reject_inner_docs(file: &Path, module: &ItemMod) -> syn::Result<()> {
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return Ok(());
+    };
+    // Only the header can hold them: after the first item, Rust refuses `//!` itself.
+    let inner = text
+        .lines()
+        .map(str::trim_start)
+        .take_while(|line| {
+            !line.starts_with("pub ") && !line.starts_with("mod ") && !line.starts_with("use ")
+        })
+        .any(|line| line.starts_with("//!") || line.starts_with("#!["));
+    if inner {
+        // The message names the folder as a folder rather than by its path: the path is long,
+        // machine-specific, and would make this golden a per-platform file. Where the folder
+        // is is already said by the module this is reported on.
+        return Err(syn::Error::new_spanned(
+            module,
+            "the folder's `mod.rs` is included into this module, and a file pulled in with \
+             `include!` may not start with `//!` or `#![..]`, because inner attributes are only \
+             allowed at the top of a file Rust reads as a module. Move the folder's \
+             documentation to this line as `///` comments, and keep `//` comments inside the \
+             folder",
+        ));
+    }
+    Ok(())
+}
+
+/// Whether an item is a `commands!(..)` call: the one thing the folder does not repeat.
+fn is_registration_call(item: &Item) -> bool {
+    let Item::Macro(call) = item else {
+        return false;
+    };
+    call.mac
+        .path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "commands")
 }

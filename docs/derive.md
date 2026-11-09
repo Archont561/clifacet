@@ -104,7 +104,7 @@ pub fn add_task(
 ```
 
 The function is left as it was written. Beside it the macro emits the type a folder
-registers — `add_task` becomes `AddTask`, the type `commands!` looks for in
+registers — `add_task` becomes `AddTask`, the type the folder's registration looks for in
 `add_task.rs` — the input type `AddTaskInput`, and the impls that connect them, so the
 body receives its arguments by name and nothing is copied by hand. The doc comment moves
 to the generated struct, where `clap` reads it: the first paragraph is the subcommand's
@@ -156,8 +156,10 @@ pub fn count(cx: &App) -> Result<usize, Failure> {
 }
 ```
 
-The parameter is named `cx`, and the folder's `commands!(..)` line has to declare the
-type — `commands!(context = crate::App, ..)`. Neither is guessed from the other: a `&App`
+The parameter is named `cx`, and the registration of the folder it sits in has to declare
+the type — `commands!(context = crate::App, ..)` for a folder that lists its commands, or a
+leaf that needs no line at all beyond its own signature. Neither is guessed from the
+other: a `&App`
 in a folder that declared no context is an error saying which line to add, and a `&App`
 that is not the last parameter is an error saying where it belongs. A name other than
 `cx` is available by marking the parameter `#[clifacet(context)]`.
@@ -534,7 +536,67 @@ What a tree gets wrong is a compile error, each with a golden `trybuild` file:
 - **A declared `collect = …` asks every question.** A field's `ask` or `confirm` beside
   it is an error, because it would never be asked.
 
-## One folder, one line: `clifacet::commands!`
+## One line on the module: `#[clifacet::registry]`
+
+The smallest registration a folder of commands can have is a line where the folder is
+declared, and nothing inside it (decision-21, CLI-58):
+
+```rust,ignore
+// src/lib.rs — the whole registration
+#[clifacet::registry(
+    output = crate::Said,
+    name = "discovered",
+    about = "A proof that a folder registers itself"
+)]
+pub mod commands {}
+```
+
+```rust,ignore
+// src/commands/mod.rs — everything that is not registration
+pub use _shared::greeting;
+
+pub struct Request { .. }
+```
+
+Four things come out of that one line, and each answers a question the folder used to
+answer itself:
+
+| Piece | What it does |
+| --- | --- |
+| the leaves' `mod` lines | one per file the build script reported, each with the `#[path]` of its file, because a `mod` a macro writes resolves beside the attribute |
+| the tree and the request | `Commands`, and `Action` — one variant per leaf input — unless `request = Name` names it, so the folder may keep a `Request` of its own |
+| `Input` and `Cli` | the root, with `clifacet::Globals` and the keys this line declares |
+| the folder itself | its `mod.rs`, pulled in with `include!` beside the registration, so its `impl`s, its re-exports and its own types are written in its scope and mean what they meant |
+
+The braces are part of the spelling, and not decoration: an *outlined* module
+(`mod commands;`) in an attribute's input is unstable below Rust 1.99, and clifacet supports
+older compilers than that. `mod commands {}` is inline, which every supported compiler
+accepts, and its empty body is filled from the folder's `mod.rs`. A body written there is
+the folder instead — kept as written, with the registration beside it.
+
+What the folder gives up, and what it gains:
+
+- **Its `mod.rs` may not start with `//!` or `#![..]`.** An `include!`d fragment cannot carry
+  inner attributes, so the folder documents itself in `//` comments and its documentation
+  goes on the module the attribute is written on. A file that starts with `//!` is refused
+  with a message that says exactly that.
+- **It is still a build script's job to say what is in the folder.** `clifacet::build::
+  commands()` in `build.rs` is required, exactly as for `commands!()` with no list, and the
+  `build` feature enables it.
+- **A helper stays private.** The registry declares `_name.rs` beside the leaves and never
+  re-exports it, so reaching one from outside its folder is `E0603`, and `mod.rs` decides
+  what leaves.
+- **`Action`, not `Request`, is the default name.** The folder is where a hand-written
+  `Request` lives, so the generated enum has a name of its own; `request = Request` asks for
+  the same name anyway.
+
+The line is a `proc_macro_attribute` because a `macro_rules!` cannot reach a directory. What
+makes it work is that a nested `mod` inside an `include!`d file resolves against *that*
+file's directory, so the folder keeps its own resolution context while the registration runs
+from `src/lib.rs`.
+
+## Or a list inside the folder: `clifacet::commands!`
+
 
 Declaring the tree is most of the work of a command with subcommands, but not all of it:
 a folder also needs a `mod` line, a re-export, a variant in the tree and a second variant
@@ -623,10 +685,10 @@ Groups are folders of their own, each with its own `commands!`: nested lists are
 this call. A nested path (`db::migrate`) reaches into a group the application declared
 itself.
 
-### Discovery: `commands!()` with no list
+### Discovery, in either form
 
-A folder can register itself instead, which is what makes dropping a file into
-`src/commands/` the whole of adding a command:
+A folder can say what is in it instead of the call listing it, which is what makes dropping
+a file into `src/commands/` the whole of adding a command:
 
 ```rust,ignore
 // build.rs — the only line of setup, and it is the same for every application
@@ -636,7 +698,15 @@ fn main() {
 ```
 
 ```rust,ignore
-// src/commands/mod.rs — no list, and no `mod` lines either
+// src/lib.rs — the registration, and the folder holds no call at all
+#[clifacet::registry(output = crate::Said, name = "discovered")]
+mod commands {}
+```
+
+The same report can be read by a call inside the folder rather than by the attribute:
+
+```rust,ignore
+// src/commands/mod.rs — the list form, with no list
 clifacet::commands!(output = crate::Said, name = "discovered");
 ```
 
@@ -645,13 +715,14 @@ Both halves are needed, and each has a job:
 | Piece | Where it runs | What it does |
 | --- | --- | --- |
 | `clifacet::build::commands()` | the application's `build.rs` | scans `src/commands/` and every group folder under it, tells Cargo to rerun when the set changes, and reports what it found in `CLIFACET_COMMANDS` |
+| `#[clifacet::registry]` | `src/lib.rs` | reads that report for the folder its module is declared beside, and emits the registration and the folder's `mod.rs` |
 | `commands!()` | `src/commands/mod.rs` | reads that report, finds its own folder from the file it was written in, and emits the same `mod` lines a list would |
 | the `build` feature | the application's `Cargo.toml` | enables the build-script half; off by default because a build script is its only caller |
 
 The rules the folder follows:
 
 - `<name>.rs` is a command named `<name>` whose struct is `Name`;
-- `<name>/` is a group, which is a folder with its own `commands!` — discovered, or written
+- `<name>/` is a group, which is a folder with its own registration — discovered, or written
   out;
 - `_name.rs` and `_name/` are **helpers**: declared for the folder and the groups under it,
   never registered as a command, and `mod.rs` decides what they make public;
@@ -662,13 +733,15 @@ at the caller's line. Two other mistakes are reported where the mistake is: a sy
 in a helper names the helper file, and a `<name>.rs` without its `Name` struct names that
 file and the type it is missing.
 
-Moving between the two forms changes the call and nothing else: `commands!(list, echo, db, …)`
-and `commands!(…)` register the same tree, and `examples/discovered` asserts exactly that.
-Discovery is a convenience, not a different design — a folder that lists its commands stays
-fully supported, and is what an application uses when a folder's members are not one-per-file.
+Moving between the forms changes where the registration is written and nothing else:
+`commands!(list, echo, db, …)`, `commands!(…)` and `#[clifacet::registry]` register the same
+tree, and `examples/discovered` asserts exactly that. Discovery is a convenience, not a
+different design — a folder that lists its commands stays fully supported, and is what an
+application uses when a folder's members are not one-per-file.
 
-`examples/backlog-lite` is built this way: its `bl` has seven subcommands, one `--json` for
-the whole run, and a `commands!` line where three hand-kept lists used to be.
+`examples/backlog-lite` is registered by the attribute: its `bl` has seven subcommands, one
+`--json` for the whole run, and one line on `mod commands` where three hand-kept lists used
+to be.
 
 ### Which macro is needed?
 
@@ -680,15 +753,16 @@ layer, and each is used in one situation:
 | `#[derive(clifacet::Facet)]` | the grammar | `TryFrom<Cli> for Input`, `Collect`, `Facet` | an existing `clap` struct that needs validated input |
 | `#[clifacet::command(input = …)]` | the grammar | `#[derive(clap::Parser, clifacet::Facet)]` plus `#[facet(..)]` | a new command: parsing, input and questions from one declaration |
 | `#[clifacet::subcommands(..)]` | the tree | `#[derive(clap::Subcommand)]`, `TryFrom` into the application's `Request`, `Collect`, and `Command`/`Planned`/`Handler` as declared | a tree whose `Request` the application writes |
-| `clifacet::commands!(..)` | the registration | `mod`s, re-exports, `Commands`, `Request`, `Input`, `Cli` | a folder of commands that wants one line, and no hand-written `Request` |
+| `#[clifacet::registry(..)]` | the registration | the folder's `mod.rs`, `mod`s, re-exports, `Commands`, the request, `Input`, `Cli` | a folder whose files are its commands: one line on the module, nothing in the folder (CLI-58) |
+| `clifacet::commands!(..)` | the registration | `mod`s, re-exports, `Commands`, `Request`, `Input`, `Cli` | a folder of commands that wants one line in the folder, and no hand-written `Request` |
 | `clifacet::build::commands()` | the registration | a build script that reports its folders | discovery: a folder that registers itself, so adding a command is adding a file |
 | `#[clifacet::planned]` | the context | `Handler<Cx>` for a `PlannedWith<Cx>` impl | a command that plans *with* the application's context |
 
 Two rules hold across all of them: every path an expansion names is `$crate`- or
 `::clifacet::`-rooted, so an application depends on `clifacet` alone; and a declaration in
 the wrong place — a field attribute where a command is expected, `planned` on a tree with a
-context, `commands!` as an attribute — fails to compile with a message that says what to
-write. Each of those is a golden `trybuild` case.
+context, `registry` on a module that is not the folder — fails to compile with a message
+that says what to write. Each of those is a golden `trybuild` case.
 
 ## Three ways to build the input
 

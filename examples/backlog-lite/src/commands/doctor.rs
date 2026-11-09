@@ -1,7 +1,7 @@
 //! `bl doctor`: the backlog's health check, which takes nothing.
 //!
 //! Written as a function, which is what CLI-52 adds: the signature is the whole declaration,
-//! and the type `commands!` registers — `doctor::Doctor` — is generated from it.
+//! and the type the registry registers — `doctor::Doctor` — is generated from it.
 
 use clifacet::failure::Failure;
 

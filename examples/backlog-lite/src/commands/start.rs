@@ -3,7 +3,7 @@
 use clifacet::failure::Failure;
 use clifacet::prompt::Session;
 
-use super::task::{self, TaskRef};
+use super::_task::{self, TaskRef};
 use crate::status::Status;
 
 /// Move a task to In Progress.
@@ -13,17 +13,17 @@ use crate::status::Status;
 #[clifacet::command(input = TaskRef, collect = confirm)]
 pub fn start(#[clifacet(trim, non_empty)] id: String) -> Result<TaskRef, Failure> {
     Ok(TaskRef {
-        id: task::task_id(&id)?,
+        id: _task::task_id(&id)?,
     })
 }
 
 /// Confirms before anything moves.
 fn confirm(start: Start, session: &mut Session) -> Result<Start, Failure> {
-    task::confirm_status(&task::task_id(&start.id)?, Status::InProgress, session)?;
+    _task::confirm_status(&_task::task_id(&start.id)?, Status::InProgress, session)?;
     Ok(start)
 }
 
 /// `backlog task edit ID --status "In Progress"`, and the sentence for it.
 pub(crate) fn forward(TaskRef { id }: TaskRef, argv: &mut Vec<String>) -> String {
-    task::set_status(argv, &id, Status::InProgress)
+    _task::set_status(argv, &id, Status::InProgress)
 }

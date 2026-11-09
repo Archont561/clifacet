@@ -9,14 +9,21 @@ authors.workspace = true
 description = "A friendly wrapper around the Backlog.md CLI, built on the published clifacet API"
 publish = false
 
+# The folder registers itself from its own report: `build.rs` scans `src/commands/` and
+# `#[clifacet::registry]` reads it, which is the whole point of the two lines below.
+build = "build.rs"
+
 [[bin]]
 name = "bl"
 path = "src/main.rs"
 
+[build-dependencies]
+clifacet = { path = "../../crates/clifacet", features = ["build"] }
+
 [dependencies]
 # The workspace leaves colour and suggestions off; an application turns them on.
 clap = { workspace = true, features = ["color", "suggestions"] }
-clifacet = { path = "../../crates/clifacet", features = ["interactive"] }
+clifacet = { path = "../../crates/clifacet", features = ["build", "interactive"] }
 
 [dev-dependencies]
 rstest.workspace = true

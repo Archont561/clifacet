@@ -1620,3 +1620,241 @@ fn a_commands_call_says_what_it_cannot_register() {
             .contains("`root` takes the root's own input fields in braces")
     );
 }
+
+/// The fixture every registry test reads: a real folder, and the report for it.
+///
+/// A real folder rather than a temporary one, because a registry includes a file and points
+/// its `mod` lines at the files beside it — so what is under test is a folder shaped like an
+/// application's. `examples/discovered` is exactly that, and the report is what
+/// `clifacet::build::commands()` writes for it: two commands, one group, one helper.
+fn fixture() -> (String, String) {
+    // Walked up rather than split on a separator: the manifest path uses `\` on Windows, so a
+    // `/crates/` split would find nothing there and these tests would panic on that platform.
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the macros crate lives two levels under the workspace root")
+        .join("examples")
+        .join("discovered")
+        .join("src")
+        .join("commands")
+        .display()
+        .to_string();
+    let report = "clifacet-commands/1;folder=src/commands;command=echo;\
+                  command=list;group=db;helper=_shared"
+        .to_owned();
+    (folder, report)
+}
+
+/// Expands `#[clifacet::registry(..)] mod commands {}` against the fixture folder.
+fn registry(attribute: &str) -> String {
+    let (folder, report) = fixture();
+    expand_registry(attribute, "pub mod commands {}", &folder, &report)
+}
+
+/// The same, returning the message instead when the attribute is refused.
+fn rejected_registry(attribute: &str) -> String {
+    let (folder, report) = fixture();
+    expand_registry(attribute, "pub mod commands {}", &folder, &report)
+}
+
+/// One expansion, with the report passed rather than read from `CLIFACET_COMMANDS`.
+///
+/// Separators are normalized to `/` because the paths in an expansion are the platform's: the
+/// same assertion would otherwise have to be written twice, once with `\` and once with `/`,
+/// and a test that differs by platform proves less than one that does not. The raw string
+/// holds *two* backslashes because a path printed as tokens is escaped — Windows' `D:\a` is
+/// `D:\\a` in the token stream a test reads.
+fn expand_registry(attribute: &str, item: &str, folder: &str, report: &str) -> String {
+    crate::commands::registry_for_test(
+        &attribute.parse().expect("the attribute lexes"),
+        &item.parse().expect("the item lexes"),
+        folder,
+        report,
+    )
+    .map_or_else(|error| error.to_string(), |tokens| tokens.to_string())
+    .replace(r"\\", "/")
+}
+
+#[test]
+fn a_registry_pulls_the_folder_in_and_registers_what_the_report_lists() {
+    let tokens = registry("");
+
+    // The folder's own file is included, so its `mod` lines and its items are the compiler's
+    // to read — the one thing a `commands!` call cannot do.
+    assert!(
+        tokens.contains("include ! (\""),
+        "the folder is included: {tokens}"
+    );
+    assert!(tokens.contains("/commands/mod.rs\")"), "{tokens}");
+    // The leaves are declared here, each with the file it means, because a `mod` a macro emits
+    // resolves beside the attribute rather than beside the folder.
+    // Every leaf carries the path of its file, which is what the include puts them beside.
+    assert!(tokens.contains("# [path = \""), "{tokens}");
+    for leaf in ["echo", "list"] {
+        assert!(
+            tokens.contains(&format!("/{leaf}.rs\"] mod {leaf} ;")),
+            "{leaf} is declared at its own file: {tokens}"
+        );
+        assert!(
+            tokens.contains(&format!("pub (crate) use {leaf} :: ")),
+            "{leaf} is re-exported: {tokens}"
+        );
+    }
+    // A group is a folder, so it is declared like a leaf, at its own `mod.rs`.
+    assert!(tokens.contains("/db/mod.rs\"] mod db ;"), "{tokens}");
+    // The registration is the same one `commands!(..)` writes.
+    assert!(tokens.contains("pub enum Commands {"), "{tokens}");
+    assert!(tokens.contains("pub enum Action {"), "{tokens}");
+    assert!(tokens.contains("pub struct Input"), "{tokens}");
+    assert!(tokens.contains("pub struct Cli"), "{tokens}");
+}
+
+#[test]
+fn a_registry_declares_a_helper_and_never_registers_or_reexports_it() {
+    let tokens = registry("");
+    // Declared, so the folder's own commands can reach it...
+    assert!(
+        tokens.contains("/_shared.rs\"] # [allow (unused_imports)] mod _shared ;"),
+        "the helper is declared at its file: {tokens}"
+    );
+    // ...and with no re-export: a helper is the folder's business (CLI-50, AC#4), which is
+    // why reaching one from outside is E0603 rather than a path that quietly works.
+    assert!(
+        !tokens.contains("use _shared ::"),
+        "a helper is not re-exported: {tokens}"
+    );
+    // It is not a variant, and it has no input: a helper is not a command.
+    assert!(!tokens.contains("_shared (_shared"), "{tokens}");
+    assert!(!tokens.contains("_shared ::"), "{tokens}");
+}
+
+#[test]
+fn an_empty_inline_module_is_filled_from_the_folders_file() {
+    // `mod commands {}` is how a folder is declared: outlined modules are unstable in an
+    // attribute's input below Rust 1.99, and the crate's floor is 1.88 (decision-21). The
+    // braces are what make the module inline; the folder's file is still what fills it.
+    let tokens = registry("");
+    assert!(tokens.contains("mod commands {"), "{tokens}");
+    assert!(tokens.contains("include ! ("), "{tokens}");
+    assert!(tokens.contains("/commands/mod.rs\")"), "{tokens}");
+
+    // A body written in place is kept as written and *is* the folder, so nothing is
+    // included: the items are already where Rust would have put them.
+    let (folder, report) = fixture();
+    let inline = expand_registry(
+        "",
+        "pub mod commands { pub use crate::Said; }",
+        &folder,
+        &report,
+    );
+    assert!(inline.contains("pub use crate :: Said ;"), "{inline}");
+    assert!(!inline.contains("include ! ("), "{inline}");
+    assert!(inline.contains("# [path = \""), "{inline}");
+
+    // The folder's file is the folder, so a module pointing at nothing says so. The path is
+    // the one the report names, or the report lookup would answer first — and it does not
+    // exist, which is the mistake this message is about.
+    let missing = expand_registry(
+        "",
+        "pub mod commands {}",
+        "/nonexistent/src/commands",
+        &report,
+    );
+    assert!(missing.contains("which does not exist"), "{missing}");
+    assert!(missing.contains("path = "), "{missing}");
+    // The folder it looked in is named, so the fix is visible without a guess. (It is the
+    // absolute path here, because `CARGO_MANIFEST_DIR` is this crate's rather than the
+    // application's — in a real build the same message is relative to the application.)
+    assert!(
+        missing.contains("/nonexistent/src/commands/mod.rs"),
+        "{missing}"
+    );
+}
+
+#[test]
+fn a_registry_defaults_the_request_to_action_so_the_folder_may_keep_its_own() {
+    // The registry's folder is where a hand-written `Request` lives, so the generated one has
+    // a name of its own unless the call says otherwise.
+    let default = registry("");
+    assert!(default.contains("pub enum Action {"), "{default}");
+    assert!(
+        default.contains("TryFrom < Commands > for Action"),
+        "{default}"
+    );
+    // An explicit `request = ..` wins, including the name `Request` itself.
+    let named = registry("request = Chosen");
+    assert!(named.contains("pub enum Chosen {"), "{named}");
+    assert!(!named.contains("pub enum Action {"), "{named}");
+    let request = registry("request = Request");
+    assert!(request.contains("pub enum Request {"), "{request}");
+}
+
+#[test]
+fn a_registry_forwards_its_keys_to_the_tree_and_the_root() {
+    let tokens = registry("output = crate::Said, context = crate::App, name = \"discovered\"");
+    assert!(
+        tokens.contains("clifacet :: Handler < crate :: App > for Commands"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("name = \"discovered\"") && !tokens.contains("CARGO_PKG_NAME"),
+        "{tokens}"
+    );
+    // A context needs an output, and giving both means the tree is a handler, not a runner.
+    let plain = registry("output = crate::Said, planned");
+    assert!(
+        plain.contains("impl :: clifacet :: command :: Planned for Commands"),
+        "{plain}"
+    );
+    let minimal = registry("output = crate::Said");
+    assert!(
+        minimal.contains("impl :: clifacet :: Command for Commands"),
+        "{minimal}"
+    );
+}
+
+#[test]
+fn a_registry_takes_no_list_of_modules_and_says_why() {
+    // The folder is the list, so a module name is not a key — and naming one is the mistake a
+    // reader of `commands!(..)` makes first.
+    let message = rejected_registry("list, echo");
+    assert!(
+        message.contains("`list` is not a key of `#[clifacet::registry(..)]`"),
+        "{message}"
+    );
+    assert!(message.contains("the folder is the list"), "{message}");
+    // `path` is the one key that names a place, and it is not a module name either.
+    assert!(
+        rejected_registry("echo = list").contains("is not a key"),
+        "a value without a key is refused"
+    );
+}
+
+#[test]
+fn a_registry_refuses_a_module_under_another_name() {
+    let (folder, report) = fixture();
+    let message = expand_registry("", "pub mod store {}", &folder, &report);
+    assert!(message.contains("is named `commands`"), "{message}");
+    assert!(
+        message.contains("call `clifacet::commands!(..)` inside it"),
+        "the message says what to write instead: {message}"
+    );
+}
+
+#[test]
+fn a_registry_that_finds_no_folder_for_its_report_says_which_ones_there_are() {
+    // A build script that scanned another folder is a one-line fix, so the message names both
+    // and says where a registry looks.
+    let (folder, _) = fixture();
+    let report = "clifacet-commands/1;folder=src/elsewhere;command=other";
+    let message = expand_registry("", "pub mod commands {}", &folder, report);
+    assert!(
+        message.contains("registers") && message.contains("the build script scanned"),
+        "{message}"
+    );
+    assert!(message.contains("src/elsewhere"), "{message}");
+    // And a report that is not the protocol at all is the other mistake: no build script.
+    let message = expand_registry("", "pub mod commands {}", &folder, "whatever");
+    assert!(message.contains("clifacet-commands/1"), "{message}");
+}
