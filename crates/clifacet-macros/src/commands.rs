@@ -1392,7 +1392,7 @@ fn expand_registry(
                 "`#[clifacet::registry]` fills this module from {}, which does not exist. \
                  That file is the folder; create it, or say where the folder is with \
                  `path = \"…\"`",
-                located.file.display()
+                shown(&located.file)
             ),
         ));
     }
@@ -1408,6 +1408,20 @@ fn expand_registry(
             include!(#file);
         }
     })
+}
+
+/// A path as a message should name it: relative to the crate, with `/` separators.
+///
+/// An absolute path is long, machine-specific, and differs between platforms — which would
+/// make every golden compile-fail case a per-platform file. `src/commands/mod.rs` says the
+/// same thing to the reader and to the test.
+fn shown(file: &Path) -> String {
+    let relative = std::env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .ok()
+        .and_then(|root| file.strip_prefix(&root).ok().map(Path::to_path_buf))
+        .unwrap_or_else(|| file.to_path_buf());
+    relative.to_string_lossy().replace('\\', "/")
 }
 
 /// Refuses a folder file whose header an `include!` cannot carry.
@@ -1436,7 +1450,7 @@ fn reject_inner_docs(file: &Path, module: &ItemMod) -> syn::Result<()> {
                  start with `//!` or `#![..]`, because inner attributes are only allowed at the \
                  top of a file Rust reads as a module. Move the folder's documentation to this \
                  line as `///` comments, and keep `//` comments inside the folder",
-                file.display()
+                shown(file)
             ),
         ));
     }

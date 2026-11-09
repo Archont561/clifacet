@@ -50,5 +50,11 @@ module is written `mod commands {}` instead — inline, accepted by every suppor
 with the empty body meaning "fill this from the folder's file". Recorded in decision-21
 with the way back: once the floor reaches 1.99, the braces come off and nothing else changes.
 
+**A second CI finding, and a better message.** The Windows job failed on the
+`registry_inner_docs` golden, because the message named the folder's `mod.rs` by its absolute
+path — fine on one machine, a different string on every other, and a per-platform golden file
+waiting to happen. The macro now reports the file relative to the crate with `/` separators
+(`src/commands/mod.rs`), which is both what a reader wants and what one golden can hold.
+
 **Verification.** `cargo test --workspace` passes with the same count as before the feature; `fmt-check`, `alint`, `lint` (with `-D warnings`, expansions and both examples included), `check-docs`, `prose-check` and `backlog-check` pass. Both example folders were converted and their own test suites — discovery, privacy, reaching — are unchanged.
 <!-- SECTION:NOTES:END -->
