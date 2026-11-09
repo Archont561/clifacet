@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* write a command as a function
+([f9e842d](https://github.com/Archont561/clifacet/commit/f9e842d9ecf11697b5c53ce7fd5a90dc159f9bc7))
 * **settings:** layer a config file under the flags and the environment
 ([f4609bf](https://github.com/Archont561/clifacet/commit/f4609bf6f0ba00294a3a26e34076639335c5cd41))
 * **backlog:** check that a task's status agrees with its criteria
