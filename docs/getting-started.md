@@ -346,7 +346,7 @@ modes, the exit codes and which test proves each promise.
 | --- | --- |
 | Which mode runs, and who decides? | [Modes and the interaction policy](modes.md) |
 | How does an existing `clap` command get validated input? | [The companion derive](derive.md) |
-| How does dropping a file into a folder add a command? | [Discovery](derive.md#discovery-commands-with-no-list) |
+| How does a folder of files register itself in one line? | [Registration](derive.md#one-line-on-the-module-clifacetregistry) |
 | How is a screen drawn without a second command? | [TUI composition](tui-composition.md) |
 | How is any of this tested without a terminal? | [Testing](testing.md) |
 | How is the crate itself built and tested? | [Contributing](contributing.md) |

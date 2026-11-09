@@ -214,3 +214,47 @@ pub fn __commands(input: TokenStream) -> TokenStream {
         .map_or_else(proc_macro2::Span::call_site, |token| token.span());
     commands::expand(tokens, call_site).into()
 }
+
+/// Registers a folder of commands, on the module that holds it (CLI-58).
+///
+/// ```ignore
+/// // src/lib.rs: the whole registration
+/// #[clifacet::registry]
+/// mod commands;
+///
+/// // src/commands/mod.rs: everything else about the folder, and no `commands!(..)` call
+/// pub struct Request { .. }
+/// ```
+///
+/// Expands to the folder's module — its own `mod.rs`, pulled in so its `mod` lines resolve
+/// against its own directory — and beside it the same registration `clifacet::commands!(..)`
+/// writes: `Commands`, `Request`, `Input`, `Cli` and the leaf re-exports. The module list
+/// comes from the folder's build report, so this needs `clifacet::build::commands()` in the
+/// application's `build.rs` and clifacet's `build` feature, exactly as `commands!()` with no
+/// list does.
+///
+/// What the folder's types gain is that they are written in the folder's own scope and
+/// re-exported into the registered module, so a `Request`, a helper, or an `impl` naming a
+/// crate type goes on meaning what it did.
+///
+/// # Keys
+///
+/// The same as `clifacet::commands!(..)`, except the ones that describe the folder rather
+/// than the registration: there is no module list (the folder is the list), no `root` and no
+/// `request` (they belong beside the `Request` they describe), and no `context` — a context is
+/// declared by the command that needs it, as a `cx: &Cx` parameter, so there is nothing for
+/// this line to repeat.
+///
+/// - `output = Type`, `globals = Type`, `planned`, `version_off`, `name`, `about`,
+///   `long_about` — as in `commands!(..)`;
+/// - `path = "…"` — the folder, for an inline module whose name does not say where it is.
+///
+/// # Panics
+///
+/// Panics only if Rust cannot parse fixed, compiler-generated tokens.
+#[proc_macro_attribute]
+pub fn registry(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    commands::registry_expand(&attribute.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}

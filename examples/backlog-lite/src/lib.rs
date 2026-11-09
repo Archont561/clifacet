@@ -24,21 +24,40 @@
 //!   pipeline (CLI-46, CLI-48).
 //!
 //! Everything else is declared: [`Cli`], [`Commands`] and [`Request`] come from the one
-//! [`clifacet::commands!`] call in `src/commands/mod.rs`, and each leaf is one file.
+//! `#[clifacet::registry]` line on `mod commands`, and each leaf is one file.
 //!
 //! # Layout
 //!
 //! ```text
 //! src/main.rs           one call: run the application
 //! src/lib.rs            this file: the command, the wiring, and `run_app`
-//! src/commands/mod.rs   the map: one `clifacet::commands!` registration
+//! src/commands/mod.rs   the folder's own types: `Request`, `From<Input>`, `forward`
 //! src/commands/<leaf>.rs  one command: its flags, its input, its questions, its argv
-//! src/commands/task.rs  what show, start and done share: a task ID and moving it
+//! src/commands/_task.rs what show, start and done share: a task ID and moving it
 //! src/status.rs         the `Status` every spelling of a status parses to
 //! src/program.rs        the program forwarded to, and the one place that spawns it
 //! src/invocation.rs     a request as a command line, purely
 //! ```
 
+/// The command folder: seven leaves, their tree, and the root the runner parses.
+///
+/// This line is the whole registration — the module list, the `Commands` tree, the `Action`
+/// request, the `Input` and the `Cli` root, from the build script's report. `mod.rs` keeps
+/// what is the folder's own: the root's `json` flag, and the conversions into `Request`.
+///
+/// The application's context needs no line here. Each command that needs the program takes
+/// it as a `&Program` parameter, so the type is written where it is used and the tree threads
+/// it to whichever leaf was chosen.
+#[clifacet::registry(
+    root = { "json": bool },
+    request = Action,
+    name = "bl",
+    about = "A friendlier front door to the Backlog.md CLI",
+    long_about = "A friendlier front door to the Backlog.md CLI.\n\n\
+                  Everything is forwarded to `backlog`; nothing is reimplemented. \
+                  What this adds is the three things everyone retypes: a status \
+                  shortcut, one --json for the whole run, and --dry-run."
+)]
 mod commands;
 mod invocation;
 mod program;

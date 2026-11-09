@@ -7,7 +7,13 @@ error[E0603]: module `_shared` is private
   |                                    private module
   |
 note: the module `_shared` is defined here
- --> src/commands/mod.rs
+ --> src/lib.rs
   |
-  | mod _shared;
-  | ^^^^^^^^^^^
+  | / #[clifacet::registry(
+  | |     output = crate::Said,
+  | |     request = Request,
+  | |     name = "discovered",
+  | |     about = "A proof that a folder registers itself"
+  | | )]
+  | |__^
+  = note: this error originates in the attribute macro `clifacet::registry` (in Nightly builds, run with -Z macro-backtrace for more info)

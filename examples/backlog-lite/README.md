@@ -58,10 +58,10 @@ bl --dry-run done CLI-20        # print the exact command, run nothing
 One file per command, and one file per layer around them:
 
 ```text
-src/commands/mod.rs     the map: one `commands!` line, then the request
+src/commands/mod.rs     the request, its conversions, and what the folder exports
 src/commands/list.rs    one leaf per file: its flags, its input, its questions, its argv
 src/commands/show.rs      (and new, start, done, search, doctor)
-src/commands/task.rs    what show, start and done share: a task ID and moving it
+src/commands/_task.rs   what show, start and done share: a task ID and moving it
 src/status.rs           the `Status` every spelling of a status parses to
 src/invocation.rs       a request as a command line, purely
 src/program.rs          the context: the program forwarded to, and the one place it spawns
@@ -69,11 +69,12 @@ src/lib.rs              the command, the wiring, and `run_app`
 src/main.rs             one call to `run_app()`
 ```
 
-Adding a leaf is a new file, its name in the `commands!` list in `commands/mod.rs`, and one
-arm in `invocation_of` — which the compiler demands, because the generated `Action` gains a
-variant. `commands!` writes the `mod` lines, the re-exports, the `Commands` tree, `Action`
-and the root `Cli` from that one list (decision-19 item 3), so the list is still the map of
-the CLI a reviewer reads; it is just the only copy of it.
+Adding a leaf is a new file and one arm in `invocation_of` — which the compiler demands,
+because the generated `Action` gains a variant. The `#[clifacet::registry]` line on
+`mod commands` in `src/lib.rs` is the whole registration: it writes the `mod` lines, the
+re-exports, the `Commands` tree, `Action` and the root `Cli` from the report `build.rs`
+wrote, and includes the folder's own `mod.rs` beside them (CLI-58), so the files in the
+folder are the map of the CLI.
 
 ## Running it
 

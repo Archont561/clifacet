@@ -2,7 +2,7 @@
 
 use clifacet::failure::Failure;
 
-use super::task::{self, TaskRef};
+use super::_task::{self, TaskRef};
 
 /// Show one task.
 ///
@@ -10,7 +10,7 @@ use super::task::{self, TaskRef};
 #[clifacet::command(input = TaskRef)]
 pub fn show(#[clifacet(trim, non_empty)] id: String) -> Result<TaskRef, Failure> {
     Ok(TaskRef {
-        id: task::task_id(&id)?,
+        id: _task::task_id(&id)?,
     })
 }
 

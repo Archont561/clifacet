@@ -1,0 +1,5 @@
+error: `#[clifacet::registry]` declares the folder's `mod` lines, `Cli`, `Commands`, `Request` and `Input` in the module it is written on, so that module is the folder and is named `commands`; for a module under another name, write its types and call `clifacet::commands!(..)` inside it
+ --> tests/ui/registry_wrong_module.rs:7:5
+  |
+7 | mod store;
+  |     ^^^^^
