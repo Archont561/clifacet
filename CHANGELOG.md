@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **macros:** register a command folder with one attribute
+([84d7ea2](https://github.com/Archont561/clifacet/commit/84d7ea2dad7602f2c2700b2d9dea09dc3e835936))
 * write backlog-lite and the reference application as functions
 ([71e46c1](https://github.com/Archont561/clifacet/commit/71e46c1065a6f55fea9b42c89c5be37f9941d288))
 * write a command as a function
