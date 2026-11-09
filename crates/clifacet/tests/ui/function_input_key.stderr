@@ -1,5 +1,0 @@
-error: a function command generates its input from its parameters, so `input = …` would be a second declaration of the same fields: drop the key and declare the fields as parameters
- --> tests/ui/function_input_key.rs:3:21
-  |
-3 | #[clifacet::command(input = Filter)]
-  |                     ^^^^^^^^^^^^^^

@@ -3,7 +3,7 @@
 use clifacet::Globals;
 use clifacet::policy::{Mode, Policy, Request};
 
-use crate::commands::Cli;
+use crate::commands::Example;
 
 /// The interaction flags, kept together because they are one decision.
 ///
@@ -51,7 +51,7 @@ pub const POLICY: Policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
 /// `clap` rejects `--interactive --tui` before this runs, so at most one of them
 /// is set and the order here never decides anything. `--yes` is not read here: the
 /// runner adds it to whatever mode this returns.
-pub(crate) fn requested_mode(cli: &Cli) -> Request {
+pub(crate) fn requested_mode(cli: &Example) -> Request {
     match (cli.interaction.tui, cli.interaction.interactive) {
         (true, _) => Request::mode(Mode::Tui),
         (false, true) => Request::mode(Mode::Interactive),

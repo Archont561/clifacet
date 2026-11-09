@@ -78,11 +78,11 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
     // The signature is read first, then rewritten: a parameter's attributes are the
     // declaration, and Rust does not accept them on a `fn` parameter, so they move into the
     // generated struct rather than staying where they were written.
+    let keys = check_attribute(attribute)?;
     let (name, output) = {
         let signature = &parsed.sig;
         // The attribute's own keys come first: a struct-only key such as `bridge` would
         // otherwise be accepted here and mean nothing.
-        check_attribute(attribute)?;
         check_signature(signature)?;
 
         let ReturnType::Type(_, returned) = &signature.output else {
@@ -98,43 +98,32 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
         (signature.ident.clone(), output)
     };
     let leaf = pascal(&name.to_string());
-    let input = syn::Ident::new(&format!("{leaf}Input"), Span::call_site());
-    let documentation: Vec<Attribute> = parsed
+    // The input type is the one the application named, or the one generated beside the leaf.
+    // The input type is the one the application named, or the one generated beside the leaf.
+    let input = if let Some(ty) = &keys.input {
+        ty.clone()
+    } else {
+        let name = input_name(&leaf);
+        syn::parse_quote!(#name)
+    };
+    // The author's own declaration of the command — `#[command(name = ..)]`, `version`,
+    // `args_conflicts_with_subcommands` — is clap's, and reaches the generated struct unchanged,
+    // along with the doc comment that becomes its description. Anything else on the function is
+    // left where it was: a function carries no attributes of a struct's kind.
+    let carried: Vec<Attribute> = parsed
         .attrs
         .iter()
-        .filter(|attribute| attribute.path().is_ident("doc"))
+        .filter(|attribute| {
+            attribute.path().is_ident("doc") || attribute.path().is_ident("command")
+        })
         .cloned()
         .collect();
+    // They belong to the generated struct, and a `fn` cannot carry clap's helper attributes:
+    // leaving them here would be a second declaration of a command this function is not.
+    parsed
+        .attrs
+        .retain(|attribute| !attribute.path().is_ident("command"));
     let (arguments, context) = parameters(&mut parsed.sig)?;
-    let derives = derives();
-
-    let struct_fields = arguments.iter().map(Argument::field);
-    let input_fields = arguments.iter().map(Argument::input_field);
-    let patterns = arguments
-        .iter()
-        .map(|argument| &argument.pattern)
-        .collect::<Vec<_>>();
-    let call = match &context {
-        Some(_) if patterns.is_empty() => quote!(#name(cx)),
-        Some(_) => quote!(#name(#(#patterns),*, cx)),
-        None => quote!(#name(#(#patterns),*)),
-    };
-    let helper_parameters = arguments
-        .iter()
-        .map(|argument| {
-            let (pattern, ty) = (&argument.pattern, &argument.ty);
-            quote!(#pattern: #ty)
-        })
-        .collect::<Vec<_>>();
-    // The context is appended to the same list, so an empty command and a context-only one
-    // build the same way: one list of parameters, whatever it holds.
-    let mut helper_parameters = helper_parameters;
-    if let Some(context) = &context {
-        helper_parameters.push(quote!(cx: &#context));
-    }
-
-    let implementation = implementation(&leaf, &input, &output, context.as_ref(), &patterns);
-
     // The `Result` is this macro's requirement, not the author's choice, so an infallible body
     // is not something to warn about: clippy's suggestion (`remove Result`) would make the
     // command stop compiling. The `allow` speaks only to clippy, which every other build
@@ -145,26 +134,145 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
         clippy::unnecessary_wraps,
         clippy::needless_pass_by_value
     )]));
+    // A skipped parameter is one the struct carries and the body need not read — that is what
+    // skipping it says — so an unread one is the declaration working, not a leftover.
+    if arguments.iter().any(|argument| argument.skipped) {
+        parsed
+            .attrs
+            .push(syn::parse_quote!(#[allow(unused_variables)]));
+    }
 
-    Ok(quote! {
+    Ok(tokens(
+        &parsed,
+        &keys,
+        &carried,
+        &leaf,
+        &input,
+        &output,
+        context.as_ref(),
+        &arguments,
+    ))
+}
+
+/// What the macro emits: the function, the command struct beside it, the input, and the impl
+/// that makes one call the other.
+///
+/// All of it is one thought — neither half is meaningful alone — which is why it is written in
+/// one place rather than threaded through the checks above.
+#[allow(clippy::too_many_arguments)]
+fn tokens(
+    parsed: &ItemFn,
+    keys: &Keys,
+    carried: &[Attribute],
+    leaf: &syn::Ident,
+    input: &Type,
+    output: &Type,
+    context: Option<&Type>,
+    arguments: &[Argument],
+) -> TokenStream {
+    let derives = derives();
+    // The generated struct says what the field form would say, with the input this macro
+    // generated: the keys are forwarded, never reimplemented.
+    let mut facet_keys = vec![quote!(input = #input)];
+    if let Some(check) = &keys.check {
+        facet_keys.push(quote!(check = #check));
+    }
+    if let Some(collect) = &keys.collect {
+        facet_keys.push(quote!(collect = #collect));
+    }
+
+    let struct_fields = arguments.iter().map(Argument::field).collect::<Vec<_>>();
+    let input_fields = arguments
+        .iter()
+        .filter_map(Argument::input_field)
+        .collect::<Vec<_>>();
+    // The generated input exists only when the parameters are what declares it: a named input
+    // is the application's type, and the derive's bridge is what builds it field by field.
+    let generated = if matches!(input, Type::Path(path) if path.path.is_ident(&input_name(leaf).to_string()))
+    {
+        let name = input_name(leaf);
+        quote! {
+            /// What the command runs on, generated from the function's parameters.
+            ///
+            /// Only [`Facet::validate`] builds one: every value of it is runnable, so a
+            /// caller that holds one holds something the command accepts.
+            #[derive(
+                ::core::fmt::Debug,
+                ::core::clone::Clone,
+                ::core::cmp::PartialEq,
+                ::core::cmp::Eq
+            )]
+            pub struct #name {
+                #(#input_fields),*
+            }
+        }
+    } else {
+        quote!()
+    };
+
+    let mut helper_parameters = arguments
+        .iter()
+        .map(|argument| {
+            // The helper is handed the *input*'s values, so its parameters are the input's
+            // types: a `fill` parameter is a `String` here and an `Option<String>` when parsed.
+            let (pattern, ty) = (&argument.pattern, &argument.input_ty);
+            quote!(#pattern: #ty)
+        })
+        .collect::<Vec<_>>();
+    let call_arguments = arguments
+        .iter()
+        .map(|argument| {
+            let pattern = &argument.pattern;
+            if argument.skipped {
+                quote!(self.#pattern.clone())
+            } else {
+                quote!(#pattern)
+            }
+        })
+        .collect::<Vec<_>>();
+    // The context is appended to the same list, so an empty command and a context-only one
+    // build the same way: one list of parameters, whatever it holds.
+    if let Some(context) = context {
+        helper_parameters.push(quote!(cx: &#context));
+    }
+    let parsed_name = &parsed.sig.ident;
+    // `__clifacet_call`'s parameters are the function's own, so the call names them: a skipped
+    // argument is a parameter here, because its value arrives from the struct rather than the
+    // input, which is the caller's business.
+    let patterns = arguments
+        .iter()
+        .map(|argument| &argument.pattern)
+        .collect::<Vec<_>>();
+    let call = if context.is_some() {
+        quote!(#parsed_name(#(#patterns,)* cx))
+    } else {
+        quote!(#parsed_name(#(#patterns),*))
+    };
+    let input_patterns = arguments
+        .iter()
+        .filter(|argument| !argument.skipped)
+        .map(|argument| &argument.pattern)
+        .collect::<Vec<_>>();
+    let implementation = implementation(
+        leaf,
+        input,
+        output,
+        context,
+        &input_patterns,
+        &call_arguments,
+    );
+
+    quote! {
         #parsed
 
-        #(#documentation)*
-        /// The command's arguments, generated from the function's parameters.
         #derives
-        #[facet(input = #input)]
+        #[facet(#(#facet_keys),*)]
+        #(#carried)*
         pub struct #leaf {
-            #(#struct_fields,)*
+            #(#struct_fields),*
         }
 
-        /// What the command runs on, generated from the function's parameters.
-        ///
-        /// Only [`Facet::validate`] builds one: every value of it is runnable, so a caller that
-        /// holds one holds something the command accepts.
-        #[derive(::core::fmt::Debug, ::core::clone::Clone)]
-        pub struct #input {
-            #(#input_fields,)*
-        }
+        #generated
 
         impl #leaf {
             /// Calls the function: one spelling of the call, and of what its parameters are.
@@ -176,7 +284,12 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
         }
 
         #implementation
-    })
+    }
+}
+
+/// The name of the input this macro generates for `leaf`.
+fn input_name(leaf: &syn::Ident) -> syn::Ident {
+    syn::Ident::new(&format!("{leaf}Input"), Span::call_site())
 }
 
 /// The impl that makes the function a command: `Handler<Cx>` with a context, `Command` without.
@@ -185,10 +298,11 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
 /// every `Command` into a `Handler`, so both would be two impls that disagree about which runs.
 fn implementation(
     leaf: &syn::Ident,
-    input: &syn::Ident,
+    input: &Type,
     output: &Type,
     context: Option<&Type>,
     patterns: &[&syn::Ident],
+    call_arguments: &[TokenStream],
 ) -> TokenStream {
     // A command with a context is a `Handler` and nothing else: the library's blanket impl
     // turns every `Command` into a `Handler`, so both would be two impls that disagree about
@@ -206,8 +320,8 @@ fn implementation(
                     input: #input,
                     cx: &#context,
                 ) -> ::core::result::Result<#output, ::clifacet::Failure> {
-                    let #input { #(#patterns,)* } = input;
-                    Self::__clifacet_call(#(#patterns,)* cx)
+                    let #input { #(#patterns),* } = input;
+                    Self::__clifacet_call(#(#call_arguments,)* cx)
                 }
             }
         }
@@ -221,8 +335,8 @@ fn implementation(
                     &self,
                     input: #input,
                 ) -> ::core::result::Result<#output, ::clifacet::Failure> {
-                    let #input { #(#patterns,)* } = input;
-                    Self::__clifacet_call(#(#patterns),*)
+                    let #input { #(#patterns),* } = input;
+                    Self::__clifacet_call(#(#call_arguments),*)
                 }
             }
         }
@@ -233,8 +347,15 @@ fn implementation(
 struct Argument {
     /// The parameter's name, which is the generated field's name.
     pattern: syn::Ident,
-    /// The parameter's type, as written.
+    /// The parameter's type, as written: what clap parses.
     ty: Type,
+    /// The type of the input's field. The same as `ty`, except where a `fill` makes a value
+    /// out of an `Option`, which is why it is tracked rather than assumed.
+    input_ty: Type,
+    /// Whether the parameter is input. A `skip` parameter is parsed by clap and belongs to the
+    /// command, but not to what the command runs on: the form flags are the case, and the body
+    /// receives them from the parsed command instead of from the input.
+    skipped: bool,
     /// What the generated field carries: the parameter's own attributes, with every
     /// `#[clifacet(..)]` already replaced by what it stands for.
     attributes: Vec<Attribute>,
@@ -256,11 +377,14 @@ impl Argument {
 
     /// The matching field of the input, without the grammar: the input is what ran, not what
     /// was typed, so nothing on it is clap's.
-    fn input_field(&self) -> TokenStream {
-        let (pattern, ty) = (&self.pattern, &self.ty);
-        quote_spanned! {pattern.span()=>
-            pub #pattern: #ty
+    fn input_field(&self) -> Option<TokenStream> {
+        if self.skipped {
+            return None;
         }
+        let (pattern, ty) = (&self.pattern, &self.input_ty);
+        Some(quote_spanned! {pattern.span()=>
+            pub #pattern: #ty
+        })
     }
 }
 
@@ -355,13 +479,24 @@ fn parameters(signature: &mut syn::Signature) -> syn::Result<(Vec<Argument>, Opt
             ));
         }
 
-        let attributes = forwarded_attributes(&parameter.attrs, ty)?;
-        // `context` only ever appeared on the branch above; here it would be a key the field
-        // table does not know.
+        let skipped = skipped(&parameter.attrs)?;
+        // A skipped value is not input, so `fill` has nothing to fill: it is refused above,
+        // with the other keys, rather than silently ignored here.
+        let fill = if skipped {
+            None
+        } else {
+            fill_of(&parameter.attrs, ty)?
+        };
+        // The field is what clap parses; the input field is what the body receives. Only
+        // `fill` makes them differ, and then the derive's own rule closes the gap.
+        let parsed = fill.as_ref().map_or_else(|| ty.clone(), Fill::parsed);
+        let attributes = forwarded_attributes(&parameter.attrs, &parsed)?;
         check_help(&attributes, &pattern.ident)?;
         arguments.push(Argument {
             pattern: pattern.ident.clone(),
-            ty: ty.clone(),
+            ty: parsed,
+            input_ty: ty.clone(),
+            skipped,
             attributes,
         });
         // Nothing is left on the parameter itself: `#[clifacet(..)]` and `#[arg(..)]` are how the
@@ -477,6 +612,87 @@ fn is_ours(attribute: &Attribute) -> bool {
         .is_some_and(|segment| segment.ident == field::ATTRIBUTE)
 }
 
+/// What a `fill` makes of one parameter.
+///
+/// The field form declares `Option<T>` and `fill`, and the generated bridge substitutes the
+/// fallback, so the input holds a `T`. A function's parameter is the value the body receives,
+/// so it is the `T`: `fill` turns the author's `String` back into an `Option<String>` for
+/// clap, and the derive's own `fill` rule turns it forward again. One declaration, the same
+/// rule, and the body gets what it asked for.
+#[derive(Clone)]
+struct Fill {
+    /// The parameter's type, as written: the value the body receives.
+    filled: Type,
+}
+
+impl Fill {
+    /// The type clap parses: `Option<T>`, because the fallback may have to stand in.
+    fn parsed(&self) -> Type {
+        let filled = &self.filled;
+        // Spelled bare, because clap's derive recognizes an optional argument by the path
+        // `Option` and nothing else: a qualified `::core::option::Option` is "some other type"
+        // to it, and the argument would be required.
+        syn::parse_quote!(Option<#filled>)
+    }
+}
+
+/// The `fill` a parameter declared, with the type clap has to parse for it.
+fn fill_of(attributes: &[Attribute], ty: &Type) -> syn::Result<Option<Fill>> {
+    for attribute in attributes.iter().filter(|attribute| is_ours(attribute)) {
+        for entry in parse_entries(attribute)? {
+            if !entry.path().is_ident("fill") {
+                continue;
+            }
+            let Meta::NameValue(fallback) = &entry else {
+                return Err(syn::Error::new_spanned(
+                    &entry,
+                    "`fill` takes a value: the fallback used when no flag and no answer \
+                     supplied one",
+                ));
+            };
+            if let Type::Path(path) = ty
+                && crate::field::optional_inner(path).is_some()
+            {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "`fill` supplies the value, so the parameter is the value itself: write \
+                     the type without `Option`, and the flag stays optional",
+                ));
+            }
+            // The fallback itself is forwarded untouched by the field table, along with the
+            // rest of the declaration: the derive applies it, exactly as it does for a struct.
+            let _ = fallback;
+            return Ok(Some(Fill { filled: ty.clone() }));
+        }
+    }
+    Ok(None)
+}
+
+/// Whether the parameter declared `skip`.
+fn skipped(attributes: &[Attribute]) -> syn::Result<bool> {
+    for attribute in attributes.iter().filter(|attribute| is_ours(attribute)) {
+        if parse_entries(attribute)?
+            .iter()
+            .any(|entry| entry.path().is_ident("skip"))
+        {
+            // `skip` says the value is parsed but is not input, and a value that is not input
+            // has no rule to apply: a second key here would be a rule on nothing.
+            if let Some(other) = parse_entries(attribute)?
+                .iter()
+                .find(|entry| !entry.path().is_ident("skip"))
+            {
+                return Err(syn::Error::new_spanned(
+                    other,
+                    "a `skip` parameter takes no other clifacet key: it never reaches the \
+                     input, so a rule on it would apply to nothing",
+                ));
+            }
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Whether the parameter carries `#[clifacet(context)]`, the marker for a context a command
 /// chooses a name for.
 fn marked_as_context(attributes: &[Attribute]) -> syn::Result<bool> {
@@ -548,53 +764,90 @@ fn pascal(name: &str) -> syn::Ident {
     syn::Ident::new(&name.to_upper_camel_case(), Span::call_site())
 }
 
-/// Rejects the attribute's own keys.
+/// The attribute's keys a function command accepts: the two that describe what the generated
+/// input and collection do *beside* the parameters.
 ///
-/// Every key belongs to a struct that declares its input by hand, and a function declares its
-/// input by writing its parameters. Accepting a key here would be accepting a declaration that
-/// does nothing.
-fn check_attribute(attribute: &TokenStream) -> syn::Result<()> {
+/// `check` and `collect` are paths, and the field form needs them for the same reason here:
+/// a rule about the whole input, and questions the declarations cannot describe. The rest of
+/// the struct form's keys — `input`, `bridge` — would be a second declaration of the
+/// parameters, so they are refused with a message saying so.
+#[derive(Default)]
+struct Keys {
+    /// Where the input goes, when it is a type the application already has. The parameters
+    /// still declare the fields: this names the type, it does not restate them.
+    input: Option<Type>,
+    check: Option<syn::Path>,
+    collect: Option<syn::Path>,
+}
+
+/// Reads the attribute's keys, or says what to write instead.
+fn check_attribute(attribute: &TokenStream) -> syn::Result<Keys> {
+    let mut keys = Keys::default();
     if attribute.is_empty() {
-        return Ok(());
+        return Ok(keys);
     }
     let entries = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute.clone())?;
-    let Some(entry) = entries.first() else {
-        return Ok(());
-    };
-    let message = match entry.path().get_ident().map(ToString::to_string).as_deref() {
-        Some("input") => {
-            "a function command generates its input from its parameters, so \
-                          `input = …` would be a second declaration of the same fields: drop \
-                          the key and declare the fields as parameters"
-        }
-        Some("bridge") => {
-            "a function command's body is the bridge: its parameters are the \
-                           input, so `bridge = …` has nothing to add"
-        }
-        Some("check") => {
-            "a function command validates by returning a `Failure` from its body, \
-                          so `check = …` would be a second place for the same rule"
-        }
-        Some("collect") => {
-            "a function command asks no questions, so `collect = …` has nothing \
-                            to call: write the struct form where a command asks, and the \
-                            function form where it does not"
-        }
-        Some(key) => {
+    for entry in entries {
+        let Some(key) = entry.path().get_ident().map(ToString::to_string) else {
             return Err(syn::Error::new_spanned(
-                entry,
-                format!(
-                    "`{key}` is not a key of `#[clifacet::command]` on a function: a function \
-                     command takes none, because the parameters are the declaration"
-                ),
+                &entry,
+                "`#[clifacet::command]` keys are plain names",
+            ));
+        };
+        if key == "input" {
+            let Meta::NameValue(named) = &entry else {
+                return Err(syn::Error::new_spanned(
+                    &entry,
+                    "`input` takes a type: `input = YourInputType`",
+                ));
+            };
+            let syn::Expr::Path(path) = &named.value else {
+                return Err(syn::Error::new_spanned(
+                    &named.value,
+                    "`input` takes a type: `input = YourInputType`",
+                ));
+            };
+            let ty: Type = syn::parse_quote!(#path);
+            if keys.input.replace(ty).is_some() {
+                return Err(syn::Error::new_spanned(
+                    &entry,
+                    "`input` is declared twice; one key, one meaning",
+                ));
+            }
+            continue;
+        }
+        let slot: &mut Option<syn::Path> = match key.as_str() {
+            "check" => &mut keys.check,
+            "collect" => &mut keys.collect,
+            other => {
+                return Err(syn::Error::new_spanned(
+                    &entry,
+                    format!(
+                        "`{other}` is not a key of `#[clifacet::command]` on a function; the \
+                         parameters are the declaration, and only `input`, `check` and \
+                         `collect` describe the types and rules beside them"
+                    ),
+                ));
+            }
+        };
+        let Meta::NameValue(named) = &entry else {
+            return Err(syn::Error::new_spanned(
+                &entry,
+                format!("`{key}` takes a path: `{key} = your_function`"),
+            ));
+        };
+        let syn::Expr::Path(path) = &named.value else {
+            return Err(syn::Error::new_spanned(
+                &named.value,
+                format!("`{key}` takes a path: `{key} = your_function`"),
+            ));
+        };
+        if slot.replace(path.path.clone()).is_some() {
+            return Err(syn::Error::new_spanned(
+                &entry,
+                format!("`{key}` is declared twice; one key, one meaning"),
             ));
         }
-        None => {
-            return Err(syn::Error::new_spanned(
-                entry,
-                "`#[clifacet::command]` keys are plain names, and a function command takes none",
-            ));
-        }
-    };
-    Err(syn::Error::new_spanned(entry, message))
+    }
+    Ok(keys)
 }

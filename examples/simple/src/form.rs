@@ -12,7 +12,7 @@ use clap::Parser;
 
 use clifacet::{Command, Facet, Failure};
 
-use crate::commands::{Cli, Example, ExampleInput, ExampleOutput};
+use crate::commands::{Example, ExampleInput, ExampleOutput, example_command};
 use crate::exit::{EXIT_SUCCESS, report};
 
 /// Runs the full-screen form, then reports its outcome like any other run.
@@ -33,7 +33,7 @@ pub fn run_tui<W: Write>(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
-    run_tui_with(&Example, screen, keys, out, err)
+    run_tui_with(&example_command(), screen, keys, out, err)
 }
 
 /// Runs the form and hands its answers to `command`.
@@ -83,7 +83,7 @@ fn finish_tui(
 
 /// The form this command asks, generated from the command's own declarations.
 ///
-/// The fields are the ones [`Cli`] declares with `form`, in declaration order
+/// The fields are the ones [`Example`] declares with `form`, in declaration order
 /// ([`Facet::form_fields`]): only the value arguments, because the flags that chose
 /// the mode are not questions for a user who already chose one. Each is drawn as what
 /// its grammar says — the level, a [`clap::ValueEnum`], is a choice — and a declared
@@ -98,7 +98,7 @@ fn finish_tui(
 /// a form from someone else's command.
 #[must_use]
 pub fn tui_form() -> clifacet::tui::FormState {
-    clifacet::tui::FormState::of::<Cli>()
+    clifacet::tui::FormState::of::<Example>()
         .expect("the form fields are generated from the command's own arguments")
 }
 
@@ -115,7 +115,7 @@ pub fn tui_form() -> clifacet::tui::FormState {
 /// every other frontend uses. A refusal is returned as a message for the form to
 /// show, because a form that closes on a typo makes the user start again.
 pub fn tui_submit(state: &clifacet::tui::FormState) -> Result<Vec<String>, String> {
-    tui_submit_with(&Example)(state)
+    tui_submit_with(&example_command())(state)
 }
 
 /// The submission path, for a command other than the example's own.
@@ -130,7 +130,7 @@ where
 {
     move |state: &clifacet::tui::FormState| {
         let argv = std::iter::once(String::from("example")).chain(state.arguments());
-        let cli = match Cli::try_parse_from(argv) {
+        let cli = match Example::try_parse_from(argv) {
             Ok(cli) => cli,
             Err(error) => return Err(error.to_string()),
         };

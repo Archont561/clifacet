@@ -162,10 +162,34 @@ in a folder that declared no context is an error saying which line to add, and a
 that is not the last parameter is an error saying where it belongs. A name other than
 `cx` is available by marking the parameter `#[clifacet(context)]`.
 
-What the function form does not do: it asks no questions, so there is no `ask`,
-`confirm`, `form` or `collect`; it is not `planned`; and the attribute itself takes no
-keys, because the parameters are the declaration. Those are the reasons to write the
-struct form, and the two coexist in one folder.
+A parameter carries the same rules a field does — `trim`, `non_empty`, `secret`, `ask`,
+`confirm` — because the parameters are read by the same table. Two things behave
+differently, and both are about a parameter being a value rather than a field:
+
+- **`fill = ..` goes the other way.** On a field it turns an `Option<T>` into a `T` by
+  supplying the fallback; on a parameter the type is already the `T` the body receives, so
+  `fill` makes the *flag* optional and the derive fills it in. Write `name: String` with
+  `fill = "world"`, not `Option<String>`.
+- **A parameter's `skip` means the same thing.** The value is still parsed — `clap`
+  builds it from the flag or the flattened group — but it is not part of the input, and
+  the body receives it from the command instead. It is how a command carries what decided
+  *how* to ask (the interaction flags, a `--dry-run`) without those becoming things the
+  command runs on. A `skip` parameter takes no other key: a rule on a value that never
+  reaches the input would apply to nothing, so it is refused rather than ignored.
+
+The attribute takes three keys, and only these: `input` names the type the input is,
+when it is one the application already has (the fields still come from the parameters);
+`check` names a rule across the whole input; `collect` names a function that asks what
+the declarations cannot describe. A fourth key is refused, because a function's
+parameters are its declaration and `bridge` would be a second one.
+
+The function form covers the leaves whose input is what the parameters say. A leaf
+needs the struct form when the input is *not* that — when a value normalizes into a
+different type (a bare `--status` filter that becomes "ask which" belongs to a bridge, not
+to a parameter), when the bridge and the questions are one function, or when the command
+is `planned`. `examples/backlog-lite` has both kinds side by side: `show`, `search`,
+`start`, `done` and `doctor` are functions, and `list` and `new` are structs for exactly
+those reasons.
 
 ## Declaring one field once
 

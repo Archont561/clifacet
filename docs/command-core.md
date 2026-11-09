@@ -13,9 +13,9 @@ one.
 
 | Layer | Lives in | Owns | Must not |
 | --- | --- | --- | --- |
-| `clap` surface | `clifacet_example::Cli` | flags, help, usage errors | know about the command |
-| Validation | `TryFrom<Cli> for ExampleInput`, generated from the field declarations and ending in `check_input`, reached through `Facet::validate` | rejecting bad values, defaults | run anything |
-| Command | `impl Command for Example` | the operation | touch a stream, read a terminal, know `clap` exists |
+| `clap` surface | the parameter list of `clifacet_example::example` | flags, help, usage errors | know about the operation |
+| Validation | `ExampleInput`, generated from those same declarations by `#[clifacet::command]`, ending in `check_input`, reached through `Facet::validate` | rejecting bad values, defaults | run anything |
+| Command | `impl Command for Example` — the macro's generated `execute`, which calls the function | the operation | touch a stream, read a terminal, know `clap` exists |
 | Application | `clifacet::App`, configured once in `clifacet_example::app` and reached through `clifacet_example::run` and `clifacet_example::main` | the pipeline: streams, exit codes, diagnostics | contain the operation |
 
 `Command` is the only seam between the middle two rows, and it is the only one
@@ -395,8 +395,8 @@ pieces (decision-4).
 Five rules keep it a frontend rather than a second command:
 
 - **A form is generated from the command, and asked for explicitly.**
-  `FormState::of::<Cli>()` generates it from the fields declared `form` — that is
-  `FormState::generated(&Cli::command(), Cli::form_fields())` — and masks the fields
+  `FormState::of::<Example>()` generates it from the parameters declared `form` — that is
+  `FormState::generated(&Example::command(), Example::form_fields())` — and masks the fields
   declared `secret`, so a credential is hidden because it was declared one rather than
   because a second call was remembered. Labels come from the arguments' help and the
   initial values from their defaults. Which arguments a
@@ -416,7 +416,7 @@ Five rules keep it a frontend rather than a second command:
   `FieldState::choices()`, `is_toggle()` and `is_on()` let a custom field draw the
   same kinds its own way.
 - **Submission goes through `clap`.** The answers become arguments,
-  `Cli::try_parse_from` parses them, and `Facet::validate` plus the handler run as
+  `Example::try_parse_from` parses them, and `Facet::validate` plus the handler run as
   they would for flags. A rejected answer — `--repeat 9`, `--repeat x` — keeps the
   form open and shows the same words the flags would print, so a typo costs an edit
   instead of the whole run. The BDD scenario asserts the data a typed `ada` produces
@@ -667,13 +667,13 @@ application's, and is listed so absence is not mistaken for oversight:
 second grammar:
 
 ```rust,ignore
-#[clifacet::command(input = ExampleInput, check = check_input)]
-pub struct Cli { /* one #[clifacet(..)] per field */ }
+#[clifacet::command(check = check_input)]
+pub fn example(/* one #[clifacet(..)] parameter per argument */) -> Result<ExampleOutput, Failure> { .. }
 
-let input = Cli::try_parse_from(argv)?.validate()?;   // Facet::validate
+let input = Example::try_parse_from(argv)?.validate()?;   // Facet::validate
 ```
 
-The derive adds no parser. `Facet::command()` *is* `<Cli as CommandFactory>::command()`
+The macro adds no parser. `Facet::command()` *is* `<Example as CommandFactory>::command()`
 — same aliases, same defaults, same value parsers — and `Facet::validate` is the
 only route from the parsed struct to `Input`. There are exactly two ways to build
 that input, and the derive implements one of them:

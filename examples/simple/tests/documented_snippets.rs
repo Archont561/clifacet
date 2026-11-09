@@ -313,7 +313,7 @@ fn derive_snippet_5() {
     }
 }
 
-/// `derive.md`, line 179.
+/// `derive.md`, line 203.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_6() {
@@ -362,7 +362,7 @@ fn derive_snippet_6() {
     assert_eq!(input.name, "grace");
 }
 
-/// `derive.md`, line 294.
+/// `derive.md`, line 318.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_7() {
@@ -402,7 +402,7 @@ fn derive_snippet_7() {
     assert_eq!(Cli::secret_fields(), [""; 0]);
 }
 
-/// `derive.md`, line 366.
+/// `derive.md`, line 390.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_8() {
@@ -506,7 +506,7 @@ fn derive_snippet_8() {
     assert!(bare.command.is_none());
 }
 
-/// `derive.md`, line 689.
+/// `derive.md`, line 713.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_9() {

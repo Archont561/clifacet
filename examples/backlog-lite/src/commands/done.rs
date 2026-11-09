@@ -6,16 +6,19 @@ use clifacet::prompt::Session;
 use super::task::{self, TaskRef};
 use crate::status::Status;
 
-/// `bl done`: confirmed before anything moves.
-#[clifacet::command(input = TaskRef, collect = confirm_done)]
-#[derive(Debug, Clone)]
-pub struct Done {
-    /// The task ID.
-    #[clifacet(trim, non_empty)]
-    pub id: String,
+/// Move a task to Done.
+///
+/// Confirmed before anything moves, for the same reason `start` is: a state change nobody
+/// agreed to is not one to make.
+#[clifacet::command(input = TaskRef, collect = confirm)]
+pub fn done(#[clifacet(trim, non_empty)] id: String) -> Result<TaskRef, Failure> {
+    Ok(TaskRef {
+        id: task::task_id(&id)?,
+    })
 }
 
-fn confirm_done(done: Done, session: &mut Session) -> Result<Done, Failure> {
+/// Confirms before anything moves.
+fn confirm(done: Done, session: &mut Session) -> Result<Done, Failure> {
     task::confirm_status(&task::task_id(&done.id)?, Status::Done, session)?;
     Ok(done)
 }

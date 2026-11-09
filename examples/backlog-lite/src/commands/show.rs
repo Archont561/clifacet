@@ -1,14 +1,17 @@
 //! `bl show`: one task, in the tool's plain output unless `--json` was asked for.
 
-use super::task::TaskRef;
+use clifacet::failure::Failure;
 
-/// `bl show`.
+use super::task::{self, TaskRef};
+
+/// Show one task.
+///
+/// The task ID is trimmed and refused if blank, before the wrapped tool sees it.
 #[clifacet::command(input = TaskRef)]
-#[derive(Debug, Clone)]
-pub struct Show {
-    /// The task ID, for example CLI-20.
-    #[clifacet(trim, non_empty)]
-    pub id: String,
+pub fn show(#[clifacet(trim, non_empty)] id: String) -> Result<TaskRef, Failure> {
+    Ok(TaskRef {
+        id: task::task_id(&id)?,
+    })
 }
 
 /// `backlog task view ID`, plain unless the run is JSON, and the sentence for it.

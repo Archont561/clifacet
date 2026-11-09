@@ -1,12 +1,13 @@
 //! `bl search`: one query across tasks, documents and decisions.
 
-/// `bl search`.
+use clifacet::failure::Failure;
+
+/// Search everything the backlog holds.
+///
+/// One query, matched across tasks, documents and decisions.
 #[clifacet::command(input = Query)]
-#[derive(Debug, Clone)]
-pub struct Search {
-    /// What to look for.
-    #[clifacet(trim, non_empty)]
-    pub query: String,
+pub fn search(#[clifacet(trim, non_empty)] query: String) -> Result<Query, Failure> {
+    Ok(Query { query })
 }
 
 /// A search, never blank.
