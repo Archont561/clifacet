@@ -1,0 +1,16 @@
+name: probe-msrv
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install the declared toolchain
+        run: |
+          rustup toolchain install 1.88 --profile minimal --no-self-update
+          rustup run 1.88 rustc --version
+      - name: Probe
+        run: |
+          python3 scripts/prove_msrv.py 2>&1 | tail -60
