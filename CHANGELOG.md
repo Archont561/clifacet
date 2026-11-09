@@ -35,6 +35,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **macros:** build the fixture path from parts so Windows finds it
+([890923d](https://github.com/Archont561/clifacet/commit/890923d39f55eaf2f0ce87d17baff7ff84c62588))
 * **settings:** ask the platform where its config directory is
 ([5e1b4f2](https://github.com/Archont561/clifacet/commit/5e1b4f212d75b123c4cc2341494d3a50d5015060))
 
