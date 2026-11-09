@@ -21,6 +21,10 @@ tui = ["dep:ratatui", "dep:crossterm"]
 # `Serialize` for `Failure`, `FailureKind` and a redacted `Secret`. JSON is not the
 # library's to write (decision-3): an application serialises a failure itself.
 serde = ["dep:serde"]
+# `clifacet::settings::toml`, the settings loader for the format most applications
+# already have (CLI-51). Off by default: a program that never reads a settings file pays
+# nothing for the parser.
+settings-toml = ["dep:toml_edit"]
 # `clifacet::build::commands()`, for an application's `build.rs`: it scans
 # `src/commands/` and reports it, and `clifacet::commands!()` with no list reads
 # that report (CLI-50). Off by default, because a build script is the only caller.
@@ -31,6 +35,7 @@ clifacet-macros.workspace = true
 clap.workspace = true
 serde = { workspace = true, optional = true }
 thiserror.workspace = true
+toml_edit = { workspace = true, optional = true }
 inquire = { workspace = true, optional = true }
 ratatui = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }

@@ -32,7 +32,7 @@ impl World {
         )
         .expect("bl parses its own command line");
         // `--dry-run` arrives in the globals, which the runner takes apart from the `Cli`.
-        let globals = cli.globals;
+        let globals = cli.globals.clone();
         let script = Scripted::new(answers);
         let probe = script.clone();
         let (mut out, mut err) = (Vec::new(), Vec::new());

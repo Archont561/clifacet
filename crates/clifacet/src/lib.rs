@@ -87,6 +87,7 @@ pub mod prompt;
 pub mod provenance;
 pub mod report;
 pub mod secret;
+pub mod settings;
 
 /// The build-script half of discovery, available with the `build` feature (CLI-50).
 #[cfg(feature = "build")]

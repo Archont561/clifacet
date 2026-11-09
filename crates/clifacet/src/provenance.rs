@@ -36,16 +36,18 @@ use clap::{ArgMatches, Command};
 
 /// Where a value came from.
 ///
-/// The variants are the sources the framework can name without guessing. An
-/// application reading a config file of its own has no variant here on purpose: adding
-/// one for every possible origin would be a registry, and the interesting distinction
-/// is whether a person was asked.
+/// The variants are the sources the framework can name without guessing. A file read by
+/// [`settings`](crate::settings) is [`File`](Self::File); a file an application reads
+/// itself is not distinguished from a default, because the framework did not read it and
+/// cannot say which of the two it was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Source {
     /// A command-line flag or argument.
     Argv,
     /// An environment variable.
     Environment,
+    /// A settings file, read before the parse and layered under the environment.
+    File,
     /// A default the application chose.
     Default,
     /// A question answered through [`crate::prompt`].
@@ -61,6 +63,7 @@ impl Source {
         match self {
             Self::Argv => "argv",
             Self::Environment => "environment",
+            Self::File => "file",
             Self::Default => "default",
             Self::Prompt => "prompt",
             Self::Form => "form",

@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **settings:** layer a config file under the flags and the environment
+([f4609bf](https://github.com/Archont561/clifacet/commit/f4609bf6f0ba00294a3a26e34076639335c5cd41))
 * **backlog:** check that a task's status agrees with its criteria
 ([98b833d](https://github.com/Archont561/clifacet/commit/98b833dc1139b3ae1651ab12fab6828aabf81ab4))
 * **check:** lint the prose with Vale, and make it pass
@@ -24,6 +26,11 @@ copy has drifted. Edit the commit messages, not the file.
 ([bbff149](https://github.com/Archont561/clifacet/commit/bbff149028fce732e455e3606a5baa08cc243ba8))
 * **command:** discover a folder's commands from its build script
 ([f42451f](https://github.com/Archont561/clifacet/commit/f42451fd45011a6d9a5de2148c278712ccaadccc))
+
+### Fixed
+
+* **settings:** ask the platform where its config directory is
+([5e1b4f2](https://github.com/Archont561/clifacet/commit/5e1b4f212d75b123c4cc2341494d3a50d5015060))
 
 ## [0.4.0] - 2026-11-08
 
