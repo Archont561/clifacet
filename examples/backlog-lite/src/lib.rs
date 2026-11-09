@@ -53,7 +53,7 @@ use clifacet::failure::Failure;
 use clifacet::{App, Globals};
 
 pub use commands::{
-    Action, Checkup, Cli, Commands, Filter, Input, NewTask, Query, Request, TaskRef, collect_new,
+    Action, Cli, Commands, Filter, Input, NewTask, Query, Request, TaskRef, collect_new,
     confirm_status, task_id,
 };
 pub use invocation::{Invocation, invocation_of};

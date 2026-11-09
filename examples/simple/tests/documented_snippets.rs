@@ -260,10 +260,63 @@ fn derive_snippet_2() {
     assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
 }
 
-/// `derive.md`, line 91.
+/// `derive.md`, line 89.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_3() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::Failure;
+    /// Add a task.
+    ///
+    /// The title is stored as given.
+    #[clifacet::command]
+    pub fn add_task(
+        #[clifacet(long, help = "The title to store")]
+        title: String,
+        #[clifacet(long, help = "Show what would happen")]
+        dry_run: bool,
+    ) -> Result<String, Failure> {
+        Ok(format!("{title} ({dry_run})"))
+    }
+}
+
+/// `derive.md`, line 115.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_4() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    #[clifacet::command(input = AddTaskInput)]
+    #[command(name = "add-task", about = "Add a task.")]
+    struct AddTask {
+        #[clifacet(long, help = "The title to store")]
+        title: String,
+        #[clifacet(long, help = "Show what would happen")]
+        dry_run: bool,
+    }
+    struct AddTaskInput {
+        title: String,
+        dry_run: bool,
+    }
+}
+
+/// `derive.md`, line 149.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_5() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::Failure;
+    struct App { records: Vec<String> }
+    /// Count the records.
+    #[clifacet::command]
+    pub fn count(cx: &App) -> Result<usize, Failure> {
+        Ok(cx.records.len())
+    }
+}
+
+/// `derive.md`, line 179.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_6() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::clap::Parser as _;
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
@@ -309,10 +362,10 @@ fn derive_snippet_3() {
     assert_eq!(input.name, "grace");
 }
 
-/// `derive.md`, line 206.
+/// `derive.md`, line 294.
 #[rustfmt::skip]
 #[test]
-fn derive_snippet_4() {
+fn derive_snippet_7() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::clap::Parser as _;
     use clifacet::{Facet, Failure};
@@ -349,10 +402,10 @@ fn derive_snippet_4() {
     assert_eq!(Cli::secret_fields(), [""; 0]);
 }
 
-/// `derive.md`, line 278.
+/// `derive.md`, line 366.
 #[rustfmt::skip]
 #[test]
-fn derive_snippet_5() {
+fn derive_snippet_8() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::clap::Parser as _;
     use clifacet::{Command, Facet, Failure};
@@ -453,10 +506,10 @@ fn derive_snippet_5() {
     assert!(bare.command.is_none());
 }
 
-/// `derive.md`, line 601.
+/// `derive.md`, line 689.
 #[rustfmt::skip]
 #[test]
-fn derive_snippet_6() {
+fn derive_snippet_9() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::clap::Parser as _;
     use clifacet::Facet;
