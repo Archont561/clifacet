@@ -35,6 +35,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **macros:** write the folder module inline so the MSRV accepts it
+([b7a790e](https://github.com/Archont561/clifacet/commit/b7a790ef0f27b9bc42043c7ce9442640fffef50d))
 * **macros:** build the fixture path from parts so Windows finds it
 ([890923d](https://github.com/Archont561/clifacet/commit/890923d39f55eaf2f0ce87d17baff7ff84c62588))
 * **settings:** ask the platform where its config directory is
