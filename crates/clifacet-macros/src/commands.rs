@@ -1443,15 +1443,16 @@ fn reject_inner_docs(file: &Path, module: &ItemMod) -> syn::Result<()> {
         })
         .any(|line| line.starts_with("//!") || line.starts_with("#!["));
     if inner {
+        // The message names the folder as a folder rather than by its path: the path is long,
+        // machine-specific, and would make this golden a per-platform file. Where the folder
+        // is is already said by the module this is reported on.
         return Err(syn::Error::new_spanned(
             module,
-            format!(
-                "{} is included into this module, and a file pulled in with `include!` may not \
-                 start with `//!` or `#![..]`, because inner attributes are only allowed at the \
-                 top of a file Rust reads as a module. Move the folder's documentation to this \
-                 line as `///` comments, and keep `//` comments inside the folder",
-                shown(file)
-            ),
+            "the folder's `mod.rs` is included into this module, and a file pulled in with \
+             `include!` may not start with `//!` or `#![..]`, because inner attributes are only \
+             allowed at the top of a file Rust reads as a module. Move the folder's \
+             documentation to this line as `///` comments, and keep `//` comments inside the \
+             folder",
         ));
     }
     Ok(())

@@ -1,4 +1,4 @@
-error: $DIR/tests/ui/commands/mod.rs is included into this module, and a file pulled in with `include!` may not start with `//!` or `#![..]`, because inner attributes are only allowed at the top of a file Rust reads as a module. Move the folder's documentation to this line as `///` comments, and keep `//` comments inside the folder
+error: the folder's `mod.rs` is included into this module, and a file pulled in with `include!` may not start with `//!` or `#![..]`, because inner attributes are only allowed at the top of a file Rust reads as a module. Move the folder's documentation to this line as `///` comments, and keep `//` comments inside the folder
  --> tests/ui/registry_inner_docs.rs:7:1
   |
 7 | mod commands {}

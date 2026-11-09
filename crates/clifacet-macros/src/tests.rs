@@ -1756,6 +1756,13 @@ fn an_empty_inline_module_is_filled_from_the_folders_file() {
     );
     assert!(missing.contains("which does not exist"), "{missing}");
     assert!(missing.contains("path = "), "{missing}");
+    // The folder it looked in is named, so the fix is visible without a guess. (It is the
+    // absolute path here, because `CARGO_MANIFEST_DIR` is this crate's rather than the
+    // application's — in a real build the same message is relative to the application.)
+    assert!(
+        missing.contains("/nonexistent/src/commands/mod.rs"),
+        "{missing}"
+    );
 }
 
 #[test]
