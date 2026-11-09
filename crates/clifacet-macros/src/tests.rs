@@ -1659,6 +1659,12 @@ fn rejected_registry(attribute: &str) -> String {
 }
 
 /// One expansion, with the report passed rather than read from `CLIFACET_COMMANDS`.
+///
+/// Separators are normalized to `/` because the paths in an expansion are the platform's: the
+/// same assertion would otherwise have to be written twice, once with `\` and once with `/`,
+/// and a test that differs by platform proves less than one that does not. The raw string
+/// holds *two* backslashes because a path printed as tokens is escaped — Windows' `D:\a` is
+/// `D:\\a` in the token stream a test reads.
 fn expand_registry(attribute: &str, item: &str, folder: &str, report: &str) -> String {
     crate::commands::registry_for_test(
         &attribute.parse().expect("the attribute lexes"),
@@ -1667,6 +1673,7 @@ fn expand_registry(attribute: &str, item: &str, folder: &str, report: &str) -> S
         report,
     )
     .map_or_else(|error| error.to_string(), |tokens| tokens.to_string())
+    .replace(r"\\", "/")
 }
 
 #[test]
