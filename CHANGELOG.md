@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **settings:** layer a config file under the flags and the environment
+([f4609bf](https://github.com/Archont561/clifacet/commit/f4609bf6f0ba00294a3a26e34076639335c5cd41))
 * **backlog:** check that a task's status agrees with its criteria
 ([98b833d](https://github.com/Archont561/clifacet/commit/98b833dc1139b3ae1651ab12fab6828aabf81ab4))
 * **check:** lint the prose with Vale, and make it pass
