@@ -35,6 +35,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **macros:** name the folder's file relative to the crate in messages
+([cc76070](https://github.com/Archont561/clifacet/commit/cc76070eb9c3b4866b7da700844083c34c25b63f))
 * **macros:** write the folder module inline so the MSRV accepts it
 ([b7a790e](https://github.com/Archont561/clifacet/commit/b7a790ef0f27b9bc42043c7ce9442640fffef50d))
 * **macros:** build the fixture path from parts so Windows finds it
