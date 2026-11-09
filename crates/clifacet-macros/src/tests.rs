@@ -1628,13 +1628,19 @@ fn a_commands_call_says_what_it_cannot_register() {
 /// application's. `examples/discovered` is exactly that, and the report is what
 /// `clifacet::build::commands()` writes for it: two commands, one group, one helper.
 fn fixture() -> (String, String) {
-    let folder = format!(
-        "{}/examples/discovered/src/commands",
-        env!("CARGO_MANIFEST_DIR")
-            .rsplit_once("/crates/")
-            .expect("the macros crate lives in the workspace's crates/")
-            .0
-    );
+    // Built from parts, not by splitting the manifest path: that path uses `\\` on Windows, so
+    // a `/crates/` split would find nothing and the test would panic there instead of here.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("the macros crate lives two levels under the workspace root");
+    let folder = root
+        .join("examples")
+        .join("discovered")
+        .join("src")
+        .join("commands")
+        .display()
+        .to_string();
     let report = "clifacet-commands/1;folder=src/commands;command=echo;\
                   command=list;group=db;helper=_shared"
         .to_owned();
