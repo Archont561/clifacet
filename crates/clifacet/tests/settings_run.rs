@@ -344,24 +344,32 @@ fn the_environment_variable_that_names_a_file_is_honoured() {
 
 #[test]
 fn the_default_location_is_used_when_it_exists_and_ignored_when_it_does_not() {
+    // The directory is asked for rather than assumed: macOS uses `Application Support` and
+    // Windows uses `APPDATA`, so a test that hard-codes `~/.config` passes on Linux and
+    // fails on the two platforms CI also builds. This is that bug, fixed.
     let scratch = Scratch::new("default");
-    std::fs::create_dir_all(scratch.path.join("app")).expect("a config directory");
-    scratch.file("app/settings.toml", "[serve]\nport = 3131\n");
     let environment = Map::new()
         .with("HOME", scratch.path.to_str().unwrap())
-        .with("XDG_CONFIG_HOME", scratch.path.to_str().unwrap());
+        .with("XDG_CONFIG_HOME", scratch.path.to_str().unwrap())
+        .with("APPDATA", scratch.path.to_str().unwrap());
+
+    let Some(expected) = clifacet::settings::place::default_file("app", &environment) else {
+        return; // a platform with no config directory has no default file to find
+    };
+    std::fs::create_dir_all(expected.parent().expect("a file has a directory"))
+        .expect("a writable config directory");
+    std::fs::write(&expected, "[serve]\nport = 3131\n").expect("the file writes");
 
     let chosen = Asked::default()
         .choose("app", &environment)
         .expect("nothing contradicts");
-    assert!(chosen.path().is_some(), "the default file is there");
+    assert_eq!(chosen.path(), Some(expected.as_path()));
 
-    let elsewhere = Map::new()
-        .with("HOME", "/nonexistent")
-        .with("XDG_CONFIG_HOME", "/nonexistent");
+    // And with the file gone the choice is "no file", not an error: most machines have none.
+    std::fs::remove_file(&expected).expect("the file removes");
     assert_eq!(
         Asked::default()
-            .choose("app", &elsewhere)
+            .choose("app", &environment)
             .expect("nothing contradicts")
             .path(),
         None

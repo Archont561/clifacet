@@ -660,16 +660,22 @@ pub mod place {
     /// The directory an application's configuration lives in, when the platform says.
     #[must_use]
     pub fn config_dir(environment: &dyn super::Environment) -> Option<PathBuf> {
-        let home = || environment.var("HOME").map(PathBuf::from);
-
+        // Each platform's branch reads only the variables it has. `HOME` is not defined on
+        // Windows, and a closure built above the `cfg` blocks would be dead code there —
+        // which CI builds warn about and therefore fail on.
         #[cfg(target_os = "windows")]
         {
             let appdata = environment.var("APPDATA")?;
-            return Some(PathBuf::from(appdata));
+            Some(PathBuf::from(appdata))
         }
         #[cfg(target_os = "macos")]
         {
-            return home().map(|home| home.join("Library").join("Application Support"));
+            let home = environment.var("HOME")?;
+            Some(
+                PathBuf::from(home)
+                    .join("Library")
+                    .join("Application Support"),
+            )
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
@@ -678,7 +684,8 @@ pub mod place {
             {
                 return Some(PathBuf::from(config));
             }
-            home().map(|home| home.join(".config"))
+            let home = environment.var("HOME")?;
+            Some(PathBuf::from(home).join(".config"))
         }
     }
 
