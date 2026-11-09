@@ -1,10 +1,10 @@
 ---
 id: CLI-52
 title: Write a command as a function
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-08 02:00'
-updated_date: '2026-11-09 13:55'
+updated_date: '2026-11-09 14:01'
 labels: []
 milestone: m-13
 dependencies:
