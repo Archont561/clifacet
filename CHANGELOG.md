@@ -27,6 +27,11 @@ copy has drifted. Edit the commit messages, not the file.
 * **command:** discover a folder's commands from its build script
 ([f42451f](https://github.com/Archont561/clifacet/commit/f42451fd45011a6d9a5de2148c278712ccaadccc))
 
+### Fixed
+
+* **settings:** ask the platform where its config directory is
+([5e1b4f2](https://github.com/Archont561/clifacet/commit/5e1b4f212d75b123c4cc2341494d3a50d5015060))
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
