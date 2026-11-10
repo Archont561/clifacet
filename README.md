@@ -82,7 +82,7 @@ failure costs.
 
 ```toml
 [dependencies]
-clifacet = "0.4.0"
+clifacet = "0.5.0"
 ```
 
 Frontends are features, so an application pays only for what it uses: `interactive`
@@ -148,7 +148,7 @@ Experimental. The command core, the interaction policy, prompts, the derive, the
 wrapper, one `#[clifacet(..)]` declaration per field and the TUI are implemented and
 covered; the JSON frontend is reserved and does not exist yet.
 
-`0.4.0` is the version this README describes. Publishing is a separate,
+`0.5.0` is the version this README describes. Publishing is a separate,
 authorized act from merging — a merge never puts a version on the registry by itself — see
 the [changelogCHANGELOG.md for what each release changed.
 

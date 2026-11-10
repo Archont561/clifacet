@@ -340,7 +340,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clifacet"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -360,7 +360,7 @@ dependencies = [
 
 [[package]]
 name = "clifacet-backlog-lite"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "clifacet",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "clifacet-discovered"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "clifacet",
@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "clifacet-example"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "clifacet",
@@ -392,7 +392,7 @@ dependencies = [
 
 [[package]]
 name = "clifacet-macros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "heck",
  "proc-macro2",
