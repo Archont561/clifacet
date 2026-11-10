@@ -37,6 +37,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **ci:** run the page checks on every change, not only documentation ones
+([8c326e2](https://github.com/Archont561/clifacet/commit/8c326e21e98fe09539af882a3ece48c8c2701a77))
 * **automation:** make the coverage task reach its report
 ([2965db7](https://github.com/Archont561/clifacet/commit/2965db7d964bffe42ceb562456d2bf489364d58f))
 * **automation:** run backlog-check through doit, not a phantom binary
