@@ -21,6 +21,7 @@ in the change.
 | prove a promise without a terminal | [Testing the command core](guides/testing.md) |
 | look up a seam, a stream or an exit code | [Command core and its seams](reference/command-core.md) |
 | work on this repository | [Contributing](development/contributing.md), then [Development](development/development.md) |
+| understand the hooks, and why CI takes the time it does | [The feedback loop](development/feedback-loop.md) |
 
 ## How this directory is organized
 

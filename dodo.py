@@ -160,6 +160,18 @@ def task_alint() -> dict:
     }
 
 
+def task_agents() -> dict:
+    """Refresh the generated regions of AGENTS.md. Writes; never gates.
+
+    `@eugeniughelbur/agents-md` reads the repository and rewrites only the sections between
+    its `agents-md:begin`/`end` markers, so the hand-written rules below them survive a
+    refresh. It detects this repository as `node` because `package.json` exists, and it
+    cannot find the Rust commands, so a refresh reintroduces stubs in those sections: read
+    the diff before committing it, and keep a durable rule outside the markers.
+    """
+    return {"actions": [shell(["bun", "run", "--silent", "agents-md", "--", "--no-symlink"])]}
+
+
 def task_markdownlint() -> dict:
     """Lint the shape of every page: headings, lists, fences, blank lines.
 

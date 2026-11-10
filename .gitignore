@@ -7,6 +7,9 @@ coverage/
 # Bun development dependencies
 node_modules/
 
+# The sidecar `agents-md` writes when it cannot place its markers; the curated AGENTS.md is the file
+AGENTS.generated.md
+
 # Python bytecode and pytest caches from the repository script tests
 __pycache__/
 .pytest_cache/

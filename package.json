@@ -5,8 +5,17 @@
   "description": "Developer tooling for the Clifacet workspace",
   "packageManager": "bun@1.4.2",
   "devDependencies": {
+    "@eugeniughelbur/agents-md": "0.1.0",
     "backlog.md": "1.53.0",
     "markdownlint-cli2": "0.18.1",
+    "readme-md-generator": "1.0.0",
     "skills": "1.7.4"
+  },
+  "scripts": {
+    "agents-md": "agents-md",
+    "readme": "readme-md-generator",
+    "test": "pixi run --frozen --no-install automation test",
+    "lint": "pixi run --frozen --no-install automation gates",
+    "format": "pixi run --frozen --no-install automation fmt"
   }
 }
