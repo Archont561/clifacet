@@ -1,9 +1,11 @@
 # Getting started
 
-Clifacet keeps one command core and renders it through four frontends: flags, a
-prompt, a full-screen form, and whatever the application draws itself. The command
-never writes a stream and never reads a terminal — that is what makes the same
-command reachable from all of them, and testable without any of them.
+Clifacet keeps one command core and runs it in three terminal modes: noninteractive
+(flags in, output out), interactive (a questionnaire on a terminal) and a TUI (a
+full-screen form). A run takes the lowest mode that can answer, unless a flag or the
+application asks for more. The command never writes a stream and never reads a
+terminal — that is what makes the same command reachable from all three, and testable
+without any of them.
 
 ## Add the dependency
 

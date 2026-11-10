@@ -16,39 +16,49 @@
 
 // The name of this file is documented_snippets.rs; it is the tests/ target of the example crate.
 
-/// `README.md`, line 35.
+/// `README.md`, line 26.
 #[rustfmt::skip]
 #[test]
 fn readme_snippet_1() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::{Command, Failure};
-    struct Greet;
-    impl Command for Greet {
-        type Input = String;
-        type Output = String;
-        fn execute(&self, input: Self::Input) -> Result<Self::Output, Failure> {
-            Ok(format!("hello, {input}"))
-        }
-    }
-}
-
-/// `README.md`, line 55.
-#[rustfmt::skip]
-#[test]
-fn readme_snippet_2() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::Facet;
-    #[clifacet::command(input = Greeting)]
+    use clifacet::Failure;
+    use clifacet::contract::ExitPolicy;
+    use clifacet::policy::{Capabilities, Mode, Policy};
+    /// The whole command: the parameters are the arguments, and each attribute beside one
+    /// is that argument's declaration — the `clap` surface, the prompt, the form field.
+    #[clifacet::command]
     #[command(name = "greet", about = "Say hello")]
-    struct Cli {
-        /// Who to greet.
-        #[arg(long, alias = "nickname")]
-        name: Option<String>,
+    fn greet(
+        #[clifacet(long, short = 'n', help = "Who to greet", fill = "world", trim, non_empty, form)]
+        name: String,
+        #[clifacet(long, help = "How many times", default_value_t = 1)]
+        repeat: u8,
+    ) -> Result<String, Failure> {
+        Ok(format!("hello, {name} x{repeat}"))
     }
-    /// Validated input. Every value of it is runnable.
-    struct Greeting {
-        name: Option<String>,
+    /// An application is a value built from parts that each own one decision.
+    fn app() -> clifacet::App<'static, Greet, Greet> {
+        clifacet::App::<Greet>::new()
+            .policy(Policy::up_to(Mode::Interactive))
+            .exit(ExitPolicy::standard())
     }
+    /// `main` is the same value, run.
+    fn main_line() -> std::process::ExitCode {
+        clifacet::App::<Greet>::new().run()
+    }
+    /// And a test is the same value with the process taken out of it.
+    fn scripted() -> i32 {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        app().run_with(
+            ["greet", "--name", "ada"],
+            Capabilities::headless(),
+            || Box::new(clifacet::prompt::Terminal::new(std::io::empty(), std::io::sink())),
+            &mut out,
+            &mut err,
+        )
+    }
+    assert_eq!(scripted(), 0);
 }
 
 /// `modes.md`, line 10.
@@ -434,7 +444,7 @@ fn derive_snippet_9() {
     assert_eq!(input.name, "world");
 }
 
-/// `getting-started.md`, line 44.
+/// `getting-started.md`, line 46.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {
@@ -452,7 +462,7 @@ fn getting_started_snippet_1() {
     assert_eq!(greeting, "hello, ada");
 }
 
-/// `getting-started.md`, line 73.
+/// `getting-started.md`, line 75.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_2() {
@@ -500,7 +510,7 @@ fn getting_started_snippet_2() {
     assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
 }
 
-/// `getting-started.md`, line 164.
+/// `getting-started.md`, line 166.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_3() {

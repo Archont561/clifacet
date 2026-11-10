@@ -42,9 +42,10 @@ README = ROOT / "README.md"
 PACKAGE = ROOT / "package.json"
 CARGO = ROOT / "Cargo.toml"
 
-# Pinned, like every other tool this repository fetches: a name would install whatever is
-# newest, so the README could change without a commit that says why.
-GENERATOR = "readme-md-generator@1.0.0"
+# Pinned in `package.json` and installed by `bun-install`, like the other npm tools here.
+# Running it through `bun x` would resolve whatever the registry has today, so the
+# published README could change without a commit that says why.
+GENERATOR = "readme-md-generator"
 
 
 def bun() -> str:
@@ -115,8 +116,15 @@ def render() -> str:
         # The generator resolves the template path relative to where it runs, and it
         # requires that path to exist, so the template is copied in beside the manifest.
         shutil.copyfile(TEMPLATE, work / "template.md")
+        # The repository's own `node_modules`, resolved from here: `bun run` looks upward
+        # from the working directory, and the scratch directory has no packages.
+        entry = ROOT / "node_modules" / GENERATOR / "src" / "index.js"
+        if not entry.is_file():
+            raise SystemExit(
+                f"readme: {GENERATOR} is not installed. Run `pixi run --frozen bun-install`."
+            )
         finished = subprocess.run(  # noqa: S603 — a fixed argument list, no shell
-            [bun(), "x", GENERATOR, "-y", "-p", "template.md"],
+            [bun(), str(entry), "-y", "-p", "template.md"],
             cwd=work,
             capture_output=True,
             text=True,

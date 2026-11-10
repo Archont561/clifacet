@@ -43,6 +43,9 @@ accept = [
   # The tooling the repository is checked with.
   "clippy",
   "codecov",
+  # Not a word in the dictionary; it is what `cargo test --doc` runs.
+  "doctest",
+  "doctests",
   "convco",
   "lefthook",
   "msrv",
@@ -82,6 +85,10 @@ accept = [
   "stderr",
   "subcommand",
   "subcommands",
+  # The mode name, and the word this library's documentation uses for it.
+  "noninteractive",
+  "recompile",
+  "recompiles",
   "toolchain",
   "yml",
   "toml",

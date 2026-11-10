@@ -5,6 +5,8 @@ alint
 doit
 clippy
 codecov
+doctest
+doctests
 convco
 lefthook
 msrv
@@ -40,6 +42,9 @@ stdout
 stderr
 subcommand
 subcommands
+noninteractive
+recompile
+recompiles
 toolchain
 yml
 toml

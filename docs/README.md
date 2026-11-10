@@ -1,9 +1,11 @@
 # Clifacet documentation
 
-Clifacet is a Rust library for command-line presentation modes: one command core,
-rendered through flags, prompts, a full-screen form, or a screen the application draws
-itself. The core, the prompts, the companion derive and the TUI are implemented; the JSON
-frontend is reserved and not implemented.
+Clifacet is a Rust library for building one command-line application that runs in any of
+three terminal modes: **noninteractive** (flags in, plain text for a person or structured
+output for a machine), **interactive** (questionnaires on a terminal) and **TUI** (a
+full-screen interface). All three render one UI-free command core, which is what makes the
+same command reachable from each and testable without any of them. The core, the mode
+policy, the prompts, the companion derive and the TUI are implemented.
 
 This directory is the product's knowledge layer, not a byproduct of it. What follows is
 how it is organized and what keeps it true; a change that contradicts either is a defect
@@ -21,6 +23,7 @@ in the change.
 | prove a promise without a terminal | [Testing the command core](guides/testing.md) |
 | look up a seam, a stream or an exit code | [Command core and its seams](reference/command-core.md) |
 | work on this repository | [Contributing](development/contributing.md), then [Development](development/development.md) |
+| understand the hooks, and why CI takes the time it does | [The feedback loop](development/feedback-loop.md) |
 
 ## How this directory is organized
 

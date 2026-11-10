@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Composable command-line presentation modes"
+description = "Build one CLI command; run it noninteractive, as a questionnaire, or as a TUI"
 readme = "../../README.md"
 # Scenarios are repository-only (`scripts/check_packages.py`), and their step bindings
 # read the `.feature` files at compile time, so neither half ships.

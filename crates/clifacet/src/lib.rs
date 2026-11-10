@@ -1,9 +1,9 @@
-//! Composable command-line presentation modes.
+//! Build one command-line command; run it in any of three terminal modes.
 //!
-//! Clifacet keeps one UI-free command core and renders it through flag-based,
-//! interactive and TUI frontends (decision-1). This release is the first slice of
-//! that architecture: a command seam ([`Command`]), a library-owned failure type
-//! ([`Failure`]), and the frontends above them.
+//! Clifacet keeps one UI-free command core and runs it in three terminal modes:
+//! noninteractive, interactive and TUI (decision-1). This release is the first slice
+//! of that architecture: a command seam ([`Command`]), a library-owned failure type
+//! ([`Failure`]), and the modes above them.
 //!
 //! The worked reference application lives beside this crate, in
 //! `crates/clifacet-example`: it depends on `clifacet` and on nothing private, so

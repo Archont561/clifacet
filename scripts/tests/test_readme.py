@@ -72,10 +72,18 @@ def test_the_template_exists_and_belongs_to_the_generator():
     assert readme.TEMPLATE.parent.name == ".readme"
 
 
-def test_the_generator_is_pinned_to_a_version():
-    """A name installs whatever is newest, so the README could change with no commit."""
-    assert readme.GENERATOR.startswith("readme-md-generator@")
-    assert len(readme.GENERATOR.partition("@")[2]) > 0
+def test_the_generator_is_pinned_in_the_manifest_the_installer_reads():
+    """A name installs whatever is newest, so the README could change with no commit.
+
+    The pin lives in `package.json`, which is what `bun install` resolves into `bun.lock`;
+    the module itself names the package without a version, because two pins would be one
+    pin too many.
+    """
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+
+    assert readme.GENERATOR in package["devDependencies"]
+    assert package["devDependencies"][readme.GENERATOR].count(".") == 2
+    assert "@" not in readme.GENERATOR
 
 
 def test_check_passes_when_the_readme_is_what_the_template_renders(monkeypatch, capsys, tmp_path):
