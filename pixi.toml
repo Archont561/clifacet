@@ -41,6 +41,9 @@ alint = "==0.20.1"
 # Test runner for scripts/tests. A pure `py3-none-any` wheel, so the sandbox can
 # pack it alongside alint; pinned exactly for the same reason as alint.
 pytest = "==9.2.0"
+# The task runner behind `pixi run automation`. Pure Python, PyPI-only, no compiled
+# extensions, so the sandbox packs it alongside the other two wheels.
+doit = "==0.36.0"
 
 [activation.env]
 LLVM_COV = "$CONDA_PREFIX/bin/llvm-cov"
@@ -53,22 +56,22 @@ backlog = { cmd = "bun x --bun --no-install backlog", depends-on = ["bun-install
 skills = { cmd = "bun x --bun --no-install skills", depends-on = ["bun-install"] }
 backlog-offline = { cmd = "bun x --bun --no-install backlog", depends-on = ["bun-install-offline"] }
 skills-offline = { cmd = "bun x --bun --no-install skills", depends-on = ["bun-install-offline"] }
-skills-check = "python scripts/check_skills.py"
+skills-check = "doit skills_check"
 # `doctor` validates the graph; the script validates that a status is true. Neither implies
 # the other: doctor is happy with a card that finished and never said so.
-backlog-check = { cmd = "bun x --bun --no-install backlog doctor && python scripts/check_backlog_status.py", depends-on = ["bun-install"] }
+backlog-check = { cmd = "doit backlog_check", depends-on = ["bun-install"] }
 # Every supported combination, derived from the crate's own manifest: the empty set, the
 # default set, each frontend alone and all of them together. `--print-matrix` lists them.
-check-features = "python scripts/check_features.py"
+check-features = "doit check_features"
 fmt = "cargo fmt --all"
-fmt-check = "cargo fmt --all -- --check"
-lint = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
-alint = "alint check --baseline .alint-baseline.json --strict-baseline --fail-on-warning"
+fmt-check = "doit fmt_check"
+lint = "doit lint"
+alint = "doit alint"
 # The guides are checked, not trusted: links and anchors resolve, every ```rust fence is
 # compiled into the example crate's test suite, and every documented `clifacet::…` path
 # names a public item. `--write` regenerates that file after editing a page.
-check-docs = "python scripts/check_docs.py"
-actionlint = "actionlint .github/workflows/*.yml"
+check-docs = "doit docs"
+actionlint = "doit actionlint"
 # Conventional-commit check for the `commit-msg` hook; reads the proposed message from
 # stdin. `--strip` matches Git's own cleanup of the comment block.
 lint-commit = "convco check --from-stdin --strip"
@@ -83,19 +86,19 @@ deny-offline = "cargo deny check bans licenses sources"
 # An advisory exception with no expiry is a decision nobody revisits: this fails when the
 # unmaintained crate is gone (so the exception must go too) or when the path the guide
 # quotes no longer matches Cargo.lock. Offline: it reads three files and the lockfile.
-check-advisory = "python scripts/check_advisory_exception.py"
+check-advisory = "doit check_advisory"
 # What `cargo publish` would upload, checked offline with `cargo package --list`: the
 # licence texts and README must be in the tarball, and test scaffolding must not be.
-check-packages = "python scripts/check_packages.py"
+check-packages = "doit check_packages"
 # `kind(proc-macro)` is separate: nextest classifies a proc-macro crate's own unit
 # tests that way, so `kind(lib)` alone would skip the derive's diagnostics tests.
 test-src = "cargo nextest run --workspace --all-features --locked -E 'kind(lib) + kind(proc-macro)'"
 test-integration = "cargo nextest run --workspace --all-features --locked -E 'kind(test)'"
 test = { depends-on = ["test-src", "test-integration"] }
 test-doc = "cargo test --workspace --all-features --doc --locked"
-coverage = "mkdir -p coverage && cargo llvm-cov nextest --workspace --all-features --locked --lcov --output-path coverage/lcov.info --ignore-filename-regex '(^|/)tests/' && python scripts/check_coverage.py coverage/lcov.info"
-test-scripts = "python -m pytest scripts/tests"
-docs-snippets = "python scripts/check_docs.py --write"
+coverage = "doit coverage"
+test-scripts = "doit test_scripts"
+docs-snippets = "doit docs_write"
 # The prose check. `prose-sync` renders `.vale.ini` and `.vale/styles/` from `vale.toml`;
 # `prose-check` proves the committed tree is current **and** that the pages pass. It is
 # offline-safe: the packages are committed after a sync, so a restored sandbox can lint
@@ -105,13 +108,13 @@ prose-sync = "python scripts/prose.py write && python scripts/prose.py sync"
 prose-check = "python scripts/prose.py check && python scripts/prose.py lint"
 # Proves the declared MSRV. CI installs that toolchain; locally this needs rustup,
 # or `--toolchain ""` to reuse the pinned compiler as a plumbing check.
-prove-msrv = "python scripts/prove_msrv.py"
+prove-msrv = "doit msrv"
 bump-version = "python scripts/bump_version.py"
 # The changelog is rendered, not written: `convco changelog` reads the conventional commits
 # through `.versionrc`, and the script turns its output into Keep a Changelog. `check` is
 # what CI runs, so the committed copy cannot drift from the history it describes.
 changelog = "python scripts/changelog.py regen"
-changelog-check = "python scripts/changelog.py check"
+changelog-check = "doit changelog_check"
 # The release workflow's decisions, not its plumbing: `preflight` proves the version, the
 # inherited manifests and the notes before anything is packaged; `package`, `report`,
 # `publish` and `tag` are the four steps that used to be shell inside `release.yml`.
@@ -124,11 +127,27 @@ commit-range = "python scripts/commit_range.py"
 change-scope = "python scripts/change_scope.py"
 # The RustSec database cache: its ISO week key, and resetting whatever the cache restored.
 advisory-cache = "python scripts/advisory_cache.py"
+# One CLI for the repository's automation. `dodo.py` is the task graph and `automation/`
+# holds the shared code; the scripts stay in `scripts/` and stay runnable on their own.
+# `pixi run automation list` discovers, `pixi run automation gates` is the gate, and
+# `-n 3` parallelizes whatever does not depend on something else.
+#
+# Every task below that names a `doit <task>` is an alias, kept because the task names
+# appear in the hooks, the workflows, the skills and years of muscle memory. The graph is
+# `dodo.py`, so an alias that disappears from here costs nothing but typing.
+automation = "doit"
+# The README is rendered from `.readme/README.template.md`. Editing the rendered file
+# instead of the template is the mistake these two exist to make impossible to keep.
+readme = "doit readme"
+readme-check = "doit readme_check"
+# The structure of the pages, as opposed to their words (Vale) or their links
+# (`check-docs`). Needs the npm registry the first time it runs.
+markdownlint = "doit markdownlint"
 # The offline, no-install subset worth running before every commit; `quality`
 # also fetches Bun packages and the RustSec database, so it stays a CI command.
 # One command from any checkout: reach the remote head, restore the environment, install
 # the hooks, then prove the result with the fast checks.
-bootstrap = "bash scripts/bootstrap.sh"
+bootstrap = "doit bootstrap"
 # The inner loop, and the gate `AGENTS.md` names: it runs after a restore, with
 # `--no-install` and no network, so every task in it has to be offline-safe. That rules
 # out `deny` (it fetches the RustSec database) in favour of `deny-offline`, and it is why
@@ -136,6 +155,6 @@ bootstrap = "bash scripts/bootstrap.sh"
 # which is pre-push's job, not a gate's. `quality` is the CI command and keeps both.
 test-local = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "prose-check", "test", "test-doc", "test-scripts", "deny-offline", "check-advisory", "check-packages", "sandbox-check"] }
 sandbox-plan = "pixi-sandbox plan --config pixi-sandbox.toml"
-sandbox-check = "pixi-sandbox init --config pixi-sandbox.toml --script-path scripts/restore.sh --check"
+sandbox-check = "doit sandbox_check"
 hooks-install = "lefthook install"
-quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "prose-check", "changelog-check", "skills-check", "backlog-check", "check-features", "actionlint", "check-advisory", "check-packages", "deny", "audit", "sandbox-check"] }
+quality = { depends-on = ["fmt-check", "lint", "alint", "check-docs", "prose-check", "markdownlint", "readme-check", "changelog-check", "skills-check", "backlog-check", "check-features", "actionlint", "check-advisory", "check-packages", "deny", "audit", "sandbox-check"] }

@@ -84,7 +84,7 @@ assert_eq!(Archive.execute(tasks).expect("runs"), 2);
   `preview` on whatever command it runs; the library's impl for a planned command returns
   `plan(input)`, and every other command refuses with a validation failure, so a dry run
   of a command that cannot describe itself runs nothing rather than running it
-  ([Getting started § The options every application gets](getting-started.md#the-options-every-application-gets)).
+  ([Getting started § The options every application gets](../guides/getting-started.md#the-options-every-application-gets)).
 - **`Plan` here is not `policy::Plan`.** The policy's plan decides how a run may interact;
   this one is what a command would do. They live in different modules for that reason.
 
@@ -204,7 +204,7 @@ An application that enables fewer frontends sets a lower ceiling: with
 message naming what was asked for, because a mode nothing can draw is not a mode.
 The preference moves the default without moving that boundary — a command whose job
 is destructive states `.prefer(Mode::NonInteractive)` and prompts only for a user who
-asks it to. See [modes § Permission and intent](modes.md#permission-and-intent). `Capabilities::detected` applies the same
+asks it to. See [modes § Permission and intent](../concepts/modes.md#permission-and-intent). `Capabilities::detected` applies the same
 rule from the other side — the TUI capability is the feature *and* a terminal —
 which is why the policy can never resolve to a mode the binary cannot render.
 
@@ -680,7 +680,7 @@ that input, and the derive implements one of them:
 
 | Attribute | Effect |
 | --- | --- |
-| `#[facet(input = Type)]` | required; the type `validate` returns: a path, a generic type, an alias or a projection — [what `input` may name](derive.md#what-input-may-name) |
+| `#[facet(input = Type)]` | required; the type `validate` returns: a path, a generic type, an alias or a projection — [what `input` may name](../guides/derive.md#what-input-may-name) |
 | — (no `bridge`) | copies fields by name, so a renamed or missing field is a compile error, applying each field's declared rules on the way |
 | `#[facet(check = path)]` | ends the generated bridge with `path(&input) -> Result<(), Failure>` |
 | `#[facet(bridge = path)]` | calls `path(cli) -> Result<Type, Failure>` instead, for input the declarations cannot describe |
@@ -690,7 +690,7 @@ The example declares its rules on the fields they constrain: `--name` is filled 
 meaning none, all by `#[clifacet(..)]` keys. The one rule no key states, the
 `--repeat` range, is `check_input`, which runs after them on the built input. So
 `--name "  " --repeat 9` reports the blank name: a field's own rule comes first. The
-key table and the compile errors are in [the derive guide](derive.md).
+key table and the compile errors are in [the derive guide](../guides/derive.md).
 
 ### What the slice proves
 

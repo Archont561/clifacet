@@ -74,7 +74,7 @@ python scripts/check_docs.py --write
 | `pre-push` | `audit-offline`, `deny-offline`, `test`, `test-doc`, `test-scripts` |
 | `commit-msg` | `convco check --from-stdin --strip` |
 
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/).
+Commit messages follow [Conventional Commitshttps://www.conventionalcommits.org/.
 `.versionrc` maps each type to a Keep a Changelog section and hides the ones a user should
 not read, and `scripts/changelog.py` renders `CHANGELOG.md` through it — the message you
 write is the entry that ships, and CI fails when the committed changelog has drifted from

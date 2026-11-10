@@ -61,9 +61,78 @@ rules:
 
   - id: require-command-core-doc
     kind: file_exists
-    paths: "docs/command-core.md"
+    paths: "docs/reference/command-core.md"
     level: error
     message: "The command-core seam documentation is missing."
+
+  # The documentation policy's structure, as files that must exist. A section with no
+  # page is a section a reader follows and finds empty, which is how a documentation tree
+  # starts to rot: the index promises five places and four of them hold something.
+  - id: require-docs-index
+    kind: file_exists
+    paths: "docs/README.md"
+    level: error
+    message: "The documentation index is missing; nothing would be reachable by design."
+
+  - id: require-docs-policy
+    kind: file_exists
+    paths: "docs/concepts/documentation-policy.md"
+    level: error
+    message: "The documentation policy is missing; what a change owes the docs would be unstated."
+
+  - id: require-docs-architecture
+    kind: file_exists
+    paths: "docs/architecture/repository.md"
+    level: error
+    message: "The repository architecture page is missing."
+
+  - id: require-docs-getting-started
+    kind: file_exists
+    paths: "docs/guides/getting-started.md"
+    level: error
+    message: "The getting-started guide is missing."
+
+  - id: require-docs-development
+    kind: file_exists
+    paths: "docs/development/development.md"
+    level: error
+    message: "The development reference is missing."
+
+  - id: require-docs-contributing
+    kind: file_exists
+    paths: "docs/development/contributing.md"
+    level: error
+    message: "The contributing guide is missing."
+
+  - id: require-markdownlint-config
+    kind: file_exists
+    paths: ".markdownlint-cli2.yaml"
+    level: error
+    message: "The page-structure check's configuration is missing; the check would lint defaults."
+
+  - id: require-readme-template
+    kind: file_exists
+    paths: ".readme/README.template.md"
+    level: error
+    message: "The README template is missing; `pixi run readme` would have nothing to render."
+
+  - id: require-readme-renderer
+    kind: file_exists
+    paths: "scripts/readme.py"
+    level: error
+    message: "The README renderer is missing; the generated README would have no source."
+
+  - id: require-dodo
+    kind: file_exists
+    paths: "dodo.py"
+    level: error
+    message: "The task graph is missing; `pixi run automation` would not start."
+
+  - id: require-automation-bridge
+    kind: file_exists
+    paths: "automation/lib/tasks.py"
+    level: error
+    message: "The doit-to-script bridge is missing; every task in dodo.py would fail to import."
 
   - id: require-example-command
     kind: file_exists

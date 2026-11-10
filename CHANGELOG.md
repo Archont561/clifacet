@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **automation:** one doit task graph behind `pixi run automation`
+([b66e8fa](https://github.com/Archont561/clifacet/commit/b66e8fa8da605e35ad583638f556a8fdece2104e))
 * **macros:** register a command folder with one attribute
 ([84d7ea2](https://github.com/Archont561/clifacet/commit/84d7ea2dad7602f2c2700b2d9dea09dc3e835936))
 * write backlog-lite and the reference application as functions
@@ -35,6 +37,14 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **ci:** install markdownlint from the lockfile instead of fetching it
+([4001ddd](https://github.com/Archont561/clifacet/commit/4001ddd8e932958da7bb58e26f9767101e05ab1b))
+* **ci:** run the page checks on every change, not only documentation ones
+([8c326e2](https://github.com/Archont561/clifacet/commit/8c326e21e98fe09539af882a3ece48c8c2701a77))
+* **automation:** make the coverage task reach its report
+([2965db7](https://github.com/Archont561/clifacet/commit/2965db7d964bffe42ceb562456d2bf489364d58f))
+* **automation:** run backlog-check through doit, not a phantom binary
+([171de6f](https://github.com/Archont561/clifacet/commit/171de6f4ed521551022e2e99d16a59ca80a70a79))
 * **macros:** name the folder, not its path, when it cannot be included
 ([eaca858](https://github.com/Archont561/clifacet/commit/eaca858a51a5ba13bca33c7325b0de4c27cad6cd))
 * **macros:** name the folder's file relative to the crate in messages

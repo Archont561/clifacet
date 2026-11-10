@@ -27,7 +27,7 @@ DOCUMENTATION = [
     "backlog/tasks/cli-40 - CI-a-documentation-lane-for-docs-only-changes.md",
     "backlog/config.yml",
     "backlog/decisions/decision-18 - Proposal.md",
-    "docs/command-core.md",
+    "docs/reference/command-core.md",
     "README.md",
     "examples/simple/README.md",
     "AGENTS.md",
@@ -113,14 +113,14 @@ def run(tmp_path, env, git):
 
 
 def test_a_documentation_pull_request_takes_the_documentation_lane(tmp_path):
-    git = Git(paths=["docs/command-core.md", "backlog/tasks/cli-40 - CI.md"])
+    git = Git(paths=["docs/reference/command-core.md", "backlog/tasks/cli-40 - CI.md"])
 
     code, output, summary = run(tmp_path, {"EVENT": "pull_request", "PR_BASE": BASE}, git)
 
     assert code == 0
     assert output == f"{DOCS_ONLY}=true\n"
     assert git.calls == [diff_command(f"{BASE}..HEAD")]
-    assert "docs/command-core.md" in summary
+    assert "docs/reference/command-core.md" in summary
 
 
 def test_a_pull_request_with_code_takes_the_full_lane(tmp_path):

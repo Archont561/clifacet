@@ -34,7 +34,7 @@ retired in favour of `serde`, so an application that wants JSON depends on `serd
 directly and enables `serde` here.
 
 Every combination is checked in CI — see
-[Supported platforms and feature combinations](development.md#supported-platforms-and-feature-combinations).
+[Supported platforms and feature combinations](../development/development.md#supported-platforms-and-feature-combinations).
 
 ## Write the command
 
@@ -135,7 +135,7 @@ the command changes anything:
 | write the output | a data stream that cannot be written | `1` |
 
 The numbers are `ExitPolicy::standard()`'s; see
-[Command core § Streams and exit codes](command-core.md#streams-and-exit-codes) for what each one means.
+[Command core § Streams and exit codes](../reference/command-core.md#streams-and-exit-codes) for what each one means.
 
 ### What an application changes
 
@@ -144,10 +144,10 @@ Build an `App` to change one:
 
 | Method | What it changes | Default |
 | --- | --- | --- |
-| `.policy(..)` | how interactive a run may be, and is unasked ([modes](modes.md)) | prompts when a terminal can answer them |
+| `.policy(..)` | how interactive a run may be, and is unasked ([modes](../concepts/modes.md)) | prompts when a terminal can answer them |
 | `.mode_from(..)` | reads the mode the user asked for — an `--interactive` or `--tui` flag of the application's own | none asked for |
 | `.command(&other)` | runs another command with the same input — how a test records a run | the parsed command line |
-| `.context(..)` | how to build what the command depends on ([below](#what-a-command-depends-on)) | none: every command runs as a `Handler` of `()` |
+| `.context(..)` | how to build what the command depends on ([below#what-a-command-depends-on) | none: every command runs as a `Handler` of `()` |
 | `.render(..)` | how the output is written: a `Render` value, or a closure taking the output and the stream | `Plain`, the output's `Display` and a newline |
 | `.exit(..)` | the exit code each outcome costs | `ExitPolicy::standard()` |
 
@@ -337,19 +337,19 @@ cargo run -p clifacet-example -- --interactive            # the dialog, explicit
 cargo run -p clifacet-example -- --tui                    # the full-screen form
 ```
 
-Its own [README](../examples/simple/README.md) is the guided tour: the flags, the four
+Its own [README../examples/simple/README.md is the guided tour: the flags, the four
 modes, the exit codes and which test proves each promise.
 
 ## What to read next
 
 | Question | Page |
 | --- | --- |
-| Which mode runs, and who decides? | [Modes and the interaction policy](modes.md) |
+| Which mode runs, and who decides? | [Modes and the interaction policy](../concepts/modes.md) |
 | How does an existing `clap` command get validated input? | [The companion derive](derive.md) |
 | How does a folder of files register itself in one line? | [Registration](derive.md#one-line-on-the-module-clifacetregistry) |
 | How is a screen drawn without a second command? | [TUI composition](tui-composition.md) |
 | How is any of this tested without a terminal? | [Testing](testing.md) |
-| How is the crate itself built and tested? | [Contributing](contributing.md) |
+| How is the crate itself built and tested? | [Contributing](../development/contributing.md) |
 
 The reference material — every seam, the ownership rules and what is deliberately
-not implemented — is in [Command core and its seams](command-core.md).
+not implemented — is in [Command core and its seams](../reference/command-core.md).

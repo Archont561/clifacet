@@ -268,7 +268,7 @@ naming the supported keys, rather than an argument that quietly means nothing:
 | normalizing | `secret` | the field must be a `Secret<_>`, so the credential cannot be printed |
 | input | `skip` | the bridge leaves the field out of the input; clap still parses it (not clap's `#[arg(skip)]`) |
 | form | `form` | the field is listed in `Facet::form_fields`, in declaration order, for a generated TUI form |
-| tree | `subcommands` | the field holds a [command tree](#nested-commands-a-tree-declared-where-its-commands-live), or an `Option` of one: clap's `#[command(subcommand)]`, the bridge converts the chosen leaf, `collect` lets it ask; it takes no other key |
+| tree | `subcommands` | the field holds a [command tree#nested-commands-a-tree-declared-where-its-commands-live, or an `Option` of one: clap's `#[command(subcommand)]`, the bridge converts the chosen leaf, `collect` lets it ask; it takes no other key |
 
 The bridge applies its rules in one order — `fill`, `trim`, `non_empty`, `secret` —
 whatever order they were written in, because trimming after the blank check would let
@@ -597,7 +597,6 @@ from `src/lib.rs`.
 
 ## Or a list inside the folder: `clifacet::commands!`
 
-
 Declaring the tree is most of the work of a command with subcommands, but not all of it:
 a folder also needs a `mod` line, a re-export, a variant in the tree and a second variant
 in `Request` for every leaf. `clifacet::commands!` writes those, so the folder's `mod.rs`
@@ -768,7 +767,7 @@ that says what to write. Each of those is a golden `trybuild` case.
 
 | Attribute | Effect |
 | --- | --- |
-| `#[facet(input = Type)]` | required; the type `validate` returns — any type the generated impls can name, see [below](#what-input-may-name) |
+| `#[facet(input = Type)]` | required; the type `validate` returns — any type the generated impls can name, see [below#what-input-may-name |
 | no `bridge`, no field rules | the generated `TryFrom` copies fields by name, so a renamed or missing field is a compile error |
 | no `bridge`, field rules | the same `TryFrom`, with each field's `fill`/`trim`/`non_empty`/`secret` applied on the way and `skip` fields left out |
 | `#[facet(check = path)]` | the generated `TryFrom` ends by calling `path(&input) -> Result<(), Failure>`, for a rule across fields or one the keys cannot state |
@@ -846,4 +845,4 @@ spellings. `examples/simple/tests/facet_bridge.rs` and
 `examples/simple/features/facet_bridge.feature` are the worked examples.
 
 The full reference, including the private-API rule that keeps the derive honest, is in
-[Command core § The companion derive](command-core.md#the-companion-derive).
+[Command core § The companion derive](../reference/command-core.md#the-companion-derive).

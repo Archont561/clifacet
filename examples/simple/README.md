@@ -63,7 +63,7 @@ and a supplied value is never re-asked either way.
 `up_to` is permission — both frontends are enabled here — and `prefer` is intent:
 prompts are what an unadorned run gets, and the form is what `--tui` asks for. A
 `Policy::up_to(Mode::Interactive)` application refuses `--tui` with exit `2` instead.
-[The modes guide](../../docs/modes.md#permission-and-intent) is the full rule.
+[The modes guide](../../docs/concepts/modes.md#permission-and-intent) is the full rule.
 
 ## Streams and exit codes
 

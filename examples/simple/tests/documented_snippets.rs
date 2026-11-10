@@ -16,7 +16,7 @@
 
 // The name of this file is documented_snippets.rs; it is the tests/ target of the example crate.
 
-/// `README.md`, line 15.
+/// `README.md`, line 35.
 #[rustfmt::skip]
 #[test]
 fn readme_snippet_1() {
@@ -32,7 +32,7 @@ fn readme_snippet_1() {
     }
 }
 
-/// `README.md`, line 34.
+/// `README.md`, line 55.
 #[rustfmt::skip]
 #[test]
 fn readme_snippet_2() {
@@ -51,161 +51,61 @@ fn readme_snippet_2() {
     }
 }
 
-/// `command-core.md`, line 45.
+/// `modes.md`, line 10.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_1() {
+fn modes_snippet_1() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::command::{Plan, Planned};
-    use clifacet::{Command, Failure};
-    struct Archive;
-    impl Planned for Archive {
-        type Input = Vec<String>;
-        type Output = usize;
-        fn plan(&self, tasks: Vec<String>) -> Result<Plan<'_, usize>, Failure> {
-            if tasks.is_empty() {
-                return Err(Failure::validation("name a task to archive"));
-            }
-            let steps: Vec<String> = tasks.iter().map(|task| format!("archive {task}")).collect();
-            let plan = Plan::new(move || Ok(tasks.len())); // the real archiving goes here
-            Ok(steps.into_iter().fold(plan, Plan::step))
-        }
-    }
-    let tasks = vec![String::from("CLI-7"), String::from("CLI-9")];
-    let dry_run = Archive.plan(tasks.clone()).expect("a valid request");
-    assert_eq!(dry_run.describe(), "archive CLI-7\narchive CLI-9");
-    assert_eq!(Archive.execute(tasks).expect("runs"), 2);
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(Request::mode(Mode::Interactive), Capabilities::terminal())
+        .expect("a terminal can host prompts");
+    assert_eq!(plan.mode(), Mode::Interactive);
+    // A request the application does not allow is refused, not silently downgraded.
+    let refused = Policy::up_to(Mode::Interactive)
+        .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui());
+    assert!(refused.is_err());
 }
 
-/// `command-core.md`, line 136.
+/// `modes.md`, line 44.
 #[rustfmt::skip]
 #[test]
-fn command_core_snippet_2() {
+fn modes_snippet_2() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clap::Parser;
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    // Permission: prompts are allowed, a full-screen form is allowed. Intent: prompts are
+    // what an unadorned run gets.
+    let policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
+    let plan = policy
+        .resolve(Request::none(), Capabilities::terminal_with_tui())
+        .expect("prompts are permitted and possible");
+    assert_eq!(plan.mode(), Mode::Interactive, "the preference, not the ceiling");
+    // A request still wins, and is still bounded by the ceiling rather than the preference.
+    let plan = policy
+        .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui())
+        .expect("a TUI is permitted here");
+    assert_eq!(plan.mode(), Mode::Tui);
+    // Intent can also be *less* interactive than permission: a command that may prompt
+    // for someone who asks for it does not have to offer a prompt unasked.
+    let cautious = Policy::up_to(Mode::Tui).prefer(Mode::NonInteractive);
+    let plan = cautious
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("a run that asks nothing always resolves");
+    assert_eq!(plan.mode(), Mode::NonInteractive);
+}
+
+/// `modes.md`, line 139.
+#[rustfmt::skip]
+#[test]
+fn modes_snippet_3() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::contract::ExitPolicy;
-    use clifacet::{Failure, report};
-    #[derive(Debug, Parser)]
-    #[command(name = "greet")]
-    struct Greet {
-        #[arg(long)]
-        name: Option<String>,
-    }
+    use clifacet::{Failure, FailureKind};
     let policy = ExitPolicy::standard();
-    let (mut out, mut err) = (Vec::new(), Vec::new());
-    let usage = Greet::try_parse_from(["greet", "--nope"]).expect_err("an unknown flag");
-    assert_eq!(report::render("greet", &usage, &policy, &mut out, &mut err), policy.usage());
-    let failure = Failure::execution("the greeting could not be sent");
-    assert_eq!(report::render("greet", &failure, &policy, &mut out, &mut err), policy.execution());
-    let err = String::from_utf8(err).expect("utf-8");
-    assert!(err.contains("Usage: greet"));
-    assert!(err.ends_with("greet: the greeting could not be sent\n"));
-    assert_eq!(out, b"", "neither reaches the data stream");
-}
-
-/// `command-core.md`, line 274.
-#[rustfmt::skip]
-#[test]
-fn command_core_snippet_3() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    use clifacet::prompt::{Dialog, Prompter, Session};
-    // Presentation is the application's choice: the library's dialog, or any `Prompter`
-    // of its own. Constructing one touches no terminal.
-    let build_dialog = || Box::new(Dialog::new()) as Box<dyn Prompter>;
-    // A run that may ask nothing never calls that builder, which is what keeps a piped
-    // run non-interactive however rich the frontend is.
-    let plan = Policy::non_interactive()
-        .resolve(Request::none(), Capabilities::terminal())
-        .expect("the run resolves");
-    let mut session = Session::start(plan, build_dialog);
-    assert_eq!(
-        session.value(None, "Which license?").expect("nothing may ask"),
-        None,
-        "a missing value stays missing, and the dialog is never built"
-    );
-}
-
-/// `command-core.md`, line 318.
-#[rustfmt::skip]
-#[test]
-fn command_core_snippet_4() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    use clifacet::prompt::{Answer, Scripted, Session};
-    let plan = Policy::up_to(Mode::Interactive)
-        .resolve(Request::none(), Capabilities::terminal())
-        .expect("prompts are permitted here");
-    let mut session = Session::start(plan, || {
-        // A script picks by label, exactly as offered.
-        Box::new(Scripted::new([Answer::Text(String::from("in progress"))]))
-    });
-    let statuses = ["to do", "in progress", "done"];
-    assert_eq!(
-        session.choose(None, "Which status?", statuses).expect("one was picked"),
-        Some("in progress"),
-    );
-    assert_eq!(
-        session.choose(Some("done"), "Which status?", statuses).expect("never asked"),
-        Some("done"),
-    );
-}
-
-/// `command-core.md`, line 348.
-#[rustfmt::skip]
-#[test]
-fn command_core_snippet_5() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    use clifacet::prompt::{Answer, Scripted, Session};
-    use clifacet::provenance::Source;
-    let plan = Policy::up_to(Mode::Interactive)
-        .resolve(Request::none(), Capabilities::terminal())
-        .expect("prompts are permitted here");
-    let mut session = Session::start(plan, || {
-        Box::new(Scripted::new([Answer::Text(String::from("s3cret"))]))
-    });
-    let token = session
-        .ask_secret(None, "token", "API token?")
-        .expect("answered")
-        .expect("asked");
-    assert_eq!(token.expose(), "s3cret");
-    assert_eq!(token.to_string(), "[redacted]");
-    assert_eq!(session.provenance().source_of("token"), Some(Source::Prompt));
-    assert!(session.provenance().is_secret("token"));
-}
-
-/// `command-core.md`, line 595.
-#[rustfmt::skip]
-#[test]
-fn command_core_snippet_6() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clap::{CommandFactory, FromArgMatches, Parser};
-    use clifacet::provenance::{Provenance, Source};
-    #[derive(Debug, Parser)]
-    #[command(name = "deploy")]
-    struct Deploy {
-        #[arg(long)]
-        name: Option<String>,
-        #[arg(long, default_value_t = 1)]
-        repeat: u8,
-        #[arg(long)]
-        token: Option<String>,
-    }
-    let command = Deploy::command();
-    let matches = command
-        .clone()
-        .try_get_matches_from(["deploy", "--token", "s3cret"])
-        .expect("a valid invocation");
-    let parsed = Deploy::from_arg_matches(&matches).expect("the matches are this command's");
-    let mut provenance = Provenance::from_matches(&command, &matches).with_secrets(&["token"]);
-    let mut asked = Provenance::default();
-    asked.record("name", Source::Prompt); // what `session.provenance()` holds after asking
-    provenance.merge(&asked);
-    assert_eq!(parsed.repeat, 1);
-    assert_eq!(provenance.source_of("repeat"), Some(Source::Default));
-    assert_eq!(provenance.source_of("name"), Some(Source::Prompt));
-    assert!(!provenance.to_string().contains("s3cret"));
+    assert_eq!(policy.for_kind(FailureKind::Validation), policy.validation());
+    assert_eq!(policy.for_failure(&Failure::cancelled("changed their mind")), policy.cancelled());
+    assert_eq!(policy.success(), 0);
+    assert_eq!(policy.cancelled(), 130);
 }
 
 /// `derive.md`, line 7.
@@ -506,7 +406,7 @@ fn derive_snippet_8() {
     assert!(bare.command.is_none());
 }
 
-/// `derive.md`, line 787.
+/// `derive.md`, line 786.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_9() {
@@ -656,63 +556,6 @@ fn getting_started_snippet_3() {
     assert_eq!((code, out.as_slice()), (0, b"mark CLI-47 done\n".as_slice()), "{err:?}");
 }
 
-/// `modes.md`, line 10.
-#[rustfmt::skip]
-#[test]
-fn modes_snippet_1() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    let plan = Policy::up_to(Mode::Interactive)
-        .resolve(Request::mode(Mode::Interactive), Capabilities::terminal())
-        .expect("a terminal can host prompts");
-    assert_eq!(plan.mode(), Mode::Interactive);
-    // A request the application does not allow is refused, not silently downgraded.
-    let refused = Policy::up_to(Mode::Interactive)
-        .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui());
-    assert!(refused.is_err());
-}
-
-/// `modes.md`, line 44.
-#[rustfmt::skip]
-#[test]
-fn modes_snippet_2() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    // Permission: prompts are allowed, a full-screen form is allowed. Intent: prompts are
-    // what an unadorned run gets.
-    let policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
-    let plan = policy
-        .resolve(Request::none(), Capabilities::terminal_with_tui())
-        .expect("prompts are permitted and possible");
-    assert_eq!(plan.mode(), Mode::Interactive, "the preference, not the ceiling");
-    // A request still wins, and is still bounded by the ceiling rather than the preference.
-    let plan = policy
-        .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui())
-        .expect("a TUI is permitted here");
-    assert_eq!(plan.mode(), Mode::Tui);
-    // Intent can also be *less* interactive than permission: a command that may prompt
-    // for someone who asks for it does not have to offer a prompt unasked.
-    let cautious = Policy::up_to(Mode::Tui).prefer(Mode::NonInteractive);
-    let plan = cautious
-        .resolve(Request::none(), Capabilities::terminal())
-        .expect("a run that asks nothing always resolves");
-    assert_eq!(plan.mode(), Mode::NonInteractive);
-}
-
-/// `modes.md`, line 139.
-#[rustfmt::skip]
-#[test]
-fn modes_snippet_3() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::contract::ExitPolicy;
-    use clifacet::{Failure, FailureKind};
-    let policy = ExitPolicy::standard();
-    assert_eq!(policy.for_kind(FailureKind::Validation), policy.validation());
-    assert_eq!(policy.for_failure(&Failure::cancelled("changed their mind")), policy.cancelled());
-    assert_eq!(policy.success(), 0);
-    assert_eq!(policy.cancelled(), 130);
-}
-
 /// `tui-composition.md`, line 21.
 #[rustfmt::skip]
 #[test]
@@ -784,4 +627,161 @@ fn tui_composition_snippet_3() {
         |_state| Ok(vec![String::from("hello, world")]),
     );
     assert!(outcome.is_ok(), "the form submits the answer it was given");
+}
+
+/// `command-core.md`, line 45.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::command::{Plan, Planned};
+    use clifacet::{Command, Failure};
+    struct Archive;
+    impl Planned for Archive {
+        type Input = Vec<String>;
+        type Output = usize;
+        fn plan(&self, tasks: Vec<String>) -> Result<Plan<'_, usize>, Failure> {
+            if tasks.is_empty() {
+                return Err(Failure::validation("name a task to archive"));
+            }
+            let steps: Vec<String> = tasks.iter().map(|task| format!("archive {task}")).collect();
+            let plan = Plan::new(move || Ok(tasks.len())); // the real archiving goes here
+            Ok(steps.into_iter().fold(plan, Plan::step))
+        }
+    }
+    let tasks = vec![String::from("CLI-7"), String::from("CLI-9")];
+    let dry_run = Archive.plan(tasks.clone()).expect("a valid request");
+    assert_eq!(dry_run.describe(), "archive CLI-7\narchive CLI-9");
+    assert_eq!(Archive.execute(tasks).expect("runs"), 2);
+}
+
+/// `command-core.md`, line 136.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clap::Parser;
+    use clifacet::contract::ExitPolicy;
+    use clifacet::{Failure, report};
+    #[derive(Debug, Parser)]
+    #[command(name = "greet")]
+    struct Greet {
+        #[arg(long)]
+        name: Option<String>,
+    }
+    let policy = ExitPolicy::standard();
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let usage = Greet::try_parse_from(["greet", "--nope"]).expect_err("an unknown flag");
+    assert_eq!(report::render("greet", &usage, &policy, &mut out, &mut err), policy.usage());
+    let failure = Failure::execution("the greeting could not be sent");
+    assert_eq!(report::render("greet", &failure, &policy, &mut out, &mut err), policy.execution());
+    let err = String::from_utf8(err).expect("utf-8");
+    assert!(err.contains("Usage: greet"));
+    assert!(err.ends_with("greet: the greeting could not be sent\n"));
+    assert_eq!(out, b"", "neither reaches the data stream");
+}
+
+/// `command-core.md`, line 274.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_3() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    use clifacet::prompt::{Dialog, Prompter, Session};
+    // Presentation is the application's choice: the library's dialog, or any `Prompter`
+    // of its own. Constructing one touches no terminal.
+    let build_dialog = || Box::new(Dialog::new()) as Box<dyn Prompter>;
+    // A run that may ask nothing never calls that builder, which is what keeps a piped
+    // run non-interactive however rich the frontend is.
+    let plan = Policy::non_interactive()
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("the run resolves");
+    let mut session = Session::start(plan, build_dialog);
+    assert_eq!(
+        session.value(None, "Which license?").expect("nothing may ask"),
+        None,
+        "a missing value stays missing, and the dialog is never built"
+    );
+}
+
+/// `command-core.md`, line 318.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_4() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    use clifacet::prompt::{Answer, Scripted, Session};
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("prompts are permitted here");
+    let mut session = Session::start(plan, || {
+        // A script picks by label, exactly as offered.
+        Box::new(Scripted::new([Answer::Text(String::from("in progress"))]))
+    });
+    let statuses = ["to do", "in progress", "done"];
+    assert_eq!(
+        session.choose(None, "Which status?", statuses).expect("one was picked"),
+        Some("in progress"),
+    );
+    assert_eq!(
+        session.choose(Some("done"), "Which status?", statuses).expect("never asked"),
+        Some("done"),
+    );
+}
+
+/// `command-core.md`, line 348.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_5() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    use clifacet::prompt::{Answer, Scripted, Session};
+    use clifacet::provenance::Source;
+    let plan = Policy::up_to(Mode::Interactive)
+        .resolve(Request::none(), Capabilities::terminal())
+        .expect("prompts are permitted here");
+    let mut session = Session::start(plan, || {
+        Box::new(Scripted::new([Answer::Text(String::from("s3cret"))]))
+    });
+    let token = session
+        .ask_secret(None, "token", "API token?")
+        .expect("answered")
+        .expect("asked");
+    assert_eq!(token.expose(), "s3cret");
+    assert_eq!(token.to_string(), "[redacted]");
+    assert_eq!(session.provenance().source_of("token"), Some(Source::Prompt));
+    assert!(session.provenance().is_secret("token"));
+}
+
+/// `command-core.md`, line 595.
+#[rustfmt::skip]
+#[test]
+fn command_core_snippet_6() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clap::{CommandFactory, FromArgMatches, Parser};
+    use clifacet::provenance::{Provenance, Source};
+    #[derive(Debug, Parser)]
+    #[command(name = "deploy")]
+    struct Deploy {
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long, default_value_t = 1)]
+        repeat: u8,
+        #[arg(long)]
+        token: Option<String>,
+    }
+    let command = Deploy::command();
+    let matches = command
+        .clone()
+        .try_get_matches_from(["deploy", "--token", "s3cret"])
+        .expect("a valid invocation");
+    let parsed = Deploy::from_arg_matches(&matches).expect("the matches are this command's");
+    let mut provenance = Provenance::from_matches(&command, &matches).with_secrets(&["token"]);
+    let mut asked = Provenance::default();
+    asked.record("name", Source::Prompt); // what `session.provenance()` holds after asking
+    provenance.merge(&asked);
+    assert_eq!(parsed.repeat, 1);
+    assert_eq!(provenance.source_of("repeat"), Some(Source::Default));
+    assert_eq!(provenance.source_of("name"), Some(Source::Prompt));
+    assert!(!provenance.to_string().contains("s3cret"));
 }

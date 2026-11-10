@@ -64,6 +64,9 @@ Run checks and tests through Pixi, not host-installed tools:
 
 ```sh
 pixi run --frozen quality
+pixi run --frozen --no-install automation gates      # the whole offline gate, in CI order
+pixi run --frozen --no-install automation list       # every task, with what it covers
+pixi run --frozen --no-install automation docs       # links, anchors, compiled snippets
 pixi run --frozen test-src
 pixi run --frozen test-integration
 pixi run --frozen test-doc
@@ -142,6 +145,21 @@ When unsure about the goal, priority, or next step, read and follow
 before continuing. If an important decision is unresolved, ask the maintainer
 rather than silently broadening scope.
 
+## Documentation: where a page goes, and what a change owes it
+
+`docs/` is the product's knowledge layer, not a byproduct. Five directories, one purpose
+each: `guides/` for tasks, `concepts/` for reasons, `reference/` for promises,
+`architecture/` for how the repository is built, `development/` for working on it.
+`docs/README.md` is the only page at the top level, and `scripts/check_docs.py` fails a
+page filed anywhere else.
+
+The policy is [docs/concepts/documentation-policy.md](docs/concepts/documentation-policy.md)
+— read it before changing behavior. In short: a fact has one canonical home and every
+other page links to it; a change that makes a page wrong fixes the page or the review
+records why not; an obsolete instruction is removed rather than annotated; and every
+command in the prose was run. `README.md` is generated from `.readme/README.template.md`,
+so a README change edits the template and runs `pixi run readme`.
+
 ## Prose: two tools, two questions
 
 The repository has two linters, and a finding belongs to exactly one of them (decision-20):
@@ -150,6 +168,8 @@ The repository has two linters, and a finding belongs to exactly one of them (de
 | --- | --- | --- | --- |
 | alint | what the repository *is*: required files, workspace membership, pinned workflows, generated sandbox files | `.alint.yml` | `pixi run --frozen alint` |
 | Vale | how the guides *read*: spelling, terminology, editorial style | `vale.toml` (which renders `.vale.ini` and `.vale/styles/`) | `pixi run --frozen prose-check` |
+| markdownlint-cli2 | the *shape* of a page: heading levels, lists, fences, stray blank lines | `.markdownlint-cli2.yaml` | `pixi run --frozen markdownlint` |
+| `check_docs.py` | whether a link resolves, a fence compiles, a documented path exists | the pages themselves | `pixi run --frozen check-docs` |
 
 After changing `README.md`, `AGENTS.md` or anything in `docs/`, run `prose-check`. After
 changing a manifest, a workflow or a required file, run `alint`. `test-local` and `quality`

@@ -33,7 +33,7 @@ has just begun, or context was lost or condensed beyond what the task needs.
 
    After a sandbox restore, run tasks with `--no-install`: `pixi install`
    re-syncs the environment, deletes the restored PyPI files and then fails
-   offline (see the restore section of `docs/development.md`). If usable,
+   offline (see the restore section of `docs/development/development.md`). If usable,
    inspect relevant tasks
    and milestones with `pixi run --frozen --offline backlog-offline --
    milestone list` and `task list`; read relevant decisions and docs. These

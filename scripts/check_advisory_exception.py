@@ -14,7 +14,7 @@ one. It reads `Cargo.lock` and reports the three states that need a human:
   longer ignores the advisory, so a gate will fail somewhere else, later;
 - **stale-exception** — the crate is gone, so both exceptions can be deleted; this is
   the signal the review asked for, and it fails the build on purpose;
-- **documented-path** — `docs/development.md` quotes a dependency path that
+- **documented-path** — `docs/development/development.md` quotes a dependency path that
   `Cargo.lock` no longer agrees with, which is a review that has quietly expired.
 
 The path is rendered from the lockfile rather than written by hand, so the
@@ -34,7 +34,9 @@ ROOT = Path(__file__).resolve().parent.parent
 LOCKFILE = ROOT / "Cargo.lock"
 DENY = ROOT / "deny.toml"
 AUDIT = ROOT / ".cargo" / "audit.toml"
-DOCS = ROOT / "docs" / "development.md"
+# Relative to the tree being checked, not to this file: the checks take a root so a
+# fixture can be a temporary tree, and an absolute constant would read the real one.
+DOCS = Path("docs") / "development" / "development.md"
 
 ADVISORY = "RUSTSEC-2026-0374"
 SECTION = "## Dependency advisory exception"
@@ -223,13 +225,13 @@ def check(root: Path = ROOT) -> list[Finding]:
                 )
             )
 
-    quoted = documented_path((root / DOCS.parent.name / DOCS.name).read_text(encoding="utf-8"))
+    quoted = documented_path((root / DOCS).read_text(encoding="utf-8"))
     actual = render_path(path)
     if quoted != actual:
         findings.append(
             Finding(
                 "documented-path",
-                f"docs/development.md quotes '{quoted or '(nothing)'}' but Cargo.lock says "
+                f"docs/development/development.md quotes '{quoted or '(nothing)'}' but Cargo.lock says "
                 f"'{actual}'; update the review in that section",
             )
         )

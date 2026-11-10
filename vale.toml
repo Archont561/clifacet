@@ -39,6 +39,7 @@ accept = [
   "clifacet-macros",
   "clifacet-example",
   "alint",
+  "doit",
   # The tooling the repository is checked with.
   "clippy",
   "codecov",

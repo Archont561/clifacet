@@ -1,0 +1,55 @@
+# markdownlint-cli2: the shape of a page, as opposed to its words or its links.
+#
+# Vale already owns spelling and terminology, and `scripts/check_docs.py` owns whether a
+# link resolves and a snippet compiles. What neither sees is structure: a heading level
+# skipped, a list that is a paragraph with dashes in it, a fence nobody closed, two
+# consecutive blank lines that render as nothing and read as a mistake. That is this
+# check, and it is the cheapest of the four.
+#
+# The rules follow `docs/concepts/documentation-policy.md`. Each exception below is a
+# decision about this repository, not a way to silence a finding.
+config:
+  default: true
+
+  # Prose is wrapped where the sentence ends, not at a column. A line-length rule would
+  # fight every paragraph that Vale accepts and every code span that is longer than 80
+  # characters because it names a type.
+  MD013: false
+
+  # Headings repeat across pages on purpose — "What it asks", "See also" — and
+  # `siblings_only` keeps that legal while still catching the same heading twice in one
+  # section, which is a merge artifact.
+  MD024:
+    siblings_only: true
+
+  # The README's badge block is HTML, and a table cell is allowed a `<br>`. There is no
+  # Markdown spelling of either that renders the same way on crates.io and on GitHub.
+  MD033: false
+
+  # A page below `docs/` starts with its title, but the README starts with an HTML
+  # comment that says it is generated. Both are correct; a first-line rule would force
+  # the comment into the rendered page or force it out of the README.
+  MD041: false
+
+  # Indented code blocks are invisible in a diff and easy to create by indenting a
+  # paragraph. Every fence in this repository says what it holds.
+  MD046:
+    style: fenced
+
+# The pages this repository checks. `backlog/` is tool-shaped and `CHANGELOG.md` is
+# generated; both have their own checks and neither should be reformatted by hand.
+globs:
+  - "README.md"
+  - "docs/**/*.md"
+  - "examples/**/*.md"
+  - "AGENTS.md"
+
+# Directories that are not ours to lint: vendored styles, the environment, and the
+# generated snippet file's own neighbours.
+ignores:
+  - ".pixi/**"
+  - ".pixi-sandbox/**"
+  - "node_modules/**"
+  - ".vale/styles/**"
+  - "backlog/**"
+  - "CHANGELOG.md"
