@@ -51,8 +51,8 @@ Three rules keep the graph honest, and each has a reason beyond tidiness:
   formatting mistake reports before the test suite runs. `doit -n 3` parallelizes whatever
   does not depend on anything else.
 
-`gates` is offline by construction: `audit`, `deny`, `markdownlint`, `readme_check` and
-`backlog_check` fetch from the network or from npm, so they belong to a person's command
+`gates` is offline by construction: `audit`, `deny`, `readme_check` and `backlog_check`
+fetch from the network or from npm, so they belong to a person's command
 or to CI, and `scripts/tests/test_automation_tasks.py` fails if one is moved into the gate.
 
 ## Documentation is built, not written
@@ -69,8 +69,11 @@ The pages are checked by the same task graph as the code. Four checks, four ques
 ```sh
 pixi run --frozen --no-install automation docs          # the documentation gate
 pixi run --frozen --no-install automation docs_write    # regenerate the snippet test after editing a page
-pixi run --frozen automation markdownlint               # the page structure; fetches from npm
+pixi run --frozen --no-install automation markdownlint  # the structure of the pages
 ```
+
+`markdownlint-cli2` is pinned in `package.json` and installed with the other npm tools, so
+it reads `node_modules` and is part of the offline gate.
 
 `scripts/check_docs.py` walks every directory under `docs/` and refuses a page filed
 outside the five sections. A ```` ```rust ```` fence in `README.md` or a page is not prose: it

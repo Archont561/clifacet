@@ -112,11 +112,15 @@ def test_every_dependency_names_a_real_task():
 def test_the_gate_does_not_fetch():
     """`gates` runs after a restore, where there is no network.
 
-    `audit` and `deny` fetch the RustSec database, `markdownlint` and `readme_check` fetch
-    from npm, and `backlog_check` needs the bun packages. All of them belong to a person's
-    command or to CI, not to the gate a contributor runs offline.
+    `audit` and `deny` fetch the RustSec database, `readme_check` fetches a package from
+    npm, and `backlog_check` needs a network install of the bun packages. All of them
+    belong to a person's command or to CI, not to the gate a contributor runs offline.
+
+    `markdownlint` is deliberately absent from that set: its tool is pinned in
+    `package.json` and installed by `bun-install` before a session starts, so the check
+    reads `node_modules` and never fetches.
     """
-    needs_network = {"audit", "deny", "markdownlint", "readme_check", "backlog_check"}
+    needs_network = {"audit", "deny", "readme_check", "backlog_check"}
 
     assert not set(tasks()["gates"]().get("task_dep", [])) & needs_network
 

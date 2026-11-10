@@ -164,22 +164,14 @@ def task_markdownlint() -> dict:
     """Lint the shape of every page: headings, lists, fences, blank lines.
 
     Deliberately separate from `prose`: Vale owns the words, this owns the structure, and
-    a failure should say which of the two a page got wrong. `markdownlint-cli2` is an npm
-    tool, so it needs the network the first time and is therefore not in `gates`.
+    a failure should say which of the two a page got wrong.
+
+    The version is pinned in `package.json` and installed by `bun-install`, like the other
+    two tools that come from npm. Running it through `bun x` instead would make CI depend
+    on a resolution nobody reviewed, and `--no-install` would make it depend on a warm
+    cache that a fresh runner does not have.
     """
-    return {
-        "actions": [
-            shell(
-                [
-                    "bun",
-                    "x",
-                    "--bun",
-                    "--no-install",
-                    "markdownlint-cli2@0.18.1",
-                ]
-            )
-        ]
-    }
+    return {"actions": [shell(["bun", "run", "markdownlint-cli2"])]}
 
 
 def task_prose() -> dict:
@@ -356,6 +348,7 @@ def task_gates() -> dict:
             "lint",
             "alint",
             "docs",
+            "markdownlint",
             "changelog_check",
             "skills_check",
             "check_features",
