@@ -85,6 +85,8 @@ accept = [
   "stderr",
   "subcommand",
   "subcommands",
+  # The mode name, and the word this library's documentation uses for it.
+  "noninteractive",
   "recompile",
   "recompiles",
   "toolchain",

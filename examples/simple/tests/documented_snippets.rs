@@ -16,7 +16,7 @@
 
 // The name of this file is documented_snippets.rs; it is the tests/ target of the example crate.
 
-/// `README.md`, line 20.
+/// `README.md`, line 26.
 #[rustfmt::skip]
 #[test]
 fn readme_snippet_1() {
@@ -444,7 +444,7 @@ fn derive_snippet_9() {
     assert_eq!(input.name, "world");
 }
 
-/// `getting-started.md`, line 44.
+/// `getting-started.md`, line 46.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {
@@ -462,7 +462,7 @@ fn getting_started_snippet_1() {
     assert_eq!(greeting, "hello, ada");
 }
 
-/// `getting-started.md`, line 73.
+/// `getting-started.md`, line 75.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_2() {
@@ -510,7 +510,7 @@ fn getting_started_snippet_2() {
     assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
 }
 
-/// `getting-started.md`, line 164.
+/// `getting-started.md`, line 166.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_3() {

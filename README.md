@@ -15,7 +15,13 @@
 <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.88%20%E2%80%93%20current-orange?style=flat-square" alt="rust 1.88 - current"></a>
 <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square" alt="MIT OR Apache-2.0"></a>
 
-**Commands are functions. Runs are values. Everything else composes.**
+**One command. Three terminal modes. Every presentation composed from the same declaration.**
+
+A command is a function; an application is a value built from it. The same command runs
+**noninteractive** — flags in, plain text for a person or structured output for a machine —
+**interactive**, as a questionnaire on a terminal, or as a **TUI** full-screen interface.
+Which one runs is decided once per run, from the flags, the application's policy and what
+the terminal can offer.
 
 ```rust
 use clifacet::Failure;
@@ -64,9 +70,10 @@ fn scripted() -> i32 {
 ```
 
 That is the whole application. One declaration gives the flags, the validated input, the
-command and the full-screen form's fields; `main` is one line; a test is the same pipeline
+command and the questionnaire's fields; `main` is one line; a test is the same pipeline
 with buffers instead of a terminal. No stream, no terminal and no exit code appears in the
-command, which is why all three reach the same code.
+command, which is why all three modes reach the same code — and why the same declaration
+survives being asked `--name ada`, being prompted for it, or being drawn as a field.
 
 ## What composes
 
@@ -78,7 +85,7 @@ here is a global or a framework: an `App` is a value, so a test builds a differe
 | `#[clifacet(..)]` | one argument's flags, prompt, form field and rules | on the parameter |
 | `#[clifacet::command]` | the command, the typed input and the `clap` surface | on the function |
 | `App` | the pipeline: parse, ask, validate, run, render, exit | `.run()` |
-| `App::policy` / `mode_from` | which mode a run may use, and which it prefers | composed |
+| `App::policy` / `mode_from` | which of the three modes a run may use, and which it prefers | composed |
 | `App::settings` | a config file under the flags and the environment | composed |
 | `App::exit` | what each outcome costs | composed |
 | `run_with` | the capability, the frontend and the two streams | a test |
@@ -142,9 +149,11 @@ policy](docs/concepts/documentation-policy.md) is what a change owes it.
 
 ## Status
 
-Experimental. The command core, the policy, the prompts, the derive, the `command`
+Experimental. The command core, the mode policy, the prompts, the derive, the `command`
 wrapper, the field declarations, the TUI, discovery and layered settings are implemented
-and covered; the JSON frontend is reserved and does not exist yet.
+and covered. The library writes no output of its own — machine-readable output is the
+application's, built from [`Report`](docs/reference/command-core.md#known-unsupported-behavior)
+— so there is no JSON mode, and no fourth mode is planned.
 
 `0.5.0` is the version this README describes — [what each release
 changed](CHANGELOG.md). Publishing is a separate, authorized act from merging.
