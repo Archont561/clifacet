@@ -2,6 +2,7 @@ clifacet
 clifacet-macros
 clifacet-example
 alint
+doit
 clippy
 codecov
 convco

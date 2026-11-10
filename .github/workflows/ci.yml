@@ -71,6 +71,14 @@ jobs:
         run: pixi run --frozen check-docs
       - name: Check the prose
         run: pixi run --frozen prose-check
+      # The shape of a page, which neither Vale (words) nor `check-docs` (links and
+      # snippets) sees: heading levels, list markers, unclosed fences.
+      - name: Check the page structure
+        run: pixi run --frozen markdownlint
+      # The README is rendered from `.readme/README.template.md`. This renders it again
+      # and fails if the committed one differs, so editing the generated file is caught.
+      - name: Check the README is what its template renders
+        run: pixi run --frozen readme-check
       - name: Check the changelog matches the commits
         run: pixi run --frozen changelog-check
 
