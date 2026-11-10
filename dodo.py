@@ -318,6 +318,10 @@ def task_coverage() -> dict:
     """Line coverage from nextest, checked against the floor `codecov.yml` declares."""
     return {
         "actions": [
+            # llvm-cov creates the report file but not the directory above it, so a clean
+            # checkout fails here rather than at the first run — which is exactly how this
+            # looked when the task was a shell string that did `mkdir -p coverage && ...`.
+            shell(["mkdir", "-p", "coverage"]),
             cargo(
                 "llvm-cov",
                 "nextest",
@@ -328,7 +332,7 @@ def task_coverage() -> dict:
                 "--output-path",
                 "coverage/lcov.info",
             ),
-            script("check_coverage", coverage="coverage/lcov.info"),
+            positional("check_coverage", "coverage/lcov.info"),
         ]
     }
 

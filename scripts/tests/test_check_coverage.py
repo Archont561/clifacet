@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.check_coverage import coverage, meets_target, normalize_lcov
+from scripts.check_coverage import SOURCE_DIRS, coverage, main, meets_target, normalize_lcov
 
 A = Path("/repository/crates/a/src")
 B = Path("/repository/crates/b/src")
@@ -86,3 +86,27 @@ def test_malformed_lines_fail():
 
     with pytest.raises(ValueError, match="Malformed LCOV"):
         coverage(data, (A,))
+
+
+def test_the_report_path_is_taken_as_an_argument(tmp_path, capsys):
+    """`main(argv)` rather than `sys.argv`: under doit, `sys.argv` is doit's own line.
+
+    This is not hypothetical. `pixi run automation coverage` passes the report as an
+    argument, and a `main()` that read `sys.argv` treated doit's first argument — the task
+    name — as the report path, so the task failed on a file that never existed.
+    """
+    report = tmp_path / "lcov.info"
+    # `main` uses the repository's own source directories, so the report has to name a
+    # file in each of the two crates: a report that covers one is reported as missing.
+    crates = [path for path in SOURCE_DIRS if path.is_dir()]
+    records = [row for path in crates for row in (f"SF:{path / 'lib.rs'}", "DA:1,1", "end_of_record")]
+    report.write_text(lcov(*records), encoding="utf-8")
+
+    assert main([str(report)]) == 0
+    assert "100.00%" in capsys.readouterr().out
+
+
+def test_a_meaningless_argument_is_reported_not_ignored(tmp_path, capsys):
+    """The old failure mode: a path that is not there must say so, not pass."""
+    assert main([str(tmp_path / "absent.info")]) == 1
+    assert "Coverage check failed" in capsys.readouterr().err

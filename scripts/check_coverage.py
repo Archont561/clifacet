@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,8 +79,15 @@ def meets_target(covered: int, total: int) -> bool:
     return total > 0 and 10 * covered >= 9 * total
 
 
-def main() -> int:
-    report = Path(sys.argv[1] if len(sys.argv) > 1 else "coverage/lcov.info")
+def main(argv: Sequence[str] | None = None) -> int:
+    """Check the report named by the first argument, defaulting to nextest's output.
+
+    The argument is taken rather than read from `sys.argv`, because the caller is not
+    always a shell: `pixi run automation coverage` calls this from doit, where `sys.argv`
+    is doit's own command line and the first element would be the task name.
+    """
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    report = Path(arguments[0] if arguments else "coverage/lcov.info")
     try:
         normalized = normalize_lcov(report.read_text(encoding="utf-8"))
         covered, total = coverage(normalized)
