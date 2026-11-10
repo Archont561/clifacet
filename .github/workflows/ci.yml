@@ -144,6 +144,13 @@ jobs:
         run: pixi run --frozen check-docs
       - name: Check the prose
         run: pixi run --frozen prose-check
+      # The documentation job below runs only for a documentation-only change, so these
+      # three belong here too: a page edited beside a code change would otherwise be
+      # checked by nothing.
+      - name: Check the page structure
+        run: pixi run --frozen markdownlint
+      - name: Check the README is what its template renders
+        run: pixi run --frozen readme-check
       - name: Check the changelog matches the commits
         run: pixi run --frozen changelog-check
       - name: Check generated sandbox files
