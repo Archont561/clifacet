@@ -10,3 +10,6 @@ node_modules/
 # Python bytecode and pytest caches from the repository script tests
 __pycache__/
 .pytest_cache/
+
+# Doit's task database
+.doit.db
