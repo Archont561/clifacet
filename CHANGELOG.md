@@ -37,6 +37,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **ci:** install markdownlint from the lockfile instead of fetching it
+([4001ddd](https://github.com/Archont561/clifacet/commit/4001ddd8e932958da7bb58e26f9767101e05ab1b))
 * **ci:** run the page checks on every change, not only documentation ones
 ([8c326e2](https://github.com/Archont561/clifacet/commit/8c326e21e98fe09539af882a3ece48c8c2701a77))
 * **automation:** make the coverage task reach its report
