@@ -37,6 +37,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Fixed
 
+* **automation:** make the coverage task reach its report
+([2965db7](https://github.com/Archont561/clifacet/commit/2965db7d964bffe42ceb562456d2bf489364d58f))
 * **automation:** run backlog-check through doit, not a phantom binary
 ([171de6f](https://github.com/Archont561/clifacet/commit/171de6f4ed521551022e2e99d16a59ca80a70a79))
 * **macros:** name the folder, not its path, when it cannot be included
