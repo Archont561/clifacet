@@ -123,7 +123,7 @@ pub fn example(
     /// both of this type's implementations are `[redacted]`. A credential beginning
     /// with `revoked` is refused, to demonstrate that even a diagnostic which names
     /// the credential does not print it. Passing a credential as a flag is visible to
-    /// other processes on many systems; see `docs/command-core.md`. Blank is not a
+    /// other processes on many systems; see `docs/reference/command-core.md`. Blank is not a
     /// credential: whitespace is trimmed, and nothing left means none was supplied.
     #[clifacet(
         long,

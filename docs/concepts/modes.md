@@ -29,7 +29,7 @@ Two properties make this more than a preference list:
   terminal on its own is never consent to prompt.
 - **Permission and intent are two answers, not one.** The ceiling says what a run
   *may* do; the preference says what it does when the user asked for nothing. See
-  [permission and intent](#permission-and-intent).
+  [permission and intent#permission-and-intent.
 - **A refusal has no plan, so it has no frontend.** `Plan` is the only value that can
   build one, through `Plan::with_frontend`, which answers `None` when the mode asks
   nothing. "A forbidden mode never constructs a prompter" is therefore structural
@@ -115,7 +115,7 @@ only when the plan permits it, and `--yes` answers instead of asking.
 A prompted run and a flag run are **the same command**: the frontend fills only the
 gaps a flag left empty, and a supplied value is never re-asked. That is why the
 answer does not depend on which mode collected it, and why
-[the parity harness](command-core.md#cross-mode-parity-as-a-published-api) can assert
+[the parity harness](../reference/command-core.md#cross-mode-parity-as-a-published-api) can assert
 it.
 
 ## Streams: data and diagnostics
@@ -168,5 +168,5 @@ decision (`Confirmation::Declined`); dismissing the question, or the end of inpu
 cancellation — and only the second costs exit 130.
 
 What a mode may not do is guess: a canceled form runs nothing, and a refused mode
-never reaches the command at all. See [Command core](command-core.md) for the
+never reaches the command at all. See [Command core](../reference/command-core.md) for the
 per-mode detail and the tests behind each row.

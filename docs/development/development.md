@@ -1,45 +1,79 @@
 # Development
 
-The workspace is the `0.3.0` library — published to crates.io on 2026-11-06 — plus the
-work merged since, which accumulates for the next version. The checked-in Pixi
-environment currently targets Linux x86-64.
+The workspace version is recorded in three manifests — `Cargo.toml`'s
+`[workspace.package]`, its `clifacet-macros` requirement, and `pixi.toml` — and
+`pixi run bump-version --check` fails if they disagree. What is published is in the
+[changelog](../../CHANGELOG.md); what has been merged since is what the next release will
+contain. The checked-in Pixi environment targets Linux x86-64.
 
 ```sh
-bash scripts/bootstrap.sh  # checkout at the remote head, environment, hooks, smoke check
-pixi run quality        # repo, skills, Backlog, features, sandbox, Rust and advisory checks
-pixi run check-features # every supported feature combination, one cargo check each
-pixi run check-docs     # links, anchors, compiled snippets and documented names
-pixi run test-src       # crate-internal src/ tests
-pixi run test-integration # external tests/ targets, including compile-fail cases
-pixi run test           # both nextest groups
-pixi run test-doc       # doctests (not run by nextest)
-pixi run test-scripts   # repository script tests (pytest over scripts/tests)
-pixi run changelog      # regenerate CHANGELOG.md from the conventional commits
-pixi run coverage       # LCOV report plus a 90% source-line gate
+bash scripts/bootstrap.sh              # environment, hooks, smoke check
+pixi run --frozen --no-install automation gates   # everything a change must pass, offline
+pixi run --frozen automation gates-online         # adds the two checks that fetch the advisories
+pixi run --frozen --no-install automation list    # every task, with what it covers
 ```
 
-`quality` fetches Bun packages and the RustSec advisory database, so it is a CI
-command rather than a fast inner loop. Before each commit, run the offline subset
-through Pixi with `--no-install` (a restore already materialized the environment):
+Each task also has a one-word alias for muscle memory — `pixi run check-docs`,
+`pixi run prose-check`, `pixi run test` — but the CLI is where the graph lives, so it is
+what this page documents.
 
-```sh
-pixi run --frozen --no-install test-local
+## The task graph
+
+The automation is one task graph. `dodo.py` declares it, `automation/` holds the code
+that connects doit to the scripts, and `scripts/` holds the implementations.
+
+| Piece | Owns |
+| --- | --- |
+| `pixi.toml` | the environment: toolchains, pinned tools, and one alias per task |
+| `dodo.py` | the graph: what runs, in what order, with what parameters |
+| `automation/lib/tasks.py` | the bridge: calls a script's `main`, fails the task on a non-zero exit |
+| `scripts/<name>.py` | the implementation, runnable on its own |
+
+A task is a function returning a dict; it never does the work at import time. Adding one
+is a function in `dodo.py` and, if it is worth remembering, an alias in `pixi.toml`:
+
+```python
+def task_mytask() -> dict:
+    """What this checks, in one line, so `automation list` can explain it."""
+    return {"actions": [script("myscript")]}
 ```
 
-That covers formatting, Clippy, alint, the documentation checks, both nextest groups,
-the script tests, `cargo deny` and the sandbox check in about a minute on a warm
-checkout.
+Three rules keep the graph honest, and each has a reason beyond tidiness:
+
+- **A check declares no `file_dep` and no `targets`.** Doit would skip an action whose
+  outputs are newer than its inputs, and a check that skipped itself reports success
+  without looking. Only a task that *generates* a file would have outputs, and those are
+  named `docs_write`, `changelog` and `readme` — a person runs them, and they are never
+  part of the gate.
+- **A failure is an exception, not a return value.** doit records a Python action's return
+  value as the task's result, so a `main` returning `1` would pass. The bridge raises.
+- **The graph is the order.** `gates` lists its dependencies cheapest-to-fail first, so a
+  formatting mistake reports before the test suite runs. `doit -n 3` parallelizes whatever
+  does not depend on anything else.
+
+`gates` is offline by construction: `audit`, `deny`, `markdownlint`, `readme_check` and
+`backlog_check` fetch from the network or from npm, so they belong to a person's command
+or to CI, and `scripts/tests/test_automation_tasks.py` fails if one is moved into the gate.
 
 ## Documentation is built, not written
 
-The guides are checked by the same task surface as the code:
+The pages are checked by the same task graph as the code. Four checks, four questions:
+
+| Task | Answers |
+| --- | --- |
+| `automation docs` | does every link and anchor resolve, does every Rust fence compile, does every documented name exist? |
+| `automation prose` | is the rendering of `vale.toml` current, and does the prose pass Vale? |
+| `automation markdownlint` | is the page structurally sound — heading levels, lists, fences? |
+| `automation alint` | do the pages the repository promises to have still exist? |
 
 ```sh
-pixi run check-docs                      # verify: links, anchors, snippets, documented names
-python scripts/check_docs.py --write     # regenerate the snippet test after editing a page
+pixi run --frozen --no-install automation docs          # the documentation gate
+pixi run --frozen --no-install automation docs_write    # regenerate the snippet test after editing a page
+pixi run --frozen automation markdownlint               # the page structure; fetches from npm
 ```
 
-A ```` ```rust ```` fence in `README.md` or `docs/*.md` is not prose: `check_docs.py`
+`scripts/check_docs.py` walks every directory under `docs/` and refuses a page filed
+outside the five sections. A ```` ```rust ```` fence in `README.md` or a page is not prose: it
 copies it into `examples/simple/tests/documented_snippets.rs`, which the suite
 compiles and runs. `rust,ignore` is the escape hatch for a deliberate fragment, and it
 is what the reference page uses for its diagrams of shapes. Every relative link and
@@ -55,7 +89,7 @@ formatter to reflow.
 ## The prose is checked too
 
 `check-docs` proves a page's links, snippets and API names. It cannot read a sentence, so a
-second tool does: [Vale](https://vale.sh), which lints `README.md`, `AGENTS.md` and
+second tool does: [Valehttps://vale.sh, which lints `README.md`, `AGENTS.md` and
 `docs/**/*.md` for spelling, terminology and editorial style.
 
 ```sh
@@ -205,7 +239,7 @@ Run `pixi install --locked` once after cloning, and the hooks work from then on.
 --no-verify` and `git push --no-verify` skip them when a work-in-progress commit genuinely needs
 to land; CI remains the authoritative verdict.
 
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/), configured
+Commit messages follow [Conventional Commitshttps://www.conventionalcommits.org/, configured
 in `.versionrc` for convco. That file also maps each commit type to a Keep a Changelog section
 and decides which of them are hidden, which is what `scripts/changelog.py` renders through. CI
 enforces it too: the
@@ -273,7 +307,7 @@ pack is older than the branch: it should match the manifest's file count.
 In VS Code, choose **Dev Containers: Reopen in Container**; GitHub Codespaces
 can also use `.devcontainer/devcontainer.json`. Like pixi-sandbox, it uses the
 official Pixi image and a separate post-create script rather than a Dockerfile.
-The setup is adapted from [pixi-sandbox's devcontainer](https://github.com/Archont561/pixi-sandbox/tree/1903b088a0896126dee82e2a8b6b007942303ffc/.devcontainer),
+The setup is adapted from [pixi-sandbox's devcontainerhttps://github.com/Archont561/pixi-sandbox/tree/1903b088a0896126dee82e2a8b6b007942303ffc/.devcontainer,
 with project-specific locked tools and no automatic model refresh. The image is
 pinned to Pixi 0.83.0 and an immutable image digest. Clifacet's
 Pixi lock targets **Linux x86-64 only**; ARM hosts need an amd64 container with
@@ -571,7 +605,7 @@ confirm from the repository side that the tag step did not run.
 The root Cargo manifest centralizes dependency versions. The main crate includes
 clap, thiserror and the companion macro crate as core dependencies. It has three
 **optional dependency boundaries**, disabled by default — what each adds and costs is
-in [Features](getting-started.md#features):
+in [Features](../guides/getting-started.md#features):
 
 - `interactive`: inquire with the crossterm backend.
 - `tui`: ratatui and crossterm (the same crossterm 0.29 line as inquire).
@@ -584,7 +618,7 @@ library has no JSON of its own to write. `serde_json` is a development dependenc
 by the tests that read the serialized shape back. Everything is checked every
 way — `--no-default-features`, the empty `default` set, each boundary on its own and
 all of them together — by the `check-features` task described in
-[Supported platforms and feature combinations](#supported-platforms-and-feature-combinations).
+[Supported platforms and feature combinations#supported-platforms-and-feature-combinations.
 
 The macros crate includes proc-macro2, quote and syn for the planned companion
 derive. rstest, rstest-bdd, proptest, assert_cmd and trybuild remain development
@@ -602,7 +636,7 @@ verified and restored, then checked offline with all targets and features; live
 GitHub publication has not been tested. The locked graph is checked with Rust 1.88
 across every supported feature combination and with the stable compiler on Linux,
 macOS and Windows; what that does and does not cover is listed under
-[Supported platforms and feature combinations](#supported-platforms-and-feature-combinations).
+[Supported platforms and feature combinations#supported-platforms-and-feature-combinations.
 
 `cargo-deny` permits Unicode-3.0 only for locked `unicode-ident` 1.0.27: its
 SPDX expression combines that Unicode data license with MIT or Apache-2.0. This
@@ -765,14 +799,14 @@ contain no Cargo credentials. Pixi caches the development environment separately
 ## Dependency advisory exception
 
 `basic-toml` is unmaintained. RustSec flags it under
-[RUSTSEC-2026-0374](https://rustsec.org/advisories/RUSTSEC-2026-0374), and it reaches
+[RUSTSEC-2026-0374https://rustsec.org/advisories/RUSTSEC-2026-0374, and it reaches
 this workspace through `rstest-bdd`, a test dependency. The maintainer keeps
 `rstest-bdd` and allows that one advisory in both `deny.toml` and `.cargo/audit.toml`;
 other warnings still fail the audit.
 
 The path, rendered from `Cargo.lock` by `scripts/check_advisory_exception.py`:
 
-```
+```text
 rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config 0.4.8 → basic-toml 0.1.10
 ```
 

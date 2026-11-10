@@ -71,8 +71,8 @@ def tree(tmp_path):
     (tmp_path / "deny.toml").write_text(DENY, encoding="utf-8")
     (tmp_path / ".cargo").mkdir()
     (tmp_path / ".cargo" / "audit.toml").write_text(AUDIT, encoding="utf-8")
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "development.md").write_text(DOCS, encoding="utf-8")
+    (tmp_path / "docs" / "development").mkdir(parents=True)
+    (tmp_path / "docs" / "development" / "development.md").write_text(DOCS, encoding="utf-8")
     (tmp_path / "Cargo.lock").write_text(_lock_text(LOCK), encoding="utf-8")
     return tmp_path
 
@@ -148,7 +148,7 @@ def test_an_exception_comment_does_not_count_as_an_exception():
 
 
 def test_the_documented_path_is_read_back_out_of_the_gate_tree(tree):
-    assert documented_path((tree / "docs" / "development.md").read_text()) == PATH
+    assert documented_path((tree / "docs" / "development" / "development.md").read_text()) == PATH
 
 
 def test_the_rendered_path_names_every_crate_and_version(tree):
@@ -180,7 +180,7 @@ def test_an_exception_without_its_crate_is_reported_as_removable(tree):
 
 
 def test_a_path_that_no_longer_matches_the_lock_is_reported(tree):
-    (tree / "docs" / "development.md").write_text(
+    (tree / "docs" / "development" / "development.md").write_text(
         "```\nrstest-bdd 0.6.0 → basic-toml 0.1.10\n```\n", encoding="utf-8"
     )
 
@@ -193,7 +193,7 @@ def test_a_path_that_no_longer_matches_the_lock_is_reported(tree):
 def test_an_unreachable_crate_with_a_still_documented_path_is_stale_not_silent(tree):
     lock = {"package": [{"name": "clifacet-example", "version": "0.1.0"}]}
     (tree / "Cargo.lock").write_text(_lock_text(lock), encoding="utf-8")
-    (tree / "docs" / "development.md").write_text(DOCS, encoding="utf-8")
+    (tree / "docs" / "development" / "development.md").write_text(DOCS, encoding="utf-8")
 
     kinds = [finding.kind for finding in check(tree)]
 
@@ -212,7 +212,7 @@ def test_a_consistent_tree_exits_zero_and_says_the_exception_is_warranted(tree, 
 
 
 def test_an_inconsistent_tree_exits_non_zero_and_says_which_finding(tree, capsys):
-    (tree / "docs" / "development.md").write_text("## Dependency advisory exception\n", encoding="utf-8")
+    (tree / "docs" / "development" / "development.md").write_text("## Dependency advisory exception\n", encoding="utf-8")
 
     assert main([], root=tree) == 1
 
@@ -235,7 +235,7 @@ def test_a_prose_arrow_is_not_a_dependency_path():
     """The guide uses arrows in prose; only versioned chains are paths.
 
     This is not hypothetical: adding "Actions → release → Run workflow" to
-    docs/development.md made the tree-consistency test report its own documentation.
+    docs/development/development.md made the tree-consistency test report its own documentation.
     """
     prose = "# Development\n\nStart it from Actions → release → Run workflow.\n\n"
     text = prose + DOCS

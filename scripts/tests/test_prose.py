@@ -38,7 +38,7 @@ def test_every_page_the_guides_are_made_of_is_checked(config):
 
     assert "README.md" in pages
     assert "AGENTS.md" in pages
-    assert "docs/development.md" in pages
+    assert "docs/development/development.md" in pages
     assert all(page.endswith(".md") for page in pages), pages
 
 

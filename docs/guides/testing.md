@@ -24,7 +24,7 @@ run, records what the command received, and compares runs from different fronten
 `examples/simple/tests/harness_parity.rs` drives the reference application
 through flags, a scripted prompt and the headless form, and
 `crates/clifacet/tests/harness.rs` covers the harness itself. See
-[`command-core.md`](command-core.md#cross-mode-parity-as-a-published-api).
+[`command-core.md`](../reference/command-core.md#cross-mode-parity-as-a-published-api).
 
 ## What each layer asserts
 
@@ -107,7 +107,7 @@ runtime have to agree exactly; a floating patch would silently mix versions.
   compiles and behaves the same on the three platforms — not that the full-screen
   interface renders well in every terminal.
 - Which combinations and platforms count as supported is stated once, in
-  [development.md](development.md#supported-platforms-and-feature-combinations).
+  [development.md](../development/development.md#supported-platforms-and-feature-combinations).
 - Coverage is enforced on source files only, counted by `scripts/check_coverage.py`
   at a 90% line target. The derive's own unit tests are selected by
   `kind(proc-macro)` in the `test-src` task; without that selector `nextest` would

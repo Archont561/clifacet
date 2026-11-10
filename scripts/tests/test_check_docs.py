@@ -13,10 +13,12 @@ from pathlib import Path
 import pytest
 
 from scripts.check_docs import (
+    SECTIONS,
     Finding,
     api_paths,
     check,
     check_staleness,
+    uncategorised,
     generated_snippets,
     headings,
     links,
@@ -30,12 +32,12 @@ ROOT = Path(__file__).resolve().parents[2]
 @pytest.fixture
 def docs(tmp_path):
     """A miniature documentation tree: one index and one guide that links into it."""
-    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "guides").mkdir(parents=True)
     (tmp_path / "README.md").write_text(
-        "# Project\n\nSee the [guide](docs/guide.md#using-it) and [the site](https://example.com).\n",
+        "# Project\n\nSee the [guide](docs/guides/guide.md#using-it) and [the site](https://example.com).\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs" / "guide.md").write_text(
+    (tmp_path / "docs" / "guides" / "guide.md").write_text(
         "# Guide\n\n## Using it\n\n```rust\nlet answer = 42;\n```\n",
         encoding="utf-8",
     )
@@ -51,7 +53,7 @@ def test_slug_matches_github_heading_anchors():
 
 
 def test_headings_are_collected_from_every_level(docs):
-    assert headings((docs / "docs" / "guide.md").read_text()) == {"guide", "using-it"}
+    assert headings((docs / "docs" / "guides" / "guide.md").read_text()) == {"guide", "using-it"}
 
 
 def test_links_are_read_with_the_line_they_appear_on():
@@ -80,7 +82,7 @@ def test_a_link_to_a_missing_file_is_reported(docs):
 
 def test_a_link_to_a_missing_heading_is_reported(docs):
     page = docs / "README.md"
-    page.write_text("# Project\n\nSee the [guide](docs/guide.md#nowhere).\n", encoding="utf-8")
+    page.write_text("# Project\n\nSee the [guide](docs/guides/guide.md#nowhere).\n", encoding="utf-8")
 
     findings = check(docs)
 
@@ -90,13 +92,13 @@ def test_a_link_to_a_missing_heading_is_reported(docs):
 
 def test_a_link_to_a_heading_that_exists_is_accepted(docs):
     page = docs / "README.md"
-    page.write_text("# Project\n\nSee the [guide](docs/guide.md#guide).\n", encoding="utf-8")
+    page.write_text("# Project\n\nSee the [guide](docs/guides/guide.md#guide).\n", encoding="utf-8")
 
     assert check(docs) == []
 
 
 def test_rust_blocks_are_collected_and_ignore_blocks_are_skipped(docs):
-    page = (docs / "docs" / "guide.md").read_text()
+    page = (docs / "docs" / "guides" / "guide.md").read_text()
     page += "\n```rust,ignore\nthis is not compiled\n```\n\n```sh\ncargo test\n```\n"
 
     blocks = rust_blocks(page)
@@ -113,7 +115,7 @@ def test_a_snippet_becomes_a_compiled_test(docs):
 
 
 def test_hidden_lines_are_unhidden_like_rustdoc_does(docs):
-    page = (docs / "docs" / "guide.md").read_text()
+    page = (docs / "docs" / "guides" / "guide.md").read_text()
     page = page.replace("```rust\n", "```rust\n# let hidden = 1;\n")
 
     generated = generated_snippets(_write(docs, page))
@@ -123,7 +125,8 @@ def test_hidden_lines_are_unhidden_like_rustdoc_does(docs):
 
 
 def _write(root: Path, page: str) -> Path:
-    (root / "docs" / "guide.md").write_text(page, encoding="utf-8")
+    (root / "docs" / "guides").mkdir(parents=True, exist_ok=True)
+    (root / "docs" / "guides" / "guide.md").write_text(page, encoding="utf-8")
     return root
 
 
@@ -167,8 +170,8 @@ def _tree_with(page: str) -> Path:
     import tempfile
 
     root = Path(tempfile.mkdtemp())
-    (root / "docs").mkdir()
-    (root / "docs" / "guide.md").write_text(page, encoding="utf-8")
+    (root / "docs" / "guides").mkdir(parents=True)
+    (root / "docs" / "guides" / "guide.md").write_text(page, encoding="utf-8")
     (root / "README.md").write_text("# Project\n", encoding="utf-8")
     return root
 
@@ -202,3 +205,44 @@ def test_a_finding_renders_the_page_the_line_and_the_problem():
 
     assert "docs/guide.md:7" in str(finding)
     assert "missing target" in str(finding)
+
+
+def test_every_section_is_a_directory_the_tree_actually_has():
+    """The five sections are a promise about where a page goes; an empty one is a dead end."""
+    documented = ROOT / "docs"
+
+    assert {name for name in SECTIONS if (documented / name).is_dir()} == set(SECTIONS)
+
+
+def test_a_page_beside_the_index_is_reported(tmp_path):
+    """`docs/README.md` is the only page at the top level; a second one has no section."""
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "README.md").write_text("# Index\n", encoding="utf-8")
+    (tmp_path / "docs" / "stray.md").write_text("# Stray\n", encoding="utf-8")
+
+    findings = uncategorised(tmp_path)
+
+    assert [finding.kind for finding in findings] == ["section"]
+    assert findings[0].page.name == "stray.md"
+
+
+def test_a_page_in_an_invented_directory_is_reported(tmp_path):
+    """A sixth directory is a decision, and this is the check that makes it one."""
+    (tmp_path / "docs" / "guides").mkdir(parents=True)
+    (tmp_path / "docs" / "guides" / "ok.md").write_text("# Fine\n", encoding="utf-8")
+    (tmp_path / "docs" / "notes").mkdir()
+    (tmp_path / "docs" / "notes" / "loose.md").write_text("# Loose\n", encoding="utf-8")
+
+    findings = uncategorised(tmp_path)
+
+    assert len(findings) == 1
+    assert "notes" in findings[0].detail
+
+
+def test_a_page_in_a_section_is_accepted(tmp_path):
+    """Every section must be allowed, not only the ones that happen to have a page today."""
+    for name in SECTIONS:
+        (tmp_path / "docs" / name).mkdir(parents=True)
+        (tmp_path / "docs" / name / "page.md").write_text("# Page\n", encoding="utf-8")
+
+    assert uncategorised(tmp_path) == []

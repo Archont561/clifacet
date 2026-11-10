@@ -71,11 +71,59 @@ class Finding:
         return f"{self.page.relative_to(ROOT) if self.page.is_relative_to(ROOT) else self.page}:{self.line}: {self.kind}: {self.detail}"
 
 
+# The five kinds of page, and the only directories a page may live in. A page's directory
+# says what the page is for, so a reader looking for "how do I do X" and a reader looking
+# for "why is it like this" go to different places; the rule is here because a new
+# directory would otherwise arrive silently and be checked without being categorised.
+SECTIONS = ("guides", "concepts", "reference", "development", "architecture")
+
+
 def pages(root: Path = ROOT) -> list[Path]:
-    """Every page this script checks: the README and the guides beside it."""
+    """Every page this script checks: the README, the docs index and the pages below it.
+
+    Recursion is deliberate. A flat glob checked `docs/*.md` and would have gone on
+    checking them happily while silently ignoring every page in a subdirectory, which is
+    the failure mode that makes a documentation check worthless.
+    """
     readme = root / "README.md"
-    guides = sorted((root / "docs").glob("*.md"))
-    return ([readme] if readme.is_file() else []) + guides
+    index = root / "docs" / "README.md"
+    found = sorted((root / "docs").rglob("*.md"))
+    head = [path for path in (readme, index) if path.is_file()]
+    return head + [path for path in found if path != index]
+
+
+def uncategorised(root: Path = ROOT) -> list[Finding]:
+    """Pages that are not in one of the five sections, and pages filed nowhere useful."""
+    findings = []
+    index = root / "docs" / "README.md"
+    for page in pages(root):
+        if page.parent == root or page == index:
+            continue
+        # `docs/README.md` is the index and the only page at the top level. Any other page
+        # there has no section to belong to, which is how a tree grows a seventh kind of
+        # page without anyone deciding to.
+        if page.parent == root / "docs":
+            findings.append(
+                Finding(
+                    "section",
+                    page,
+                    1,
+                    "is beside the index rather than in one of "
+                    f"{', '.join(SECTIONS)}; only docs/README.md lives at the top level",
+                )
+            )
+            continue
+        if page.relative_to(root / "docs").parts[0] not in SECTIONS:
+            findings.append(
+                Finding(
+                    "section",
+                    page,
+                    1,
+                    f"is in docs/{page.relative_to(root / 'docs').parts[0]}, which is not one "
+                    f"of {', '.join(SECTIONS)}",
+                )
+            )
+    return findings
 
 
 def slug(heading: str) -> str:
@@ -316,7 +364,7 @@ def check(root: Path = ROOT) -> list[Finding]:
     file, not about a page, and a caller checking a tree of pages should not have to
     create that file to do it.
     """
-    return check_links(root) + check_api(root) + check_domain(root)
+    return uncategorised(root) + check_links(root) + check_api(root) + check_domain(root)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
