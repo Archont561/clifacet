@@ -19,10 +19,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Changed
 
-* **tools:** move bootstrap to scripts and remove doit automation
-([fd07e74](https://github.com/Archont561/clifacet/commit/fd07e74ceca884a4ce3af28a451b3617f156fe4a))
-* **tools:** move scripts and tests to tools/ preserving only scripts/restore.sh
-([c8e32db](https://github.com/Archont561/clifacet/commit/c8e32db65d2b99f9a5f850323a7aa206cf7a618e))
+* **tools:** adopt canonical tasknest automation and reorganize scripts
+([41664fe](https://github.com/Archont561/clifacet/commit/41664fe62a5f24387be36e3de566ed318f096eac))
 
 ## [0.5.0] - 2026-11-10
 
