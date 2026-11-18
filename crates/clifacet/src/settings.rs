@@ -241,6 +241,28 @@ pub struct Settings {
     entries: Vec<Entry>,
 }
 
+/// Normalizes a key or section name for case-insensitive matching between `kebab-case` and `snake_case`.
+pub(crate) fn normalize_key(key: &str) -> String {
+    key.replace('-', "_")
+}
+
+fn section_matches(a: &[String], b: &[String]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(left, right)| left == right || normalize_key(left) == normalize_key(right))
+}
+
+fn section_starts_with(entry_section: &[String], path: &[String]) -> bool {
+    if entry_section.len() < path.len() {
+        return false;
+    }
+    entry_section
+        .iter()
+        .zip(path)
+        .all(|(left, right)| left == right || normalize_key(left) == normalize_key(right))
+}
+
 impl Settings {
     /// Collects entries, refusing one key twice.
     ///
@@ -248,13 +270,12 @@ impl Settings {
     ///
     /// Returns [`Error`] naming both places when two entries set the same section and key.
     pub fn new(entries: Vec<Entry>) -> Result<Self, Error> {
-        let mut seen: Vec<(&[String], &str)> = Vec::new();
+        let mut seen: Vec<(&[String], String)> = Vec::new();
         for entry in &entries {
-            let key = (entry.section(), entry.key());
-            if let Some((_, earlier)) = seen
-                .iter()
-                .find(|(section, name)| *section == entry.section() && *name == entry.key())
-            {
+            let normalized = normalize_key(entry.key());
+            if let Some((_, earlier)) = seen.iter().find(|(section, name)| {
+                section_matches(section, entry.section()) && *name == normalized
+            }) {
                 let _ = earlier;
                 return Err(Error::new(format!(
                     "{}: `{}` is set twice",
@@ -262,9 +283,19 @@ impl Settings {
                     entry.dotted()
                 )));
             }
-            seen.push(key);
+            seen.push((entry.section(), normalized));
         }
         Ok(Self { entries })
+    }
+
+    /// Reads settings from a [`figment::Figment`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if extracting settings fails.
+    #[cfg(feature = "settings-figment")]
+    pub fn from_figment(figment: &::figment::Figment) -> Result<Self, Error> {
+        figment::FigmentLoader::new(figment.clone()).load_settings()
     }
 
     /// No settings at all, which layers nothing.
@@ -288,14 +319,17 @@ impl Settings {
     /// The entry for `key` in `section`, if there is one.
     #[must_use]
     pub fn get(&self, section: &[&str], key: &str) -> Option<&Entry> {
+        let normalized = normalize_key(key);
         self.entries.iter().find(|entry| {
-            entry.key == key
+            (entry.key == key || normalize_key(&entry.key) == normalized)
                 && entry.section.len() == section.len()
                 && entry
                     .section
                     .iter()
                     .zip(section)
-                    .all(|(entry_name, wanted)| entry_name == wanted)
+                    .all(|(entry_name, wanted)| {
+                        *entry_name == *wanted || normalize_key(entry_name) == normalize_key(wanted)
+                    })
         })
     }
 
@@ -355,13 +389,15 @@ impl Settings {
         // The arguments of this level, as (index of a matching entry, the argument's id).
         let mut matched: Vec<(usize, String, clap::Arg)> = Vec::new();
         for (index, entry) in rest.iter().enumerate() {
-            if entry.section.as_slice() != section {
+            if !section_matches(&entry.section, section) {
                 continue;
             }
-            let Some(argument) = command
-                .get_arguments()
-                .find(|argument| argument.get_long() == Some(entry.key.as_str()))
-            else {
+            let Some(argument) = command.get_arguments().find(|argument| {
+                argument.get_long() == Some(entry.key.as_str())
+                    || argument
+                        .get_long()
+                        .is_some_and(|long| normalize_key(long) == normalize_key(&entry.key))
+            }) else {
                 continue;
             };
             matched.push((
@@ -413,7 +449,10 @@ impl Settings {
             // Descend when the leaf *or anything below it* has entries: `serve` must be
             // entered for `serve.retry.attempts` to reach `retry`, even though no entry
             // names `serve` itself.
-            if !rest.iter().any(|entry| entry.section.starts_with(&path)) {
+            if !rest
+                .iter()
+                .any(|entry| section_starts_with(&entry.section, &path))
+            {
                 continue;
             }
             let nested = command

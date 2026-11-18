@@ -81,6 +81,13 @@ impl<T> serde::Serialize for Secret<T> {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for Secret<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        T::deserialize(deserializer).map(Self::new)
+    }
+}
+
 impl<T: fmt::Display> fmt::Display for Secret<T> {
     /// Redacted even when `T` would print itself.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
