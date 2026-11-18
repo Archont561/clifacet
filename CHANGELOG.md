@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **settings:** implement Figment configuration engine and command function mapping (CLI-59)
+([57d270f](https://github.com/Archont561/clifacet/commit/57d270f49c257630201c89025bd9026a5b729264))
 * **settings:** declare figment dependency and decision-22 backlog
 ([bba183d](https://github.com/Archont561/clifacet/commit/bba183d6a48ea2ffcbdaa24681b3039a02de4b0b))
 
