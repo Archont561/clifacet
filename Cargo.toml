@@ -35,6 +35,8 @@ thiserror = "2.0.21"
 # what lets an invalid setting be reported at the line it was written on, and a loader that
 # can only say "your file is wrong" sends the reader back to the whole file.
 toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
+# The optional Figment configuration loader (CLI-59, decision-22).
+figment = { version = "0.10.19", default-features = false }
 
 # Optional frontend adapters. Keep a single crossterm major/minor across both.
 inquire = { version = "0.9.4", default-features = false, features = ["crossterm"] }
