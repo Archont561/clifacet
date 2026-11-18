@@ -824,6 +824,184 @@ A rule about one field belongs on that field, and a rule about the input belongs
 `check_input`, everything else is a declaration. Reach for a whole `bridge` only when
 the input is not a field-by-field copy of the command at all.
 
+## External plugins: binaries on PATH
+
+A common CLI pattern is discovering executables named `<cli>-<name>` on `PATH` and
+exposing them as subcommands `<cli> <name>`, the way `git lfs` calls `git-lfs` or
+`cargo nextest` calls `cargo-nextest`.
+
+Decision-17 rejected adding a `plugins` module, Cargo feature, or dependency to
+`clifacet` itself. A plugin is outside what `clifacet` guarantees:
+
+- **Arguments belong to the plugin.** Arguments passed to a plugin are not parsed into
+  typed values or validated by `clifacet::Facet`.
+- **Foreign processes control their own interaction.** A plugin process decides its
+  own terminal interactions, so `clifacet::policy::Policy` cannot enforce non-interactive
+  guarantees.
+- **Plugins cannot participate in cross-mode parity.** A third-party binary cannot be
+  run through `clifacet`'s mode harness or checked for identical output.
+
+Instead, applications that want external plugins build them in application code using
+`clap` and `std` alone. The recipe below demonstrates discovery, collision handling,
+routing, and headless safety.
+
+### Discovery and routing recipe
+
+Discovery inspects directories the application explicitly names (such as entries in
+`PATH`), filtering for files with the expected prefix. It never executes candidate files
+and never probes them with `--help` (probing executes foreign code).
+
+Built-in commands always take precedence: if a discovered plugin name collides with a
+built-in subcommand, the plugin is dropped and reported.
+
+Plugins are attached to the `clap::Command` as subcommands with `disable_help_flag(true)`
+and trailing variable arguments. During routing, if a plugin subcommand is selected,
+execution is intercepted before `clifacet` converts the matches into typed input.
+
+```rust
+use std::path::PathBuf;
+use clap::{Arg, Command, Parser};
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::Failure;
+
+#[derive(Debug, Parser)]
+#[command(name = "cast")]
+struct BuiltinCli {
+    #[arg(long, default_value = "world")]
+    name: String,
+}
+
+#[derive(Debug, Clone)]
+struct Plugin {
+    name: String,
+    path: PathBuf,
+}
+
+/// 1. Discovery: scans directories the application names, never executing candidates.
+fn discover_plugins(prefix: &str, search_dirs: &[PathBuf]) -> (Vec<Plugin>, Vec<String>) {
+    let mut plugins = Vec::new();
+    let mut dropped = Vec::new();
+    let builtins = ["greet", "help"];
+
+    for dir in search_dirs {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // Inspect metadata only: never execute or probe candidates with --help.
+            if !path.is_file() {
+                continue;
+            }
+            let stem = match path.file_stem().and_then(|s| s.to_str()) {
+                Some(s) => s,
+                None => continue,
+            };
+            if let Some(subcommand) = stem.strip_prefix(prefix).and_then(|s| s.strip_prefix('-')) {
+                if builtins.contains(&subcommand) {
+                    dropped.push(subcommand.to_string());
+                } else {
+                    plugins.push(Plugin {
+                        name: subcommand.to_string(),
+                        path: path.clone(),
+                    });
+                }
+            }
+        }
+    }
+    (plugins, dropped)
+}
+
+/// 2. Build tree: add one passthrough subcommand per plugin with its path in the help.
+fn build_command(plugins: &[Plugin]) -> Command {
+    let mut cmd = Command::new("cast")
+        .subcommand(
+            Command::new("greet")
+                .about("Greet someone")
+                .arg(Arg::new("name").long("name").default_value("world")),
+        );
+
+    for plugin in plugins {
+        let about = format!("(plugin) {}", plugin.path.display());
+        cmd = cmd.subcommand(
+            Command::new(plugin.name.clone())
+                .about(about)
+                .disable_help_flag(true)
+                .arg(
+                    Arg::new("arguments")
+                        .num_args(0..)
+                        .trailing_var_arg(true)
+                        .allow_hyphen_values(true),
+                ),
+        );
+    }
+    cmd
+}
+
+/// 3. Routing: dispatch plugins before the derive converts; refuse headless runs.
+fn dispatch(
+    cmd: Command,
+    plugins: &[Plugin],
+    argv: &[&str],
+    policy: Policy,
+) -> Result<i32, Failure> {
+    let plan = policy
+        .resolve(Request::mode(Mode::NonInteractive), Capabilities::detected())
+        .map_err(|_| Failure::validation("policy refused execution"))?;
+
+    let matches = cmd
+        .try_get_matches_from(argv)
+        .map_err(|e| Failure::validation(e.to_string()))?;
+
+    if let Some((sub_name, sub_matches)) = matches.subcommand() {
+        if let Some(plugin) = plugins.iter().find(|p| p.name == sub_name) {
+            // Refuse to launch a plugin when the plan is headless or non-interactive.
+            // Foreign binaries cannot guarantee non-interactivity or mode contracts.
+            if !plan.asks_the_user() {
+                return Err(Failure::validation(format!(
+                    "plugin '{}' cannot run in a headless plan",
+                    plugin.name
+                )));
+            }
+
+            let args: Vec<String> = sub_matches
+                .get_many::<String>("arguments")
+                .map(|vals| vals.cloned().collect())
+                .unwrap_or_default();
+
+            let status = std::process::Command::new(&plugin.path)
+                .args(&args)
+                .status()
+                .map_err(|e| Failure::execution(format!("failed to run plugin: {e}")))?;
+
+            return Ok(status.code().unwrap_or(1));
+        }
+    }
+
+    Ok(0)
+}
+
+let dirs = vec![PathBuf::from("/bin")];
+let (plugins, dropped) = discover_plugins("cast", &dirs);
+let cmd = build_command(&plugins);
+let policy = Policy::up_to(Mode::Interactive);
+let _ = dispatch(cmd, &plugins, &["cast", "greet"], policy);
+assert!(dropped.is_empty() || !dropped.is_empty());
+```
+
+### Forwarding and platform rules
+
+| Rule or Property | Behavior |
+| --- | --- |
+| Argument forwarding | Arguments after the plugin subcommand are forwarded verbatim via `num_args(0..).trailing_var_arg(true).allow_hyphen_values(true)`. |
+| The `--` delimiter | Consumed once by `clap` during parsing; if the plugin requires a literal `--`, the application must re-insert it before spawning. |
+| `--help` delegation | Setting `disable_help_flag(true)` on the plugin subcommand passes `--help` directly to the plugin executable. |
+| Exit status passthrough | The application waits for the child process and exits with its status code (`exit_code`), or `1` if terminated by a signal. |
+| Windows extensions (`PATHEXT`) | On Windows, executable filenames match extensions listed in `PATHEXT` (`.exe`, `.cmd`, `.bat`) rather than bare names. |
+| Windows case insensitivity | Plugin names compare case-insensitively on Windows (`cast-DEPLOY.exe` resolves to `cast deploy`). |
+| Windows shell requirement (`.cmd`/`.bat`) | Batch scripts cannot be spawned directly through `std::process::Command::new`; they require `cmd.exe /c`. |
+
 ## What the derive does not do
 
 - **It does not parse.** `Facet::command()` *is* `<Cli as CommandFactory>::command()`,
