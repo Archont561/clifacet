@@ -2,6 +2,22 @@
 version: 1
 
 extends:
+  - url: alint://bundled/oss-baseline@v1
+    except:
+      - oss-security-policy-exists
+      - oss-codeowners-exists
+      - oss-code-of-conduct-exists
+  - alint://bundled/hygiene/no-tracked-artifacts@v1
+  - alint://bundled/hygiene/lockfiles@v1
+  - alint://bundled/agent-hygiene@v1
+  - url: alint://bundled/agent-context@v1
+    except:
+      - agent-context-not-bloated
+  - alint://bundled/tooling/editorconfig@v1
+  - url: alint://bundled/rust@v1
+    except: [rust-toolchain-pinned]
+  - url: alint://bundled/monorepo/cargo-workspace@v1
+    except: [cargo-workspace-member-has-readme]
   - alint://bundled/ci/github-actions@v1
 
 rules:
@@ -10,6 +26,67 @@ rules:
     paths: "Cargo.toml"
     level: error
     message: "Required file Cargo.toml is missing."
+
+  - id: require-editorconfig
+    kind: file_exists
+    paths: ".editorconfig"
+    level: error
+    message: "Required file .editorconfig is missing."
+
+  - id: require-gitattributes
+    kind: file_exists
+    paths: ".gitattributes"
+    level: error
+    message: "Required file .gitattributes is missing."
+
+  - id: require-renovate-config
+    kind: file_exists
+    paths: "renovate.json"
+    level: error
+    message: "Renovate dependency management configuration renovate.json is required."
+
+  - id: require-taplo-config
+    kind: file_exists
+    paths: ".taplo.toml"
+    level: error
+    message: "Root .taplo.toml is required for TOML formatting contract."
+
+  - id: require-tasknest-config
+    kind: file_exists
+    paths: "tasknest.toml"
+    level: error
+    message: "Root Tasknest configuration tasknest.toml is required."
+
+  - id: require-tools-dir
+    kind: dir_contains
+    select: "tools"
+    require:
+      - check.py
+      - test.py
+    level: error
+    message: "Tools directory with check.py and test.py is required."
+
+  - id: require-github-pr-template
+    kind: file_exists
+    paths: ".github/PULL_REQUEST_TEMPLATE.md"
+    level: error
+    message: "Required file .github/PULL_REQUEST_TEMPLATE.md is missing."
+
+  - id: require-github-issue-templates
+    kind: dir_contains
+    select: ".github/ISSUE_TEMPLATE"
+    require:
+      - bug_report.yml
+      - feature_request.yml
+      - config.yml
+    level: error
+    message: "GitHub Issue Form templates must exist under .github/ISSUE_TEMPLATE/."
+
+  - id: require-skills-lock
+    kind: file_exists
+    paths: "skills-lock.json"
+    level: error
+    message: "Skills lockfile skills-lock.json is required."
 
   - id: require-cargo-lock
     kind: file_exists
@@ -118,21 +195,9 @@ rules:
 
   - id: require-readme-renderer
     kind: file_exists
-    paths: "scripts/readme.py"
+    paths: "tools/_lib/readme.py"
     level: error
     message: "The README renderer is missing; the generated README would have no source."
-
-  - id: require-dodo
-    kind: file_exists
-    paths: "dodo.py"
-    level: error
-    message: "The task graph is missing; `pixi run automation` would not start."
-
-  - id: require-automation-bridge
-    kind: file_exists
-    paths: "automation/lib/tasks.py"
-    level: error
-    message: "The doit-to-script bridge is missing; every task in dodo.py would fail to import."
 
   - id: require-example-command
     kind: file_exists
@@ -184,7 +249,7 @@ rules:
 
   - id: require-bump-version
     kind: file_exists
-    paths: "scripts/bump_version.py"
+    paths: "tools/_lib/bump_version.py"
     level: error
     message: "The version bump script is missing."
 
@@ -196,19 +261,19 @@ rules:
 
   - id: require-audit-local
     kind: file_exists
-    paths: "scripts/audit_local.py"
+    paths: "tools/_lib/audit_local.py"
     level: error
     message: "The offline audit wrapper is missing."
 
   - id: require-prove-msrv
     kind: file_exists
-    paths: "scripts/prove_msrv.py"
+    paths: "tools/_lib/prove_msrv.py"
     level: error
     message: "The MSRV proof script is missing."
 
   - id: require-check-advisory
     kind: file_exists
-    paths: "scripts/check_advisory_exception.py"
+    paths: "tools/_lib/check_advisory_exception.py"
     level: error
     message: "The advisory-exception check is missing; the RustSec exception would never expire."
 
@@ -216,43 +281,43 @@ rules:
   # rather than a gate, which is the worst place to find out.
   - id: require-release-script
     kind: file_exists
-    paths: "scripts/release.py"
+    paths: "tools/_lib/release.py"
     level: error
     message: "The release script is missing; release.yml has nothing to call."
 
   - id: require-commit-range-script
     kind: file_exists
-    paths: "scripts/commit_range.py"
+    paths: "tools/_lib/commit_range.py"
     level: error
     message: "The commit-range script is missing; the commit-messages job would not run."
 
   - id: require-advisory-cache-script
     kind: file_exists
-    paths: "scripts/advisory_cache.py"
+    paths: "tools/_lib/advisory_cache.py"
     level: error
     message: "The advisory-cache script is missing; the audit job's cache would not be reset."
 
   - id: require-github-actions-helper
     kind: file_exists
-    paths: "scripts/github_actions.py"
+    paths: "tools/_lib/github_actions.py"
     level: error
     message: "The GitHub Actions helper is missing; the scripts that report to a run would fail."
 
   - id: require-check-packages
     kind: file_exists
-    paths: "scripts/check_packages.py"
+    paths: "tools/_lib/check_packages.py"
     level: error
     message: "The package-contents check is missing; a release could ship an incomplete tarball."
 
   - id: require-check-docs
     kind: file_exists
-    paths: "scripts/check_docs.py"
+    paths: "tools/_lib/check_docs.py"
     level: error
     message: "The documentation checker is missing; the guides would be unverified prose."
 
   - id: require-check-features
     kind: file_exists
-    paths: "scripts/check_features.py"
+    paths: "tools/_lib/check_features.py"
     level: error
     message: "The supported feature matrix script is missing; compatibility would be a claim again."
 
@@ -260,7 +325,7 @@ rules:
   # by accident: the task would run a command that no longer exists.
   - id: require-check-backlog-status
     kind: file_exists
-    paths: "scripts/check_backlog_status.py"
+    paths: "tools/_lib/check_backlog_status.py"
     level: error
     message: "The task-status check is missing; a card could finish and never say so."
 
@@ -274,7 +339,7 @@ rules:
 
   - id: require-prose-renderer
     kind: file_exists
-    paths: "scripts/prose.py"
+    paths: "tools/_lib/prose.py"
     level: error
     message: "The prose renderer is missing; .vale.ini and the style would be hand-edited again."
 
@@ -340,9 +405,9 @@ rules:
 
   - id: require-skills-check
     kind: file_exists
-    paths: "scripts/check_skills.py"
+    paths: "tools/_lib/check_skills.py"
     level: error
-    message: "Required file scripts/check_skills.py is missing."
+    message: "Required file tools/_lib/check_skills.py is missing."
 
   - id: require-devcontainer-config
     kind: file_exists

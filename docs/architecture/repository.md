@@ -13,14 +13,14 @@ and how do they fit together?
 | `crates/clifacet` | Rust | the library: the command seam, the frontends, the policy, the result contract |
 | `crates/clifacet-macros` | Rust | the `Facet` derive, the `#[clifacet::command]` wrapper, `version!`; re-exported so applications depend on one crate |
 | `examples/` | Rust | consumers of the published API, never of a private path |
-| `automation/`, `dodo.py`, `scripts/` | Python | the automation: the checks, the release runbook, the sandbox |
-| `package.json` | JavaScript | the two tools that are npm packages: the backlog board and the skills installer |
+| `tools/`, `tools/_lib/` | Python | the automation: Tasknest tasks, the checks, the release runbook, the sandbox |
+| `package.json` | JavaScript | developer tooling: scripts, agents-md, markdownlint, backlog, and skills |
 | `pixi.toml`, `pixi.lock` | TOML | the one environment all of the above run in |
 
 The languages are a consequence, not a choice: Rust is what the product is, Python is what
 the checks are written in because they are text processing and process orchestration, and
-the two JavaScript packages are tools that exist on npm and nowhere else. Pixi is what
-makes them one command — `pixi run automation gates` runs a Rust linter, a Python checker,
+the JavaScript packages are tools that exist on npm and nowhere else. Pixi is what
+makes them one command — `pixi run tools run check` runs a Rust linter, a Python checker,
 a bun-installed binary and Vale in the same process tree, all pinned by one lock file.
 
 That is the property worth keeping: **the environment is declared once and solved once**.
@@ -44,28 +44,25 @@ third-party author would rather than the way this repository finds convenient.
 `build.rs` can register a folder of commands — so it stays small enough to read in one
 sitting.
 
-## Why the automation is Python and the task graph is doit
+## Why the automation is Tasknest and modular tools
 
 The checks are mostly "read these files, run these commands, and decide whether the repository is what it says it is." That is text and subprocess work, which Python does without a
 build step, and it made the checks cheap to write and cheap to test.
 
-What it did not have was a task graph. Each check was a Pixi task with a command string,
-and the ordering lived in YAML: a gate that needed another gate said so in a `depends-on`,
-and the only way to discover what existed was to read `pixi.toml`. The tasks are now
-declared in `dodo.py`, which is a Python file with one function per task, and run through
-`pixi run automation <task>`:
+The tasks are declared under `tools/` with `@tool` decorators, managed by Tasknest, and run
+through `pixi run tools <command>` or direct Pixi task aliases:
 
 ```text
-scripts/<name>.py     the implementation: main(argv) -> int, runnable on its own
-automation/lib/       the shared code: the bridge from doit to a script's main
-dodo.py               the registry: names, actions, parameters and order
-pixi.toml             the environment, and one alias per task for muscle memory
+tools/<domain>/<task>.py  modular task definitions (@tool)
+tools/_lib/<name>.py      the implementation: main(argv) -> int, runnable on its own
+tasknest.toml             Tasknest configuration: roots, manifests, marks
+pixi.toml                 the environment, and one alias per task for muscle memory
 ```
 
 The division is deliberate and each part is load-bearing. Pixi owns the environment and
-nothing else. doit owns the graph — what runs, in what order, with what parameters.
-Python owns the implementation. A script that only works through doit would be a script
-its own tests could not run, so every module keeps its `main` and its `__main__` guard.
+entrypoint (`tools = "python -B -m tasknest"`). Tasknest owns the graph — what runs, in what
+order, with what parameters. Python owns the implementation. Every module in `tools/_lib/`
+keeps its `main` and its `__main__` guard so it stays runnable on its own.
 
 ## What is generated, and what that means
 
@@ -78,7 +75,7 @@ committed so that a change to the source is visible as a change to the result:
 | `CHANGELOG.md` | the conventional commits | `pixi run changelog` |
 | `.vale.ini` and `.vale/styles/` | `vale.toml` | `pixi run prose-sync` |
 | `examples/simple/tests/documented_snippets.rs` | the ```` ```rust ```` fences in the pages | `pixi run docs-snippets` |
-| `scripts/restore.sh`, two sandbox workflows | `pixi-sandbox.toml` | `pixi-sandbox init` |
+| `tools/_lib/restore.sh-KEEP`, two sandbox workflows | `pixi-sandbox.toml` | `pixi-sandbox init` |
 
 The committed copy is what CI checks, and the check fails rather than regenerating: a
 generated file that is stale in a pull request means the author edited the wrong one, and
@@ -91,7 +88,7 @@ the failure is where they find out.
 - **The automation does not import the library.** The checks read the sources as text and
   run cargo; none of them links against `clifacet`, so a broken build still lets the
   checks explain why.
-- **The documentation is checked by the scripts, not by reading.** `scripts/check_docs.py`
+- **The documentation is checked by the scripts, not by reading.** `tools/_lib/check_docs.py`
   compiles the fences and resolves the paths, so a page cannot claim an API that was
   removed.
 - **Planning is not documentation.** [`backlog/`](../../backlog/) holds decisions and

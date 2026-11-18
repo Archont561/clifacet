@@ -17,6 +17,13 @@ copy has drifted. Edit the commit messages, not the file.
 * **settings:** declare figment dependency and decision-22 backlog
 ([bba183d](https://github.com/Archont561/clifacet/commit/bba183d6a48ea2ffcbdaa24681b3039a02de4b0b))
 
+### Changed
+
+* **tools:** move bootstrap to scripts and remove doit automation
+([fd07e74](https://github.com/Archont561/clifacet/commit/fd07e74ceca884a4ce3af28a451b3617f156fe4a))
+* **tools:** move scripts and tests to tools/ preserving only scripts/restore.sh
+([c8e32db](https://github.com/Archont561/clifacet/commit/c8e32db65d2b99f9a5f850323a7aa206cf7a618e))
+
 ## [0.5.0] - 2026-11-10
 
 ### Added

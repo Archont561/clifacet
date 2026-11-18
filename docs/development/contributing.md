@@ -51,7 +51,7 @@ pixi run --frozen check-docs   # links, anchors, compiled snippets, documented n
 ```
 
 - Every relative link has to resolve, and every `#fragment` to a heading that exists.
-- A ```` ```rust ```` fence is **compiled**: `scripts/check_docs.py` writes it into
+- A ```` ```rust ```` fence is **compiled**: `tools/_lib/check_docs.py` writes it into
   `examples/simple/tests/documented_snippets.rs`, which the suite builds. A
   fence tagged `rust,ignore` is an illustration and is not compiled — use it when the
   code is deliberately a fragment.
@@ -63,7 +63,7 @@ pixi run --frozen check-docs   # links, anchors, compiled snippets, documented n
 After editing a page, regenerate the snippet file and commit it:
 
 ```sh
-python scripts/check_docs.py --write
+python tools/_lib/check_docs.py --write
 ```
 
 ## Git hooks and commits
@@ -76,7 +76,7 @@ python scripts/check_docs.py --write
 
 Commit messages follow [Conventional Commitshttps://www.conventionalcommits.org/.
 `.versionrc` maps each type to a Keep a Changelog section and hides the ones a user should
-not read, and `scripts/changelog.py` renders `CHANGELOG.md` through it — the message you
+not read, and `tools/_lib/changelog.py` renders `CHANGELOG.md` through it — the message you
 write is the entry that ships, and CI fails when the committed changelog has drifted from
 the commits.
 
@@ -90,9 +90,9 @@ the commits.
 | `examples/discovered` | a second application, small on purpose: the only crate here with a `build.rs`, so it is where discovery is proved end to end |
 | `docs/` | these guides |
 | `backlog/` | decisions, milestones and tasks, as the source of direction |
-| `scripts/` | the repository checks, each with a pytest suite in `scripts/tests/` |
+| `tools/_lib/` | the repository checks, each with a pytest suite in `tools/tests/` |
 
-Generated files are never edited by hand: `scripts/restore.sh`, the sandbox workflows
+Generated files are never edited by hand: `tools/_lib/restore.sh-KEEP`, the sandbox workflows
 and the documented-snippet file are all rendered from their source of truth.
 `pixi run --frozen sandbox-check` proves the first two match.
 

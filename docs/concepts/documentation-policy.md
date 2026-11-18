@@ -66,7 +66,7 @@ cannot tick them is not ready.
 - [ ] Every documented `clifacet::…` path names a public item that exists.
 - [ ] Links and anchors resolve, in both directions.
 - [ ] The prose passes Vale, with no new vocabulary entry unless the word is genuinely new.
-- [ ] `pixi run --frozen --no-install automation docs` passes.
+- [ ] `pixi run --frozen --no-install check-docs` passes.
 - [ ] If nothing needed changing, the review says so and why.
 
 ## What enforces it
@@ -79,9 +79,9 @@ gate. Each answers a question a reader cannot answer by reading.
 | `alint` | does a page the repository promises to have still exist, and do the manifests still agree? |
 | `markdownlint-cli2` | is the page structurally sound — heading levels, lists, fences, line length? |
 | Vale | is it in this project's words: spelling, terminology, house style? |
-| `scripts/check_docs.py` | does every link and anchor resolve, does every Rust fence compile, does every `clifacet::…` path name a real item? |
+| `tools/_lib/check_docs.py` | does every link and anchor resolve, does every Rust fence compile, does every `clifacet::…` path name a real item? |
 
-`scripts/check_docs.py` is the one that knows the most about this directory: it walks
+`tools/_lib/check_docs.py` is the one that knows the most about this directory: it walks
 `docs/` recursively, refuses a page outside the five sections, compiles every ```` ```rust ````
 fence into a committed test file, and resolves every documented path against the crate's
 public items. Vale and alint are configured from `vale.toml` and `.alint.yml`, both of

@@ -7,7 +7,7 @@ name: release
 # This file is plumbing: the environment gate, the OIDC token, the action pins and five
 # steps. Every decision it used to make inline — which version, whether the notes are
 # readable, whether a crate is already on the index, whether to tag — lives in
-# `scripts/release.py`, so it can be tested instead of only being observed on a dispatch.
+# `tools/_lib/release.py`, so it can be tested instead of only being observed on a dispatch.
 #
 # Resumability: each crate is published only when its version is absent from the
 # registry index, and the main crate is published only after the macro version
@@ -56,7 +56,7 @@ jobs:
           pixi-version: v0.83.0
           cache: true
           frozen: true
-      # Everything this job decides lives in `scripts/release.py`, so it can be tested
+      # Everything this job decides lives in `tools/_lib/release.py`, so it can be tested
       # without a dispatch: the ref this run came from, the version the manifests record,
       # the crates inheriting it, and the changelog section that becomes the notes. A
       # missing section fails here, with nothing packaged and nothing to revert.

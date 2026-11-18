@@ -14,8 +14,61 @@
   "scripts": {
     "agents-md": "agents-md",
     "readme": "readme-md-generator",
-    "test": "pixi run --frozen --no-install automation test",
-    "lint": "pixi run --frozen --no-install automation gates",
-    "format": "pixi run --frozen --no-install automation fmt"
+    "test": "pixi run --frozen --no-install tools run test",
+    "lint": "pixi run --frozen --no-install tools run check",
+    "format": "pixi run --frozen --no-install tools run rust.fmt"
+  },
+  "tasknest": {
+    "tasks": {
+      "agents-md": {
+        "description": "Refresh generated regions of AGENTS.md with agents-md.",
+        "marks": [
+          "writes",
+          "offline"
+        ],
+        "requires": [
+          "bun"
+        ]
+      },
+      "readme": {
+        "description": "Render project README from template.",
+        "marks": [
+          "docs"
+        ],
+        "requires": [
+          "bun"
+        ]
+      },
+      "test": {
+        "description": "Run automation test suite via Pixi.",
+        "marks": [
+          "ci",
+          "offline"
+        ],
+        "requires": [
+          "pixi"
+        ]
+      },
+      "lint": {
+        "description": "Run automation quality gates via Pixi.",
+        "marks": [
+          "ci",
+          "offline"
+        ],
+        "requires": [
+          "pixi"
+        ]
+      },
+      "format": {
+        "description": "Format codebase via Pixi automation.",
+        "marks": [
+          "writes",
+          "offline"
+        ],
+        "requires": [
+          "pixi"
+        ]
+      }
+    }
   }
 }

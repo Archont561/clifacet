@@ -1,6 +1,6 @@
 # markdownlint-cli2: the shape of a page, as opposed to its words or its links.
 #
-# Vale already owns spelling and terminology, and `scripts/check_docs.py` owns whether a
+# Vale already owns spelling and terminology, and `tools/_lib/check_docs.py` owns whether a
 # link resolves and a snippet compiles. What neither sees is structure: a heading level
 # skipped, a list that is a paragraph with dashes in it, a fence nobody closed, two
 # consecutive blank lines that render as nothing and read as a mistake. That is this

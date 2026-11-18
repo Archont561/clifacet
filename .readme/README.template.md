@@ -162,12 +162,12 @@ changed](CHANGELOG.md). Publishing is a separate, authorized act from merging.
 
 ```sh
 bash scripts/bootstrap.sh                        # environment, hooks, smoke check
-pixi run --frozen --no-install automation gates  # everything a change must pass, offline
-pixi run --frozen automation gates-online        # adds the checks that need the network
+pixi run --frozen --no-install tools run check   # everything a change must pass, offline
+pixi run --frozen quality                        # adds the checks that need the network
 ```
 
-`dodo.py` is the task graph, `automation/` bridges it to the scripts, and each script in
-`scripts/` still runs on its own. [The task graph](docs/architecture/repository.md#why-the-automation-is-python-and-the-task-graph-is-doit)
+`tools/` declares the Tasknest automation graph, and each script in
+`tools/_lib/` still runs on its own. [The task graph](docs/architecture/repository.md)
 explains the split; [Development](docs/development/development.md) has the checks.
 
 Supported: the empty, `default`, `interactive`, `serde` and `tui` configurations plus

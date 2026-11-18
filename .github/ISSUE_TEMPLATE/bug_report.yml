@@ -1,0 +1,48 @@
+name: Bug Report
+description: Report a reproducible bug in clifacet, macros, examples, or tooling.
+title: "[Bug]: "
+labels:
+  - bug
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug in **clifacet**.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Select the crate, example, or toolchain lane affected.
+      options:
+        - "Core crate (crates/clifacet)"
+        - "Macros crate (crates/clifacet-macros)"
+        - "Example (examples/simple)"
+        - "Example (examples/discovered)"
+        - "Example (examples/backlog-lite)"
+        - "Documentation (docs/)"
+        - "Tooling / CI / Pixi / Policy"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Clear description of the bug and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal Reproduction
+      description: Exact code snippet, command, or test case demonstrating the problem.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, Rust version, cargo version.
+      placeholder: "Ubuntu 24.04 x86_64, Rust 1.88, clifacet 0.5.0"
+    validations:
+      required: true

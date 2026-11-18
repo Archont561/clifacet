@@ -13,6 +13,12 @@ AGENTS.generated.md
 # Python bytecode and pytest caches from the repository script tests
 __pycache__/
 .pytest_cache/
+.coverage
+.coverage.*
 
-# Doit's task database
-.doit.db
+# OS, environments & logs
+.DS_Store
+*.log
+.env
+.env.*
+

@@ -16,8 +16,8 @@ permissions:
 jobs:
   # Which lane this change takes. A change that touches only documentation skips the four
   # Rust jobs below and runs `documentation` instead; anything else, or anything the
-  # classifier cannot decide, runs all of CI. `scripts/change_scope.py` owns the decision
-  # and `scripts/tests/test_change_scope.py` exercises it, including the conditions on the
+  # classifier cannot decide, runs all of CI. `tools/_lib/change_scope.py` owns the decision
+  # and `tools/tests/test_change_scope.py` exercises it, including the conditions on the
   # jobs. Standard library only, so `python3` rather than Pixi: the documentation lane
   # should not set an environment up twice.
   changes:
@@ -37,7 +37,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PUSH_BASE: ${{ github.event.before }}
-        run: python3 scripts/change_scope.py
+        run: python3 tools/_lib/change_scope.py
 
   # The lane a documentation-only change takes: the checks in `quality` that a Markdown
   # or Backlog edit can break, and nothing a Markdown edit cannot reach. A guide's Rust
@@ -219,7 +219,7 @@ jobs:
       # it does not set Pixi up at all (decision-5).
       - name: Resolve the declared MSRV
         id: msrv
-        run: python3 scripts/prove_msrv.py --github-output version
+        run: python3 tools/_lib/prove_msrv.py --github-output version
       # rustup, not Pixi: the Pixi environment pins exactly one compiler
       # (1.99.1), so proving an older floor needs a second toolchain. This is the
       # deliberate exception recorded in decision-5.
@@ -239,7 +239,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-v1-
       - name: Check every feature boundary at the MSRV
-        run: python3 scripts/prove_msrv.py
+        run: python3 tools/_lib/prove_msrv.py
 
   # The supported platforms, with headless tests: every suite passes its own buffers
   # and scripts instead of a terminal, so "it needs a TTY" is never why a platform is
@@ -302,8 +302,8 @@ jobs:
           frozen: true
       # One step, because the range decision and the invocation that consumes it are one
       # decision: a branch's first push has no base, a pull request always does, and the
-      # fallback checks the tip plus a window. `scripts/commit_range.py` owns it and
-      # `scripts/tests/test_commit_range.py` exercises it without pushing anything.
+      # fallback checks the tip plus a window. `tools/_lib/commit_range.py` owns it and
+      # `tools/tests/test_commit_range.py` exercises it without pushing anything.
       - name: Check the messages are conventional
         shell: bash
         env:

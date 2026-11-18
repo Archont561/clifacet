@@ -1,0 +1,38 @@
+[tasknest]
+config_version = 1
+
+[discovery]
+workspaces = false
+
+[[discovery.roots]]
+path = "tools"
+namespace = ""
+project_root = "."
+
+# Manifest-backed workspace tasks: package.json scripts are autodiscovered by Tasknest.
+# Task metadata (description, marks, requires) lives in package.json's `tasknest.tasks` table.
+[[discovery.manifests]]
+path = "."
+runner = "bun"
+
+[checks]
+strict = true
+require_description = true
+require_tests = false
+require_features = false
+unknown_marks = "error"
+
+[marks]
+fast = "Fast local check suitable for git hooks"
+ci = "Included in CI quality gates"
+rust = "Rust compilation, clippy, formatting, and tests"
+python = "Python scripts, tests, and formatting"
+docs = "Documentation, prose, and markdown checks"
+security = "Supply-chain and dependency advisory audits"
+writes = "Modifies generated files or installs dependencies"
+offline = "Runs fully offline without network access"
+release = "Release, packaging, and versioning workflows"
+dev = "Long-running development servers and watchers"
+
+[execution]
+jobs = 1
