@@ -10,6 +10,11 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### Added
+
+* **settings:** declare figment dependency and decision-22 backlog
+([bba183d](https://github.com/Archont561/clifacet/commit/bba183d6a48ea2ffcbdaa24681b3039a02de4b0b))
+
 ## [0.5.0] - 2026-11-10
 
 ### Added

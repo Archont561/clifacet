@@ -647,6 +647,9 @@ pub mod source;
 #[cfg(feature = "settings-toml")]
 pub mod toml;
 
+#[cfg(feature = "settings-figment")]
+pub mod figment;
+
 /// The config directory, as the platform defines it, and the file name this looks for.
 ///
 /// A missing default file is not an error — most machines have none — so this returning
