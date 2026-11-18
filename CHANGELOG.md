@@ -17,6 +17,11 @@ copy has drifted. Edit the commit messages, not the file.
 * **settings:** declare figment dependency and decision-22 backlog
 ([bba183d](https://github.com/Archont561/clifacet/commit/bba183d6a48ea2ffcbdaa24681b3039a02de4b0b))
 
+### Changed
+
+* **tools:** adopt canonical tasknest automation and reorganize scripts
+([41664fe](https://github.com/Archont561/clifacet/commit/41664fe62a5f24387be36e3de566ed318f096eac))
+
 ## [0.5.0] - 2026-11-10
 
 ### Added

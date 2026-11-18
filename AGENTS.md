@@ -38,40 +38,41 @@ Everything runs through Pixi. `--frozen --no-install` reuses the restored enviro
 instead of re-solving it, and it is what the hooks and CI use.
 
 ```sh
-bash scripts/bootstrap.sh                          # environment + git hooks + smoke check
-pixi run --frozen --no-install automation list    # every task, with what it covers
-pixi run --frozen --no-install automation gates   # the offline gate, cheapest failure first
-pixi run --frozen automation gates-online         # adds the two RustSec checks
-pixi run --frozen --no-install hooks-install      # pre-commit, commit-msg, pre-push
+bash scripts/bootstrap.sh                        # environment + git hooks + smoke check
+pixi run --frozen --no-install tools ls          # every task, with what it covers
+pixi run --frozen --no-install tools check       # validate task discovery and dependency graph
+pixi run --frozen --no-install tools run check   # the offline gate, cheapest failure first
+pixi run --frozen quality                        # adds the two RustSec checks
+pixi run --frozen --no-install hooks-install     # pre-commit, commit-msg, pre-push
 ```
 
-The graph is `dodo.py`; `automation/lib/tasks.py` bridges it to `scripts/*.py`, and every
-script still runs on its own (`pixi run --frozen python scripts/check_docs.py`).
+The Tasknest automation graph lives under `tools/`, and every script still runs on its
+own (`pixi run --frozen python tools/_lib/check_docs.py`).
 
 | Task | What it answers |
 | --- | --- |
-| `automation gates` | everything a change must pass, offline, in CI's order |
-| `automation docs` | links, anchors, compiled snippets, real API names |
-| `automation prose` | the rendering is current, then Vale |
-| `automation markdownlint` | the structure of every page |
-| `automation test` | nextest, doctests and the Python suite |
-| `automation coverage` | LCOV plus the 90% source-line floor |
-| `automation fmt` / `lint` | rewrite / check the Rust |
-| `automation readme` / `readme_check` | render README.md / fail when it drifted |
-| `automation agents` | refresh the marked regions of this file |
+| `tools run check` | everything a change must pass, offline, in CI's order |
+| `tools run docs.check` | links, anchors, compiled snippets, real API names |
+| `tools run docs.prose` | the rendering is current, then Vale |
+| `tools run docs.md` | the structure of every page |
+| `tools run test` | nextest, doctests and the Python suite |
+| `tools run coverage` | LCOV plus the 90% source-line floor |
+| `tools run rust.fmt` / `rust.lint` | rewrite / check the Rust |
+| `tools run docs.readme` / `docs.readme --check` | render README.md / fail when it drifted |
+| `tools run repo.agents` | refresh the marked regions of this file |
 <!-- agents-md:end id=commands -->
 
 <!-- agents-md:begin id=testing -->
 ## Testing
 
-`automation gates` is the gate; `automation test` is the suites inside it.
+`tools run check` is the gate; `tools run test` is the suites inside it.
 
 | Suite | Command | Size at 0.5.0 |
 | --- | --- | --- |
 | Rust unit + integration | `cargo nextest run --workspace --all-features --locked` | 732 tests |
 | Doctests | `cargo test --workspace --all-features --doc` | nextest does not run them |
 | Documented snippets | `cargo test -p clifacet-example --test documented_snippets` | 25, generated from the pages |
-| Python automation | `python -m pytest scripts/tests` | 463 tests, 2 skipped |
+| Python automation | `python -m pytest tools/tests` | 453 tests, 2 skipped |
 
 A change is not done when the tests pass — it is done when the criteria on its backlog card
 are checked and the card's status says so (see *The board* below). Tests come first for
@@ -92,9 +93,8 @@ examples/                 consumers of the published API — never a private pat
   simple/                 the reference application; its own README and suite
   discovered/             src/commands/ registered from build.rs
   backlog-lite/           a wrapper around somebody else's CLI: the acceptance case
-automation/               the doit bridge (lib/tasks.py)
-scripts/                  the implementations: one main(argv) -> int each
-dodo.py                   the task graph
+scripts/                  restore launcher and bootstrap script
+tools/                    canonical Tasknest automation tasks, tools/_lib/ implementations, tools/tests/ suite
 docs/                     the knowledge layer — guides/ concepts/ reference/ architecture/ development/
 backlog/                  decisions, milestones, tasks (planning, not documentation)
 .readme/                  the README template; README.md is rendered from it
@@ -149,16 +149,10 @@ Default branch `main`; remote `https://github.com/Archont561/clifacet`.
 
 Each of these cost a CI run at least once. Where a check was possible, there is one.
 
-- **`None` as `argv` reads the wrong command line.** A script's `main(argv)` under doit gets
-  doit's own `sys.argv`; always pass a list, even an empty one.
-- **A Python action's return value is doit's result.** A `main` returning `1` would pass;
-  raise instead, which is what `automation/lib/tasks.py` does.
-- **No `file_dep` or `targets` on a check.** Doit would skip it, and a skipped check reports
-  success without looking.
 - **`pixi run <task>` after a restore needs `bun-install`** before anything that reads
   `node_modules`: markdownlint, the README renderer, the backlog board, this file's tool.
 - **The README generator prompts before overwriting `README.md`** and has no flag to skip
-  it, so `scripts/readme.py` renders in a scratch directory and copies the result in.
+  it, so `tools/_lib/readme.py` renders in a scratch directory and copies the result in.
 - **`agents-md` rewrites its marked regions from detection on every run**, and it detects
   this repo as `node`, so a refresh reintroduces stubs in those sections. Fill them again
   and review the diff; keep durable rules outside the markers.
@@ -189,7 +183,7 @@ Each of these cost a CI run at least once. Where a check was possible, there is 
 <!-- agents-md:begin id=boundaries -->
 ## Boundaries
 
-- ✅ **Always**: run `pixi run --frozen --no-install automation gates` before proposing a
+- ✅ **Always**: run `pixi run --frozen --no-install tools run check` before proposing a
   change; regenerate `CHANGELOG.md` after a commit that changes it; re-render the README
   after editing its template; update the page a behavior change affects; close the backlog
   card in the same change as the work.
@@ -295,7 +289,7 @@ Two narrowings, both of which have to be stated rather than assumed:
 - A mechanical change with no behavior — a rename, a dependency bump, a docs or CI edit —
   may take the exception, and the task records that it did.
 
-`automation gates` is the loop's gate: it must be green before a feature is claimed done,
+`tools run check` is the loop's gate: it must be green before a feature is claimed done,
 and a red test is never turned into a green one by weakening it.
 
 ## Agent skills
@@ -331,7 +325,7 @@ broadening scope.
 `docs/` is the product's knowledge layer, not a byproduct. Five directories, one purpose
 each: `guides/` for tasks, `concepts/` for reasons, `reference/` for promises,
 `architecture/` for how the repository is built, `development/` for working on it.
-`docs/README.md` is the only page at the top level, and `scripts/check_docs.py` fails a page
+`docs/README.md` is the only page at the top level, and `tools/_lib/check_docs.py` fails a page
 filed anywhere else.
 
 The policy is
@@ -404,11 +398,30 @@ gh api repos/Archont561/clifacet/environments/crates --jq '.protection_rules'
 Never request credentials in chat; if `git` or `gh` fails with an authentication error,
 report it and ask for the connection to be re-established.
 
+## Pull Requests
+
+When a pull request is requested, open it using `.github/PULL_REQUEST_TEMPLATE.md` as the
+description — never from a blank description:
+
+- Pass the template as the body: `gh pr create --body-file .github/PULL_REQUEST_TEMPLATE.md`
+  (or `--template PULL_REQUEST_TEMPLATE.md` on `gh` versions that support it), then fill
+  every section in.
+- Fill in **Summary** (what changed and why, plus the related issue or `backlog/` task ID)
+  and tick only the **Affected Surfaces** boxes that actually changed.
+- Work through the **Verification Checklist** by actually running the listed `pixi run ...`
+  commands. Leave a box unchecked with a one-line explanation rather than claiming a check
+  that did not run.
+- Re-check the **Architecture Guardrails**.
+- Keep every section heading so reviews remain structured and comparable across pull
+  requests.
+
 ## Ownership and safety
 
 - `pixi-sandbox.toml` is the authored sandbox policy. Regenerate the publisher, relock
   workflow and restore script with `pixi-sandbox init` via Pixi; never hand-edit generated
   files. Validate with `pixi run --frozen sandbox-check`.
+- `tasknest` automation under `tools/` can be queried with `pixi run tools ls` and validated
+  with `pixi run tools run check`.
 - Preserve the UI-free command core and the shared mode/validation boundary; consult
   backlog decisions before changing architecture.
 - Do not publish, push, discard changes, close tasks, or alter scope without appropriate

@@ -64,14 +64,14 @@ bash scripts/bootstrap.sh
 Then work normally. The loop that keeps a change cheap:
 
 ```sh
-pixi run --frozen --no-install automation gates   # what CI will run, offline, in its order
-git commit                                        # the same checks, seconds, on the files touched
-git push                                          # the suites, once
+pixi run --frozen --no-install tools run check # what CI will run, offline, in its order
+git commit                                     # the same checks, seconds, on the files touched
+git push                                       # the suites, once
 ```
 
-`automation gates` is the gate to run before asking for a review: it is the offline subset
+`tools run check` is the gate to run before asking for a review: it is the offline subset
 of CI in CI's order, so it fails the way CI would fail, in about a minute instead of nine.
-`automation gates-online` adds the two RustSec checks that need the network.
+`pixi run --frozen quality` adds the two RustSec checks that need the network.
 
 Two habits that break the loop, both enforced: committing with `--no-verify` (CI's
 `commit-messages` and `quality` jobs exist precisely for whoever does), and hand-editing a
@@ -120,7 +120,7 @@ increasing order of what they buy:
 - **Cache the build.** An `actions/cache` entry on `~/.cargo` and `target/`, keyed on
   `Cargo.lock` and the toolchain, turns a repeat run's rebuild into a link. This is the
   single largest win and it needs no workflow restructuring.
-- **Classify further than documentation.** `scripts/change_scope.py` already decides the
+- **Classify further than documentation.** `tools/_lib/change_scope.py` already decides the
   lane and is tested; a "Rust-only, no manifest, no public API" class does not need the
   MSRV job, which only moves when the manifests do.
 - **Run the platform matrix on the merge, not the push.** `main` still sees three

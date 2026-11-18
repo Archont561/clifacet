@@ -38,7 +38,7 @@ Five directories, and a page's directory says what the page is for.
 | [`development/`](development/) | working on this repository: checks, hooks, release | how is it changed? |
 
 Every directory holds its pages directly; `docs/README.md` is the only page at the top
-level. `scripts/check_docs.py` enforces the list: a page in a directory that is not one of
+level. `tools/_lib/check_docs.py` enforces the list: a page in a directory that is not one of
 the five fails the documentation gate, so a new section is a decision rather than an
 accident.
 
@@ -73,9 +73,9 @@ each answers a question a reader cannot:
 | `alint` | a page the repository promises to have go missing |
 | `markdownlint-cli2` | a page whose structure is broken — skipped heading levels, malformed lists, a fenced block nobody closed |
 | [Vale](https://vale.sh) | a page in the wrong words: misspellings, invented terminology, a house style that drifts page by page |
-| `scripts/check_docs.py` | a link that goes nowhere, an anchor no heading provides, a Rust fence that no longer compiles, a `clifacet::…` path that names nothing |
+| `tools/_lib/check_docs.py` | a link that goes nowhere, an anchor no heading provides, a Rust fence that no longer compiles, a `clifacet::…` path that names nothing |
 
-`scripts/check_docs.py` is the oldest of the four and the one that knows the most about
+`tools/_lib/check_docs.py` is the oldest of the four and the one that knows the most about
 this directory: every `` ```rust `` fence is written into a committed test file and
 compiled, and every documented path is resolved against the crate's public items. Links
 in a page are checked against the file they name and the headings it has.
@@ -85,10 +85,10 @@ in a page are checked against the file they name and the headings it has.
 1. Decide which of the five directories it belongs in, and add it there.
 2. Link it from this index, and from whatever page a reader would arrive from.
 3. If it moves a fact, remove the old copy rather than leaving both.
-4. Run `pixi run --frozen --no-install automation docs`. It renders the snippet test file
-   when a page's Rust changed (`automation docs_write` regenerates it), and it names every
+4. Run `pixi run --frozen --no-install check-docs`. It renders the snippet test file
+   when a page's Rust changed (`pixi run docs-snippets` regenerates it), and it names every
    link that no longer resolves.
-5. Run `pixi run --frozen --no-install automation prose` for the words.
+5. Run `pixi run --frozen --no-install prose-check` for the words.
 
 A page is finished when its commands were run, its examples compile, and its links
 resolve. See [Contributing § Documentation is checked](development/contributing.md#documentation-is-checked)

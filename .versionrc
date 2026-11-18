@@ -1,7 +1,7 @@
 # convco configuration. https://convco.github.io/configuration/
 #
 # Commit messages are the input to the changelog, the version bump and the release notes, so the
-# type-to-section mapping lives here rather than in each tool. `scripts/changelog.py` renders
+# type-to-section mapping lives here rather than in each tool. `tools/_lib/changelog.py` renders
 # `CHANGELOG.md` through this file, so the sections below are what a reader sees: `header` is the
 # preamble, `types` decides which commits earn a section, and `hidden` is the only way one stops.
 header: |

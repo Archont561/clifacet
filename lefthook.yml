@@ -47,7 +47,7 @@ pre-commit:
     - name: check-docs
       # Links, anchors, compiled snippets and documented names. The generated snippet file
       # is itself an input here, so a page edited without regenerating it fails the commit.
-      glob: ["*.md", "docs/*.md", "scripts/check_docs.py", "examples/simple/tests/documented_snippets.rs"]
+      glob: ["*.md", "docs/*.md", "tools/_lib/check_docs.py", "examples/simple/tests/documented_snippets.rs"]
       run: pixi run --frozen --no-install check-docs
 
     - name: alint
@@ -65,7 +65,7 @@ pre-commit:
       run: pixi run --frozen --no-install sandbox-check
 
     - name: skills-check
-      glob: [".agents/**", "scripts/check_skills.py", "skills-lock.json"]
+      glob: [".agents/**", "tools/_lib/check_skills.py", "skills-lock.json"]
       run: pixi run --frozen --no-install skills-check
 
 commit-msg:

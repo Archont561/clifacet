@@ -1,0 +1,124 @@
+"""The Pixi task surface: which gates are offline-safe, and what each one covers.
+
+`test-local` is presented everywhere — here, `AGENTS.md`, the guides — as the gate a
+contributor runs with `--no-install` after a restore, and a restore has no network. A
+task that silently fetches the advisory database or re-solves the environment would
+therefore fail for the wrong reason, at the worst moment: on a warm checkout that
+looks like the contributor's own change broke something.
+
+That is a claim about a dependency graph, so it is checked rather than remembered.
+"""
+
+from __future__ import annotations
+
+import re
+import tomllib
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+PIXI = ROOT / "pixi.toml"
+
+# Tasks that need the network. `deny` and `audit` fetch the RustSec database; the
+# `bun-install` pair re-solves the JavaScript dependencies and `backlog`/`skills` build
+# on them. `quality` is the CI command and is made of several of these.
+NETWORK_TASKS = frozenset({"deny", "audit", "quality", "bun-install", "backlog", "skills"})
+OFFLINE_PAIRS = {"deny": "deny-offline", "audit": "audit-offline"}
+
+
+@pytest.fixture(scope="module")
+def tasks() -> dict:
+    return tomllib.loads(PIXI.read_text(encoding="utf-8"))["tasks"]
+
+
+def dependencies(task: dict | str) -> list[str]:
+    """The tasks one entry depends on; a plain string entry depends on nothing."""
+    return list(task.get("depends-on", [])) if isinstance(task, dict) else []
+
+
+def test_test_local_is_made_only_of_offline_safe_tasks(tasks):
+    offending = sorted(set(dependencies(tasks["test-local"])) & NETWORK_TASKS)
+
+    assert not offending, (
+        "test-local runs after a restore, with --no-install and no network; "
+        f"{offending} would fetch instead of checking"
+    )
+
+
+def test_test_local_includes_the_prose_check(tasks):
+    """A guide is prose; a change to one has to be checked by the gate that owns prose."""
+    assert "prose-check" in dependencies(tasks["test-local"])
+
+
+def test_the_prose_check_needs_no_network(tasks):
+    """The packages are committed after `prose-sync`, so linting offline has to work."""
+    assert "prose-check" not in NETWORK_TASKS
+    assert "vale" not in tasks["prose-check"].split("&&")[0], (
+        "only the second half shells out to Vale; the first half is the rendering check"
+    )
+
+
+def test_quality_checks_the_prose_too(tasks):
+    """CI is the authority for the lint, so the CI task must run it."""
+    assert "prose-check" in dependencies(tasks["quality"])
+
+
+def test_syncing_the_prose_packages_is_the_only_fetching_prose_task(tasks):
+    """Fetching belongs in `prose-sync`, which a person runs, not in a gate."""
+    assert "vale sync" not in tasks["prose-check"]
+    assert "prose.py sync" in tasks["prose-sync"]
+
+
+def test_test_local_uses_the_offline_advisory_tasks(tasks):
+    """The offline wrappers exist for exactly this; using the fetching ones defeats them."""
+    depends = dependencies(tasks["test-local"])
+
+    assert "deny-offline" in depends
+    assert "audit-offline" not in depends, (
+        "an offline audit steps aside with a message; it belongs on pre-push, not in the gate"
+    )
+
+
+def test_test_local_includes_the_documentation_and_doctests(tasks):
+    """A guide and a doctest can both break a change; the gate has to see them."""
+    depends = dependencies(tasks["test-local"])
+
+    assert "check-docs" in depends
+    assert "test-doc" in depends
+
+
+def test_quality_keeps_the_fetching_checks(tasks):
+    """CI has the network, so the authoritative run still audits and fetches."""
+    depends = dependencies(tasks["quality"])
+
+    assert "deny" in depends
+    assert "audit" in depends
+
+
+def test_every_task_a_workflow_calls_exists(tasks):
+    """A renamed task breaks a workflow at push time, which is the worst time to learn."""
+    workflows = ROOT / ".github" / "workflows"
+    called = set()
+    for path in workflows.glob("*.yml"):
+        called.update(re.findall(r"pixi run (?:--frozen|-x) ([-\w]+)", path.read_text(encoding="utf-8")))
+
+    assert called, "the workflows should call Pixi tasks"
+    assert sorted(called - set(tasks)) == []
+
+
+def test_the_workflow_facing_scripts_have_a_task_each(tasks):
+    """The release and CI logic is run from workflows, so each entry point is a task."""
+    for name, script in (
+        ("release", "tools/_lib/release.py"),
+        ("commit-range", "tools/_lib/commit_range.py"),
+        ("change-scope", "tools/_lib/change_scope.py"),
+        ("advisory-cache", "tools/_lib/advisory_cache.py"),
+    ):
+        assert tasks.get(name) == f"python {script}"
+
+
+def test_every_offline_wrapper_exists_for_its_fetching_counterpart(tasks):
+    for fetching, offline in OFFLINE_PAIRS.items():
+        assert fetching in tasks
+        assert offline in tasks, f"{fetching} needs an offline counterpart for the pre-push hook"

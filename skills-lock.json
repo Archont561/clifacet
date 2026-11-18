@@ -1,0 +1,71 @@
+{
+  "version": 2,
+  "skills": {
+    "audit": {
+      "source": "./.agents/skills/audit",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "5d38229e962a2807d822d71946dff25dfb1d9b0782989b3e3a66cb39fe1caef4"
+    },
+    "backlog": {
+      "source": "./.agents/skills/backlog",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "c5e80e2cb05ea4ba3cecf621c7b38b4c8a0417d1f4deaaa4b58985101558d3b4"
+    },
+    "bdd": {
+      "source": "./.agents/skills/bdd",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "eae9bdd042a3ec3051b345cb6db320fb4e151087cf5ce38f8303bea081d78d26"
+    },
+    "tdd": {
+      "source": "./.agents/skills/tdd",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "957e029fb417006a663a27d9053af39b295a709a18cd4553be1f858a722e7dae"
+    },
+    "clean-code-principles": {
+      "source": "./.agents/skills/clean-code-principles",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "cee8503964e1ddaea77db0b705c9ba95abf7f2fde786072e037d61d9c3fdb746"
+    },
+    "grill-me": {
+      "source": "./.agents/skills/grill-me",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "b69ff9ebde6dd9879176fca5bc031bf5ee20145e9d27f58a0d1ec0117d2f9d2c"
+    },
+    "refactor": {
+      "source": "./.agents/skills/refactor",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "d44ef0c2c5cf040512815b37e60f0919dcbfa8220cc0c8c25b96ef68abc13120"
+    },
+    "regain-direction": {
+      "source": "./.agents/skills/regain-direction",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "42330e51dba721ac5e42a27d66a9e01e1fb3d8a7363fe030f79ec4e28312c44f"
+    },
+    "session": {
+      "source": "./.agents/skills/session",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "ba7410b803e13212c8cc9323f647e95e02a89987d1b02e04facd03fb4b3ead40"
+    },
+    "skill-creator": {
+      "source": "./.agents/skills/skill-creator",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "2914cc98af4a61b0c2b0043b510ba96e0f95e3a9172a49f70f750f31bfad4f0e"
+    },
+    "writing-for-agents": {
+      "source": "./.agents/skills/writing-for-agents",
+      "sourceType": "local",
+      "skillPath": "SKILL.md",
+      "computedHash": "caf804660a44577dd5e40331abce88c77b332b1a0524a898dc7755e973d69476"
+    }
+  }
+}

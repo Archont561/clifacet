@@ -1,0 +1,35 @@
+name: Feature Request
+description: Propose a new capability, settings loader, prompt adapter, or tooling enhancement.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - triage
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Target Area
+      description: Select the primary crate or tooling surface.
+      options:
+        - "Core crate (crates/clifacet)"
+        - "Macros crate (crates/clifacet-macros)"
+        - "Settings / Figment / TOML"
+        - "Prompts / TUI / Inquire / Ratatui"
+        - "Documentation / Examples"
+        - "Tooling / CI / Pixi / Policy"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Describe the use case and why existing capabilities are insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution / API Design
+      description: Outline the proposed Rust API, function signatures, or CLI behavior.
+    validations:
+      required: true

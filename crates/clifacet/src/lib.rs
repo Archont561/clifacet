@@ -210,10 +210,6 @@ pub use failure::{Failure, FailureKind};
 /// resolving a different `clap` than the derive was built against.
 pub use clap;
 
-/// `serde`, re-exported so a caller can name the version this crate was built against.
-#[cfg(feature = "serde")]
-pub use serde;
-
 /// Expands to the version of the `clifacet-macros` package.
 pub use clifacet_macros::version;
 

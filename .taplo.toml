@@ -1,0 +1,6 @@
+# Taplo TOML formatter configuration
+exclude = [".pixi/**", "**/node_modules/**", "**/target/**", "**/coverage/**"]
+
+[formatting]
+column_width = 100
+indent_string = "  "

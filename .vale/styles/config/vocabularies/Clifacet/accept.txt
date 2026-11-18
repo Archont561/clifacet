@@ -2,7 +2,7 @@ clifacet
 clifacet-macros
 clifacet-example
 alint
-doit
+tasknest
 clippy
 codecov
 doctest

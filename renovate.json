@@ -1,0 +1,48 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    "helpers:pinGitHubActionDigests",
+    ":semanticCommits",
+    ":dependencyDashboard"
+  ],
+  "timezone": "UTC",
+  "schedule": ["before 06:00 on Monday"],
+  "labels": ["dependencies"],
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 10,
+  "minimumReleaseAge": "3 days",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 06:00 on the first day of the month"]
+  },
+  "pixi": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Pin all GitHub Actions to full 40-char commit SHAs and group minor/patch updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "Group Pixi toolchain and linter dependencies (pixi.toml / pixi.lock)",
+      "matchManagers": ["pixi"],
+      "groupName": "pixi-toolchain"
+    },
+    {
+      "description": "Group non-major Cargo dependency updates across the Rust workspace",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "rust-workspace-non-major"
+    },
+    {
+      "description": "Group devDependencies across the Bun workspace",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "js-dev-tooling"
+    }
+  ]
+}

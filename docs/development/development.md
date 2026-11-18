@@ -7,53 +7,43 @@ The workspace version is recorded in three manifests — `Cargo.toml`'s
 contain. The checked-in Pixi environment targets Linux x86-64.
 
 ```sh
-bash scripts/bootstrap.sh              # environment, hooks, smoke check
-pixi run --frozen --no-install automation gates   # everything a change must pass, offline
-pixi run --frozen automation gates-online         # adds the two checks that fetch the advisories
-pixi run --frozen --no-install automation list    # every task, with what it covers
+bash scripts/bootstrap.sh                        # environment, hooks, smoke check
+pixi run --frozen --no-install tools run check   # everything a change must pass, offline
+pixi run --frozen quality                        # adds the checks that need the network
+pixi run --frozen --no-install tools ls          # every task, with what it covers
 ```
 
-Each task also has a one-word alias for muscle memory — `pixi run check-docs`,
-`pixi run prose-check`, `pixi run test` — but the CLI is where the graph lives, so it is
+Each task also has an alias in `pixi.toml` for muscle memory — `pixi run check-docs`,
+`pixi run prose-check`, `pixi run test` — but Tasknest (`tools`) is where the graph lives, so it is
 what this page documents.
 
 ## The task graph
 
-The automation is one task graph. `dodo.py` declares it, `automation/` holds the code
-that connects doit to the scripts, and `scripts/` holds the implementations.
+The automation is one task graph. Tasknest declares it under `tools/`, and `tools/_lib/`
+holds the implementations.
 
 | Piece | Owns |
 | --- | --- |
-| `pixi.toml` | the environment: toolchains, pinned tools, and one alias per task |
-| `dodo.py` | the graph: what runs, in what order, with what parameters |
-| `automation/lib/tasks.py` | the bridge: calls a script's `main`, fails the task on a non-zero exit |
-| `scripts/<name>.py` | the implementation, runnable on its own |
+| `pixi.toml` | the environment: toolchains, pinned tools, and `tools` entrypoint |
+| `tools/` | modular task definitions with `@tool` decorators |
+| `tasknest.toml` | Tasknest configuration: discovery roots, marks, manifests |
+| `tools/_lib/<name>.py` | the implementation, runnable on its own |
 
-A task is a function returning a dict; it never does the work at import time. Adding one
-is a function in `dodo.py` and, if it is worth remembering, an alias in `pixi.toml`:
+A task is a function decorated with `@tool`; it never does the work at import time. Adding one
+is a function in `tools/` and, if it is worth remembering, an alias in `pixi.toml`:
 
 ```python
-def task_mytask() -> dict:
-    """What this checks, in one line, so `automation list` can explain it."""
-    return {"actions": [script("myscript")]}
+@tool(marks=("fast", "ci", "offline"), description="What this checks, in one line.")
+def mytask(ctx: ToolContext) -> None:
+    ...
 ```
 
-Three rules keep the graph honest, and each has a reason beyond tidiness:
+The graph is the order: `check` lists its dependencies cheapest-to-fail first, so a
+formatting mistake reports before the test suite runs.
 
-- **A check declares no `file_dep` and no `targets`.** Doit would skip an action whose
-  outputs are newer than its inputs, and a check that skipped itself reports success
-  without looking. Only a task that *generates* a file would have outputs, and those are
-  named `docs_write`, `changelog` and `readme` — a person runs them, and they are never
-  part of the gate.
-- **A failure is an exception, not a return value.** doit records a Python action's return
-  value as the task's result, so a `main` returning `1` would pass. The bridge raises.
-- **The graph is the order.** `gates` lists its dependencies cheapest-to-fail first, so a
-  formatting mistake reports before the test suite runs. `doit -n 3` parallelizes whatever
-  does not depend on anything else.
-
-`gates` is offline by construction: `audit`, `deny`, `readme_check` and `backlog_check`
-fetch from the network or from npm, so they belong to a person's command
-or to CI, and `scripts/tests/test_automation_tasks.py` fails if one is moved into the gate.
+`check` is offline by construction: `audit` and `deny`
+fetch from the network, so they belong to a person's command
+or to CI (`quality`).
 
 ## Documentation is built, not written
 
@@ -61,21 +51,21 @@ The pages are checked by the same task graph as the code. Four checks, four ques
 
 | Task | Answers |
 | --- | --- |
-| `automation docs` | does every link and anchor resolve, does every Rust fence compile, does every documented name exist? |
-| `automation prose` | is the rendering of `vale.toml` current, and does the prose pass Vale? |
-| `automation markdownlint` | is the page structurally sound — heading levels, lists, fences? |
-| `automation alint` | do the pages the repository promises to have still exist? |
+| `tools run docs.check` | does every link and anchor resolve, does every Rust fence compile, does every documented name exist? |
+| `tools run docs.prose` | is the rendering of `vale.toml` current, and does the prose pass Vale? |
+| `tools run docs.md` | is the page structurally sound — heading levels, lists, fences? |
+| `tools run repo.alint` | do the pages the repository promises to have still exist? |
 
 ```sh
-pixi run --frozen --no-install automation docs          # the documentation gate
-pixi run --frozen --no-install automation docs_write    # regenerate the snippet test after editing a page
-pixi run --frozen --no-install automation markdownlint  # the structure of the pages
+pixi run --frozen --no-install tools run docs.check          # the documentation gate
+pixi run --frozen --no-install tools run docs.check --write  # regenerate the snippet test after editing a page
+pixi run --frozen --no-install tools run docs.md            # the structure of the pages
 ```
 
 `markdownlint-cli2` is pinned in `package.json` and installed with the other npm tools, so
 it reads `node_modules` and is part of the offline gate.
 
-`scripts/check_docs.py` walks every directory under `docs/` and refuses a page filed
+`tools/_lib/check_docs.py` walks every directory under `docs/` and refuses a page filed
 outside the five sections. A ```` ```rust ```` fence in `README.md` or a page is not prose: it
 copies it into `examples/simple/tests/documented_snippets.rs`, which the suite
 compiles and runs. `rust,ignore` is the escape hatch for a deliberate fragment, and it
@@ -108,8 +98,8 @@ file-existence rule in Vale would be one nobody could run.
 
 **`vale.toml` is authored; `.vale.ini` and `.vale/styles/` are generated.** Vale reads an
 INI file and a directory of YAML rules, and hand-edited configuration is where a rule with
-no stated reason comes from. `scripts/prose.py` renders both, `prose-check` fails when the
-committed copy has drifted, and the same pattern already governs `scripts/restore.sh` and
+no stated reason comes from. `tools/_lib/prose.py` renders both, `prose-check` fails when the
+committed copy has drifted, and the same pattern already governs `tools/_lib/restore.sh-KEEP` and
 the documented snippets.
 
 What the configuration holds:
@@ -166,7 +156,7 @@ Compatibility is a claim with a list, so the list is written down and checked ra
 than assumed.
 
 **Feature combinations.** A feature is a dependency boundary: an application enables the
-frontends it uses and pays for no others. `scripts/check_features.py` derives the rows
+frontends it uses and pays for no others. `tools/_lib/check_features.py` derives the rows
 from `crates/clifacet/Cargo.toml` and checks each one against the committed lockfile:
 
 | Row | Flags | What it proves |
@@ -192,14 +182,14 @@ permanent.
 the table and the plan cannot disagree. Adding a feature to the manifest adds a row —
 CI never carries its own list.
 
-The same matrix is what `scripts/prove_msrv.py` checks with the declared MSRV toolchain,
+The same matrix is what `tools/_lib/prove_msrv.py` checks with the declared MSRV toolchain,
 so the stable matrix and the floor cannot drift: `pixi run prove-msrv` and the `msrv` job
 are the same five commands with a different `cargo +<toolchain>`.
 
 ```sh
 pixi run check-features                 # run the matrix
-python scripts/check_features.py --print-matrix   # the rows, as data
-python scripts/check_features.py --print-plan     # the commands they resolve to
+python tools/_lib/check_features.py --print-matrix   # the rows, as data
+python tools/_lib/check_features.py --print-plan     # the commands they resolve to
 ```
 
 **Operating systems.** CI runs the headless suite on Linux, macOS and Windows
@@ -244,16 +234,16 @@ to land; CI remains the authoritative verdict.
 
 Commit messages follow [Conventional Commitshttps://www.conventionalcommits.org/, configured
 in `.versionrc` for convco. That file also maps each commit type to a Keep a Changelog section
-and decides which of them are hidden, which is what `scripts/changelog.py` renders through. CI
+and decides which of them are hidden, which is what `tools/_lib/changelog.py` renders through. CI
 enforces it too: the
 `commit-messages` job runs `convco check` over the pull request's commits, so a contributor
 without hooks cannot merge a message the changelog cannot read.
 
-The CI job's own decisions are scripts too — `scripts/commit_range.py` resolves which
-commits a run introduced, `scripts/change_scope.py` decides whether a change is
-documentation only, and `scripts/advisory_cache.py` computes the advisory-cache week
+The CI job's own decisions are scripts too — `tools/_lib/commit_range.py` resolves which
+commits a run introduced, `tools/_lib/change_scope.py` decides whether a change is
+documentation only, and `tools/_lib/advisory_cache.py` computes the advisory-cache week
 key and resets whatever the cache restored. A workflow step is expected to be one
-`pixi run` call; `scripts/tests/test_release_workflow.py` fails when a `run:` block grows
+`pixi run` call; `tools/tests/test_release_workflow.py` fails when a `run:` block grows
 a shell condition, a loop or a command substitution, because none of those can be tested
 without a runner.
 
@@ -265,7 +255,7 @@ as CI does.
 
 ## Documentation-only changes
 
-CI has two lanes. The `changes` job runs `scripts/change_scope.py` over the paths this pull
+CI has two lanes. The `changes` job runs `tools/_lib/change_scope.py` over the paths this pull
 request or push changed (the same range the commit-message check uses):
 
 | The change touches | Runs |
@@ -283,7 +273,7 @@ Two things keep "every `.md` file" honest. A guide's `rust` snippets are compile
 generated `examples/simple/tests/documented_snippets.rs`, so a change to one changes that file
 too and runs everything, and `check-docs` in the documentation lane catches a snippet edited
 without regenerating it. And no Rust source compiles a Markdown file in;
-`scripts/tests/test_change_scope.py` fails the day one does, because from then on a Markdown
+`tools/tests/test_change_scope.py` fails the day one does, because from then on a Markdown
 edit would be a code change.
 
 The classifier is standard library only and runs under the runner's `python3`, like the MSRV
@@ -346,10 +336,10 @@ rechecks the tools and can use the network again.
 to support; every crate inherits it. The claim is verified, not assumed:
 
 ```sh
-python scripts/prove_msrv.py --print-toolchain   # the declared version
-python scripts/prove_msrv.py --print-plan        # the exact checks
+python tools/_lib/prove_msrv.py --print-toolchain   # the declared version
+python tools/_lib/prove_msrv.py --print-plan        # the exact checks
 pixi run --frozen prove-msrv                     # check with a rustup-selected toolchain
-python scripts/prove_msrv.py --toolchain ""      # reuse the pinned compiler (plumbing only)
+python tools/_lib/prove_msrv.py --toolchain ""      # reuse the pinned compiler (plumbing only)
 ```
 
 The `msrv` CI job installs the declared toolchain and runs that script, which
@@ -398,7 +388,7 @@ alone. Notes edited after the fact are edited deliberately, with
 release as already present and change nothing.
 
 `release.yml` is plumbing — the `crates` environment, the OIDC token, five steps and the
-pinned actions. Every decision is in `scripts/release.py`, which is why it can be tested
+pinned actions. Every decision is in `tools/_lib/release.py`, which is why it can be tested
 rather than only observed: the dry runs exercised the packaging half, and the `0.1.0`
 release exercised the publish half.
 
@@ -419,7 +409,7 @@ keep that from happening:
 - **The `Unreleased` heading is always there.** convco writes `## [Unreleased]` only when
   HEAD is past the latest tag — even when every commit since is hidden — so a render at
   the tag lacked a heading and a `vX...HEAD` link that the very next commit added, and the
-  step's own commit is that next commit. `scripts/changelog.py` adds the heading, empty,
+  step's own commit is that next commit. `tools/_lib/changelog.py` adds the heading, empty,
   whenever convco leaves it out, so a render at a tag equals a render after any number of
   hidden commits. The release notes are rendered separately, from the new version's
   section alone, and never carry the heading.
@@ -529,7 +519,7 @@ first is now confirmed by the `0.1.0` release above, the second is not:
   time the main crate is packaged. `release publish` polls for up to five minutes and
   fails rather than publishing blind.
 - **partial-failure recovery** — that a run which published one crate and then
-  failed can be finished. `scripts/tests/test_release.py` proves the rule locally (an
+  failed can be finished. `tools/tests/test_release.py` proves the rule locally (an
   already-indexed crate is skipped, so a re-run publishes only what is missing), but
   the registry behavior it relies on is only confirmed by a real release.
 
@@ -551,7 +541,7 @@ repository agrees: tag `v0.1.0` points at the merge of the release commit and th
 Release carries the rendered notes. That run is also the evidence for the two facts a
 rehearsal cannot reach — registry availability (the publish loop polled the index and the
 main crate was packaged only after the macro crate appeared) and the OIDC exchange itself.
-Partial-failure recovery is still only proven by rule, in `scripts/tests/test_release.py`:
+Partial-failure recovery is still only proven by rule, in `tools/tests/test_release.py`:
 the first release had no partial failure to recover from.
 
 **`0.2.0` was the first release cut through the runbook end to end.** The bump was
@@ -583,7 +573,7 @@ and the GitHub Release carries the notes. Then `release changelog` rendered the 
 0.2.0 fix worked — and its commit failed with `Author identity unknown`: a fresh runner has
 no git identity, and the step ran a bare `git commit`. The `0.3.0` section reached `main` by
 `pixi run changelog`, as the step advises, and the step now commits as
-`github-actions[bot]` (`RELEASE_IDENTITY` in `scripts/release.py`, pinned by
+`github-actions[bot]` (`RELEASE_IDENTITY` in `tools/_lib/release.py`, pinned by
 `test_release.py` and `test_changelog.py`).
 
 **`0.3.1` ran every step, and left `main` stale.** Run 42473663383 published both crates,
@@ -668,7 +658,7 @@ pixi run --frozen skills-check
 
 `backlog-check` is two checks, because they answer different questions. `backlog
 doctor` validates the graph: duplicate ids, missing dependencies, cycles. The
-script after it, `scripts/check_backlog_status.py`, validates that a status is
+script after it, `tools/_lib/check_backlog_status.py`, validates that a status is
 *true* — that a card in `Done` has every acceptance criterion checked, and that a
 card with every criterion checked is not still in `To Do` or `In Progress`.
 
@@ -726,7 +716,7 @@ sources. The generated publisher must run successfully before the first restore;
 for an offline host, the sandbox branch must already be present in its Git copy.
 
 ```sh
-bash scripts/restore.sh
+bash tools/_lib/restore.sh-KEEP
 export PATH="$HOME/.local/bin:$PATH"
 pixi run --no-install --offline alint
 pixi run --no-install --offline test
@@ -753,9 +743,9 @@ first; set `PIXI_SANDBOX_USER_TOOLS=skip` to avoid changing user tools. Set
 `PIXI_SANDBOX_FETCH=skip` to require a pre-fetched local branch. The launcher
 must be run from a Git checkout with the branch or an `origin` remote available.
 
-`pixi-sandbox.toml` is authored; the two sandbox workflows and `scripts/restore.sh`
+`pixi-sandbox.toml` is authored; the two sandbox workflows and `tools/_lib/restore.sh-KEEP`
 are generated. After a policy change, run `pixi run --frozen -x pixi-sandbox
-init --config pixi-sandbox.toml --script-path scripts/restore.sh`, then run
+init --config pixi-sandbox.toml --script-path tools/_lib/restore.sh-KEEP`, then run
 `pixi run --frozen sandbox-check`. The publisher force-updates the sandbox
 branch; the generated relock workflow can commit lock repairs to same-repository
 PR branches and dispatch validation workflows. Neither is run by ordinary tests.
@@ -807,7 +797,7 @@ this workspace through `rstest-bdd`, a test dependency. The maintainer keeps
 `rstest-bdd` and allows that one advisory in both `deny.toml` and `.cargo/audit.toml`;
 other warnings still fail the audit.
 
-The path, rendered from `Cargo.lock` by `scripts/check_advisory_exception.py`:
+The path, rendered from `Cargo.lock` by `tools/_lib/check_advisory_exception.py`:
 
 ```text
 rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config 0.4.8 → basic-toml 0.1.10
@@ -825,7 +815,7 @@ rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config
   dev-dependency, so nothing `basic-toml` parses ships in a published crate. The
   exception is still recorded by advisory ID across the graph, because "test-only
   today" is not a property the exception can enforce.
-- *When does it go?* `scripts/check_advisory_exception.py` fails the build with
+- *When does it go?* `tools/_lib/check_advisory_exception.py` fails the build with
   `stale-exception` the moment `basic-toml` stops being reachable from `rstest-bdd`,
   and with `documented-path` if this section quotes a path the lockfile no longer
   agrees with. The removal is then mechanical: delete both exceptions, delete the
@@ -833,7 +823,7 @@ rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config
 
 ```sh
 pixi run check-advisory   # verify the exception is still warranted and still documented
-python scripts/check_advisory_exception.py --print-path   # the chain, from the lockfile
+python tools/_lib/check_advisory_exception.py --print-path   # the chain, from the lockfile
 ```
 
 Review and remove the exception when the dependency can be replaced or upgraded.
