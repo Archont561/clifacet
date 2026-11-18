@@ -3,7 +3,7 @@ id: doc-2
 title: Milestone roadmap and scope
 type: other
 created_date: '2026-10-29 15:28'
-updated_date: '2026-11-06 12:00'
+updated_date: '2026-11-18 21:35'
 ---
 # Roadmap
 
@@ -20,5 +20,11 @@ The canonical milestone files describe exits; tasks are assigned to their releva
 9. **m-8 Plugins as binaries on the path:** a documented recipe, not a library feature — decision-17 was rejected as an API; CLI-29 carries the recipe.
 10. **m-9 Feature boundaries and machine-readable output:** every declared feature proved to have a `cfg` site, `serde` made optional behind a feature that serialises failures with secrets redacted, and the `json` feature either implemented on that evidence or retired.
 11. **m-10 Release 0.2.0:** the version-bump runbook exercised end to end on a real bump, every 0.1.0 gate passing again, and both crates published from one authorized dispatch.
+12. **m-11 Release 0.3.1:** secret hiding from `--help` (CLI-43) and dependency on clap without its default features (CLI-44).
+13. **m-12 Runner, context and registered commands:** `clifacet::App` runner owning the pipeline, context dependency injection for commands (`Handler<Cx>`), and `clifacet::commands!` tree registration, released as 0.4.0.
+14. **m-13 Commands from files and layered settings:** build-script command discovery (`clifacet::build`), one-attribute `#[clifacet::registry]`, layered settings (`flag > env > file > default`), and functions as commands, released as 0.5.0.
+15. **m-14 Figment configuration and canonical automation:** Figment-backed layered configuration engine (CLI-59, decision-22), command function mapping, Serde derivation on generated inputs, key normalization, and migration of repository automation to canonical Tasknest tooling, released as 0.6.0.
+16. **m-15 Hierarchical configuration presets and diagnostic citations:** multi-source cascading loaders (`/etc/`, `~/.config/`, local directory), environment profile switching, context injection ergonomics, and line-level file provenance and error citations (decision-22 Phase 2).
+17. **m-16 Shell completions, schemas and TUI component expansion:** shell completion generation via `clap_complete` derived from registered command functions, and expanding Ratatui form components with choice selectors, toggles, and multi-value collectors.
 
-Each stage includes its own behavior and safety tests; m-4 is completion and publication of the shared harness, not permission to defer testing. Decision-13 (one declarative attribute per field) was accepted on 2026-11-03 and built on CLI-28, now Done. Decision-18 was accepted on 2026-11-06 (CLI-30 done, CLI-31 next). Decisions 14 to 17 were settled on 2026-11-06: 14 accepted with amendments (after CLI-31 and 0.3.0), 15 accepted in part with its macro deferred, 16 accepted as a rule, and 17 rejected as an API in favour of a documented recipe; each decision's note has the detail. Milestones are planning boundaries, not guaranteed schedules. Plan/dry-run and events were outside the default 0.1.0 scope; a plan seam is now m-6 work and events remain out of scope.
+Each stage includes its own behavior and safety tests; m-4 is completion and publication of the shared harness, not permission to defer testing. Milestones are planning boundaries, not guaranteed schedules.

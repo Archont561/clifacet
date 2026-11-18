@@ -1,10 +1,12 @@
 ---
 id: CLI-59
-title: 'Figment-backed configuration engine and command function mapping'
+title: Figment-backed configuration engine and command function mapping
 status: Done
 assignee: []
 created_date: '2026-11-18 15:00'
+updated_date: '2026-11-18 21:33'
 labels: []
+milestone: m-14
 dependencies:
   - CLI-51
   - CLI-52
