@@ -123,7 +123,7 @@ Each is a consumer of the published API, not a part of the library:
 
 ```toml
 [dependencies]
-clifacet = "0.5.0"
+clifacet = "0.6.0"
 ```
 
 Frontends are features, so an application pays only for what it uses: `interactive`,
@@ -155,7 +155,7 @@ and covered. The library writes no output of its own — machine-readable output
 application's, built from [`Report`](docs/reference/command-core.md#known-unsupported-behavior)
 — so there is no JSON mode, and no fourth mode is planned.
 
-`0.5.0` is the version this README describes — [what each release
+`0.6.0` is the version this README describes — [what each release
 changed](CHANGELOG.md). Publishing is a separate, authorized act from merging.
 
 ## Develop
