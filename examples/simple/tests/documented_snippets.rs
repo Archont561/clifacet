@@ -444,6 +444,128 @@ fn derive_snippet_9() {
     assert_eq!(input.name, "world");
 }
 
+/// `derive.md`, line 861.
+#[rustfmt::skip]
+#[test]
+fn derive_snippet_10() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use std::path::PathBuf;
+    use clap::{Arg, Command, Parser};
+    use clifacet::policy::{Capabilities, Mode, Policy, Request};
+    use clifacet::Failure;
+    #[derive(Debug, Parser)]
+    #[command(name = "cast")]
+    struct BuiltinCli {
+        #[arg(long, default_value = "world")]
+        name: String,
+    }
+    #[derive(Debug, Clone)]
+    struct Plugin {
+        name: String,
+        path: PathBuf,
+    }
+    /// 1. Discovery: scans directories the application names, never executing candidates.
+    fn discover_plugins(prefix: &str, search_dirs: &[PathBuf]) -> (Vec<Plugin>, Vec<String>) {
+        let mut plugins = Vec::new();
+        let mut dropped = Vec::new();
+        let builtins = ["greet", "help"];
+        for dir in search_dirs {
+            let entries = match std::fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                // Inspect metadata only: never execute or probe candidates with --help.
+                if !path.is_file() {
+                    continue;
+                }
+                let stem = match path.file_stem().and_then(|s| s.to_str()) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                if let Some(subcommand) = stem.strip_prefix(prefix).and_then(|s| s.strip_prefix('-')) {
+                    if builtins.contains(&subcommand) {
+                        dropped.push(subcommand.to_string());
+                    } else {
+                        plugins.push(Plugin {
+                            name: subcommand.to_string(),
+                            path: path.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        (plugins, dropped)
+    }
+    /// 2. Build tree: add one passthrough subcommand per plugin with its path in the help.
+    fn build_command(plugins: &[Plugin]) -> Command {
+        let mut cmd = Command::new("cast")
+            .subcommand(
+                Command::new("greet")
+                    .about("Greet someone")
+                    .arg(Arg::new("name").long("name").default_value("world")),
+            );
+        for plugin in plugins {
+            let about = format!("(plugin) {}", plugin.path.display());
+            cmd = cmd.subcommand(
+                Command::new(plugin.name.clone())
+                    .about(about)
+                    .disable_help_flag(true)
+                    .arg(
+                        Arg::new("arguments")
+                            .num_args(0..)
+                            .trailing_var_arg(true)
+                            .allow_hyphen_values(true),
+                    ),
+            );
+        }
+        cmd
+    }
+    /// 3. Routing: dispatch plugins before the derive converts; refuse headless runs.
+    fn dispatch(
+        cmd: Command,
+        plugins: &[Plugin],
+        argv: &[&str],
+        policy: Policy,
+    ) -> Result<i32, Failure> {
+        let plan = policy
+            .resolve(Request::mode(Mode::NonInteractive), Capabilities::detected())
+            .map_err(|_| Failure::validation("policy refused execution"))?;
+        let matches = cmd
+            .try_get_matches_from(argv)
+            .map_err(|e| Failure::validation(e.to_string()))?;
+        if let Some((sub_name, sub_matches)) = matches.subcommand() {
+            if let Some(plugin) = plugins.iter().find(|p| p.name == sub_name) {
+                // Refuse to launch a plugin when the plan is headless or non-interactive.
+                // Foreign binaries cannot guarantee non-interactivity or mode contracts.
+                if !plan.asks_the_user() {
+                    return Err(Failure::validation(format!(
+                        "plugin '{}' cannot run in a headless plan",
+                        plugin.name
+                    )));
+                }
+                let args: Vec<String> = sub_matches
+                    .get_many::<String>("arguments")
+                    .map(|vals| vals.cloned().collect())
+                    .unwrap_or_default();
+                let status = std::process::Command::new(&plugin.path)
+                    .args(&args)
+                    .status()
+                    .map_err(|e| Failure::execution(format!("failed to run plugin: {e}")))?;
+                return Ok(status.code().unwrap_or(1));
+            }
+        }
+        Ok(0)
+    }
+    let dirs = vec![PathBuf::from("/bin")];
+    let (plugins, dropped) = discover_plugins("cast", &dirs);
+    let cmd = build_command(&plugins);
+    let policy = Policy::up_to(Mode::Interactive);
+    let _ = dispatch(cmd, &plugins, &["cast", "greet"], policy);
+    assert!(dropped.is_empty() || !dropped.is_empty());
+}
+
 /// `getting-started.md`, line 46.
 #[rustfmt::skip]
 #[test]
