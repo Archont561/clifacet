@@ -196,11 +196,16 @@ fn tokens(
             ///
             /// Only [`Facet::validate`] builds one: every value of it is runnable, so a
             /// caller that holds one holds something the command accepts.
+            #[allow(unexpected_cfgs)]
             #[derive(
                 ::core::fmt::Debug,
                 ::core::clone::Clone,
                 ::core::cmp::PartialEq,
                 ::core::cmp::Eq
+            )]
+            #[cfg_attr(
+                feature = "serde",
+                derive(::serde::Deserialize, ::serde::Serialize)
             )]
             pub struct #name {
                 #(#input_fields),*
@@ -382,7 +387,13 @@ impl Argument {
             return None;
         }
         let (pattern, ty) = (&self.pattern, &self.input_ty);
-        Some(quote_spanned! {pattern.span()=>
+        let kebab = pattern
+            .to_string()
+            .trim_start_matches("r#")
+            .replace('_', "-");
+        Some(quote! {
+            #[allow(unexpected_cfgs)]
+            #[cfg_attr(feature = "serde", serde(alias = #kebab))]
             pub #pattern: #ty
         })
     }

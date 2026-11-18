@@ -392,6 +392,25 @@ where
         self
     }
 
+    /// Layers a [`figment::Figment`] configuration under the flags and environment.
+    ///
+    /// Tables in Figment correspond to subcommand paths, outermost first, and scalar values
+    /// are injected into `clap` as defaults. The precedence is flag > environment >
+    /// figment > built-in default.
+    ///
+    /// `--help` and `--version` never evaluate settings: they are answered before any parse, so
+    /// the defaults they document are the built-in ones.
+    #[cfg(feature = "settings-figment")]
+    #[must_use]
+    pub fn figment(mut self, figment: figment::Figment) -> Self {
+        self.settings = Some(Rc::new(move |_argv: &[std::ffi::OsString]| {
+            settings::figment::FigmentLoader::new(figment.clone())
+                .load_settings()
+                .map_err(|error| Failure::validation(error.message()))
+        }));
+        self
+    }
+
     /// Runs `argv` against explicit capabilities, frontend and streams.
     ///
     /// The same pipeline as [`run`](Self::run), with nothing taken from the process: a
