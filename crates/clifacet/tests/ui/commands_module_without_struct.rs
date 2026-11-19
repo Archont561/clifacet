@@ -9,7 +9,7 @@
 //! read from the folder instead of from a list, so this case covers both paths.
 // `broken.rs` sits beside this file and holds `SomethingElse` rather than `Broken`.
 mod commands {
-    clifacet::commands!(broken);
+    clifacet::__commands!(broken);
 }
 
 fn main() {}

@@ -1,5 +1,11 @@
-error: expected attribute, found macro `clifacet::commands`
- --> tests/ui/commands_on_other_attribute.rs:3:3
+error: expected `impl`
+ --> tests/ui/commands_on_other_attribute.rs:4:1
   |
-3 | #[clifacet::commands(greet)]
-  |   ^^^^^^^^^^^^^^^^^^ not an attribute
+4 | fn main() {}
+  | ^^
+
+error[E0601]: `main` function not found in crate `$CRATE`
+ --> tests/ui/commands_on_other_attribute.rs:4:13
+  |
+4 | fn main() {}
+  |             ^ consider adding a `main` function to `$DIR/tests/ui/commands_on_other_attribute.rs`

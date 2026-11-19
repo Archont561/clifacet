@@ -13,7 +13,7 @@ use clifacet::{App, Facet};
 
 mod commands {
     // The registry: one line, and every file in this folder is in it.
-    clifacet::commands!(greet, count, output = String, planned);
+    clifacet::__commands!(greet, count, output = String, planned);
 }
 
 use commands::{Cli, Commands, Request};
@@ -106,7 +106,7 @@ mod contextual {
         pub loud: bool,
     }
 
-    clifacet::commands!(
+    clifacet::__commands!(
         greet,
         globals = Options,
         output = String,

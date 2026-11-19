@@ -12,6 +12,16 @@ fn the_command_attribute_wraps_clap_and_reports_what_it_cannot_wrap() {
 }
 
 #[test]
+fn the_app_attribute_reports_what_it_cannot_be() {
+    let cases = trybuild::TestCases::new();
+    cases.pass("tests/ui/app_valid.rs");
+    cases.compile_fail("tests/ui/app_on_enum.rs");
+    cases.compile_fail("tests/ui/app_multiple_contexts.rs");
+    cases.compile_fail("tests/ui/app_unknown_key.rs");
+    cases.compile_fail("tests/ui/app_invalid_context_syntax.rs");
+}
+
+#[test]
 fn a_function_command_reports_what_it_cannot_be() {
     let cases = trybuild::TestCases::new();
     cases.pass("tests/ui/function_valid.rs");

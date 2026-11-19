@@ -1,7 +1,7 @@
 ---
 id: CLI-70
 title: Declarative nested subcommand groups and context extractors
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:00'
 labels: []
@@ -21,8 +21,8 @@ Implement declarative nested subcommand groups and context extractors (decision-
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Subcommand groups can be declared as fields on the root struct using #[clifacet(subcommand)]
-- [ ] #2 Child group structs can declare context slices via #[clifacet(extract)], auto-extracted from parent context
-- [ ] #3 Multi-level nested commands resolve properly through the runner pipeline and argument parser
-- [ ] #4 Integration tests verify multi-level subcommand dispatch, independent command state, and context slicing
+- [x] #1 Subcommand groups can be declared as fields on the root struct using #[clifacet(subcommand)]
+- [x] #2 Child group structs can declare context slices via #[clifacet(extract)], auto-extracted from parent context
+- [x] #3 Multi-level nested commands resolve properly through the runner pipeline and argument parser
+- [x] #4 Integration tests verify multi-level subcommand dispatch, independent command state, and context slicing
 <!-- AC:END -->

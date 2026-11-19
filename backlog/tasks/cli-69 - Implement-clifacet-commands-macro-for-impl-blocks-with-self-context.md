@@ -1,7 +1,7 @@
 ---
 id: CLI-69
 title: Implement clifacet commands macro for impl blocks with self context
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:00'
 labels: []
@@ -20,8 +20,8 @@ Implement the `#[clifacet::commands]` procedural macro attribute on `impl` block
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 #[clifacet::commands] on impl blocks maps methods to CLI commands with argument and help extraction
-- [ ] #2 Command methods access &self, global flags, and initialized self.cx directly without parameter drilling
-- [ ] #3 Return types implement IntoOutcome, converting (), Result<(), E>, and typed outputs into runner outcomes
-- [ ] #4 Behavior tests verify end-to-end command dispatch, flag passing, and context access across commands
+- [x] #1 #[clifacet::commands] on impl blocks maps methods to CLI commands with argument and help extraction
+- [x] #2 Command methods access &self, global flags, and initialized self.cx directly without parameter drilling
+- [x] #3 Return types implement IntoOutcome, converting (), Result<(), E>, and typed outputs into runner outcomes
+- [x] #4 Behavior tests verify end-to-end command dispatch, flag passing, and context access across commands
 <!-- AC:END -->

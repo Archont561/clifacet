@@ -25,7 +25,7 @@ pub struct Chosen {
 // is a group of the folder above.
 // `planned`: the group's subcommands describe themselves, so the tree previews as well as
 // runs — which is what makes `db migrate --dry-run` reach `migrate`'s own plan.
-clifacet::commands!(
+clifacet::__commands!(
     output = crate::Said,
     planned
 );

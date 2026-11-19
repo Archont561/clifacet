@@ -1,0 +1,5 @@
+error: unknown key `invalid_key` in #[clifacet::app]: supported keys are `name`, `version`, `about`, `long_about`, `author`, `before_run`, `after_success`, `after_failure`, `input`, `commands`
+ --> tests/ui/app_unknown_key.rs:1:17
+  |
+1 | #[clifacet::app(invalid_key = "value")]
+  |                 ^^^^^^^^^^^

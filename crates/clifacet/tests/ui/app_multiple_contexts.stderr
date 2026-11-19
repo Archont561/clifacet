@@ -1,0 +1,5 @@
+error: only one field can be marked with `#[clifacet(context)]`
+ --> tests/ui/app_multiple_contexts.rs:9:5
+  |
+9 |     cx2: AppContext,
+  |     ^^^^^^^^^^^^^^^

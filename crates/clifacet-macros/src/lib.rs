@@ -8,17 +8,63 @@
 //! `Facet` is re-exported from the `clifacet` library, so applications depend on
 //! that crate alone.
 
+#![allow(
+    clippy::too_many_lines,
+    clippy::collapsible_if,
+    clippy::option_option,
+    clippy::match_wildcard_for_single_variants
+)]
+
+mod app;
 mod command;
 mod commands;
+mod commands_impl;
 mod facet;
 mod field;
 mod function;
+mod group;
 mod input_type;
 mod planned;
 mod rules;
 mod subcommands;
 
 use proc_macro::{Literal, TokenStream, TokenTree};
+
+/// Decorates the root application struct with CLI parsing, subcommands, and auto-wired context.
+///
+/// # Panics
+///
+/// Panics only if Rust cannot parse fixed, compiler-generated tokens.
+#[proc_macro_attribute]
+pub fn app(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    app::expand(attribute.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Transforms methods in an `impl` block into CLI commands with direct `&self` and `self.cx` access.
+///
+/// # Panics
+///
+/// Panics only if Rust cannot parse fixed, compiler-generated tokens.
+#[proc_macro_attribute]
+pub fn commands(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    commands_impl::expand(attribute.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Declares a subcommand group controller struct with context extraction (decision-24).
+///
+/// # Panics
+///
+/// Panics only if Rust cannot parse fixed, compiler-generated tokens.
+#[proc_macro_attribute]
+pub fn group(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    group::expand(attribute.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
 
 /// Wraps a struct in clap's parser and the [`Facet`] bridge, in one attribute.
 ///

@@ -80,7 +80,7 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
 /// normalization keys are validated here and consumed, the grammar keys are forwarded to
 /// clap as written, and a raw `#[arg(..)]` on the same field is left exactly where it is
 /// so the two compose — one declaration, one parser.
-fn forward_field_attributes(parsed: &mut DeriveInput) -> syn::Result<()> {
+pub(crate) fn forward_field_attributes(parsed: &mut DeriveInput) -> syn::Result<()> {
     let Data::Struct(data) = &mut parsed.data else {
         // The struct check above already rejected everything else with a better message.
         return Ok(());
