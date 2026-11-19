@@ -10,6 +10,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-19
+
 ### Added
 
 * **tui:** expand form with multi-value collectors and choice/toggle widgets (CLI-62)
@@ -268,7 +270,8 @@ depend on serde_json in the application.
 * **example:** move the reference application into its own crate
 ([3178b1d](https://github.com/Archont561/clifacet/commit/3178b1d44db717a4b242b1235cacf798e9d6e2f0))
 
-[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Archont561/clifacet/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Archont561/clifacet/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Archont561/clifacet/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Archont561/clifacet/compare/v0.3.1...v0.4.0
