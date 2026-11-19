@@ -884,9 +884,8 @@ fn discover_plugins(prefix: &str, search_dirs: &[PathBuf]) -> (Vec<Plugin>, Vec<
     let builtins = ["greet", "help"];
 
     for dir in search_dirs {
-        let entries = match std::fs::read_dir(dir) {
-            Ok(entries) => entries,
-            Err(_) => continue,
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
         };
         for entry in entries.flatten() {
             let path = entry.path();
@@ -894,9 +893,8 @@ fn discover_plugins(prefix: &str, search_dirs: &[PathBuf]) -> (Vec<Plugin>, Vec<
             if !path.is_file() {
                 continue;
             }
-            let stem = match path.file_stem().and_then(|s| s.to_str()) {
-                Some(s) => s,
-                None => continue,
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
             };
             if let Some(subcommand) = stem.strip_prefix(prefix).and_then(|s| s.strip_prefix('-')) {
                 if builtins.contains(&subcommand) {
@@ -954,29 +952,29 @@ fn dispatch(
         .try_get_matches_from(argv)
         .map_err(|e| Failure::validation(e.to_string()))?;
 
-    if let Some((sub_name, sub_matches)) = matches.subcommand() {
-        if let Some(plugin) = plugins.iter().find(|p| p.name == sub_name) {
-            // Refuse to launch a plugin when the plan is headless or non-interactive.
-            // Foreign binaries cannot guarantee non-interactivity or mode contracts.
-            if !plan.asks_the_user() {
-                return Err(Failure::validation(format!(
-                    "plugin '{}' cannot run in a headless plan",
-                    plugin.name
-                )));
-            }
-
-            let args: Vec<String> = sub_matches
-                .get_many::<String>("arguments")
-                .map(|vals| vals.cloned().collect())
-                .unwrap_or_default();
-
-            let status = std::process::Command::new(&plugin.path)
-                .args(&args)
-                .status()
-                .map_err(|e| Failure::execution(format!("failed to run plugin: {e}")))?;
-
-            return Ok(status.code().unwrap_or(1));
+    if let Some((sub_name, sub_matches)) = matches.subcommand()
+        && let Some(plugin) = plugins.iter().find(|p| p.name == sub_name)
+    {
+        // Refuse to launch a plugin when the plan is headless or non-interactive.
+        // Foreign binaries cannot guarantee non-interactivity or mode contracts.
+        if !plan.asks_the_user() {
+            return Err(Failure::validation(format!(
+                "plugin '{}' cannot run in a headless plan",
+                plugin.name
+            )));
         }
+
+        let forwarded: Vec<String> = sub_matches
+            .get_many::<String>("arguments")
+            .map(|vals| vals.cloned().collect())
+            .unwrap_or_default();
+
+        let status = std::process::Command::new(&plugin.path)
+            .args(&forwarded)
+            .status()
+            .map_err(|e| Failure::execution(format!("failed to run plugin: {e}")))?;
+
+        return Ok(status.code().unwrap_or(1));
     }
 
     Ok(0)
