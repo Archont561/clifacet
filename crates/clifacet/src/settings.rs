@@ -506,7 +506,15 @@ impl Applied {
     /// filled from a default and claims only those, so a file that names a setting a flag
     /// also names is recorded as the flag, which is what happened.
     pub fn claim(self, provenance: &mut Provenance, matches: &clap::ArgMatches) {
-        for origin in self.provenance.entries() {
+        Self::claim_inner(&self.provenance, provenance, matches);
+    }
+
+    fn claim_inner(
+        settings_provenance: &Provenance,
+        provenance: &mut Provenance,
+        matches: &clap::ArgMatches,
+    ) {
+        for origin in settings_provenance.entries() {
             let id = origin.name();
             let from_default = matches.try_contains_id(id).unwrap_or(false)
                 && matches.value_source(id) == Some(clap::parser::ValueSource::DefaultValue);
@@ -517,6 +525,9 @@ impl Applied {
                     provenance.record(id, Source::File);
                 }
             }
+        }
+        if let Some((_, sub_matches)) = matches.subcommand() {
+            Self::claim_inner(settings_provenance, provenance, sub_matches);
         }
     }
 }

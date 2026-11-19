@@ -541,3 +541,287 @@ fn tui_form_receives_figment_configured_defaults() {
     assert_eq!(fields[0].value(), "8080");
     assert_eq!(fields[1].value(), "0.0.0.0");
 }
+
+static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+struct TestDir {
+    path: PathBuf,
+}
+
+impl TestDir {
+    fn new(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "clifacet-figment-{name}-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&path).expect("temp dir");
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+#[test]
+fn cascading_presets_merge_system_user_local_and_select_profile() {
+    use clifacet::settings::Map as EnvMap;
+    use clifacet::settings::figment::Cascade;
+
+    let dir = TestDir::new("test");
+    let sys_path = dir.path().join("system.toml");
+    let user_path = dir.path().join("user.toml");
+    let local_path = dir.path().join("local.toml");
+
+    // System sets base port=80, host="0.0.0.0", attempts=1
+    std::fs::write(
+        &sys_path,
+        "[serve]\nport = 80\nhost = \"0.0.0.0\"\nattempts = 1\n",
+    )
+    .unwrap();
+
+    // User overrides host="127.0.0.1", attempts=2
+    std::fs::write(&user_path, "[serve]\nhost = \"127.0.0.1\"\nattempts = 2\n").unwrap();
+
+    // Local overrides attempts=3, adds debug=true
+    std::fs::write(&local_path, "[serve]\nattempts = 3\ndebug = true\n").unwrap();
+
+    let env = EnvMap::new().with("FIGMENT_PROFILE", "default");
+
+    let loader = Cascade::new("myapp")
+        .system(&sys_path)
+        .user(&user_path)
+        .local(&local_path)
+        .build_loader(&env)
+        .expect("builds cascading loader");
+
+    let settings = loader.load_settings().expect("loads settings");
+
+    let port_entry = settings.get(&["serve"], "port").expect("port from system");
+    assert_eq!(port_entry.value(), "80");
+    assert_eq!(port_entry.location().unwrap().path(), sys_path);
+    assert_eq!(port_entry.location().unwrap().line(), Some(2));
+
+    let host_entry = settings.get(&["serve"], "host").expect("host from user");
+    assert_eq!(host_entry.value(), "127.0.0.1");
+    assert_eq!(host_entry.location().unwrap().path(), user_path);
+    assert_eq!(host_entry.location().unwrap().line(), Some(2));
+
+    let attempts_entry = settings
+        .get(&["serve"], "attempts")
+        .expect("attempts from local");
+    assert_eq!(attempts_entry.value(), "3");
+    assert_eq!(attempts_entry.location().unwrap().path(), local_path);
+    assert_eq!(attempts_entry.location().unwrap().line(), Some(2));
+}
+
+#[test]
+fn cascading_profile_selection_via_environment_variables() {
+    use clifacet::settings::Map as EnvMap;
+    use clifacet::settings::figment::Cascade;
+
+    let dir = TestDir::new("test");
+    let file = dir.path().join("app.toml");
+
+    std::fs::write(
+        &file,
+        r"
+[default.serve]
+port = 8080
+
+[staging.serve]
+port = 8081
+
+[production.serve]
+port = 443
+",
+    )
+    .unwrap();
+
+    // 1. Selected via FIGMENT_PROFILE
+    let env_fig = EnvMap::new().with("FIGMENT_PROFILE", "production");
+    let loader_prod = Cascade::new("myapp")
+        .local(&file)
+        .build_loader(&env_fig)
+        .expect("builds loader");
+    let settings_prod = loader_prod.load_settings().expect("loads settings");
+    assert_eq!(
+        settings_prod.get(&["serve"], "port").unwrap().value(),
+        "443"
+    );
+
+    // 2. Selected via <APP>_PROFILE
+    let env_app = EnvMap::new().with("MYAPP_PROFILE", "staging");
+    let loader_stage = Cascade::new("myapp")
+        .local(&file)
+        .build_loader(&env_app)
+        .expect("builds loader");
+    let settings_stage = loader_stage.load_settings().expect("loads settings");
+    assert_eq!(
+        settings_stage.get(&["serve"], "port").unwrap().value(),
+        "8081"
+    );
+}
+
+#[test]
+fn cascading_missing_files_skipped_while_malformed_files_report_error() {
+    use clifacet::settings::Map as EnvMap;
+    use clifacet::settings::figment::Cascade;
+
+    let dir = TestDir::new("test");
+    let missing_sys = dir.path().join("missing_sys.toml");
+    let missing_user = dir.path().join("missing_user.toml");
+    let malformed_local = dir.path().join("malformed.toml");
+
+    // Missing files in cascade are skipped without error
+    let env = EnvMap::new();
+    let res = Cascade::new("myapp")
+        .system(&missing_sys)
+        .user(&missing_user)
+        .build_loader(&env);
+    assert!(
+        res.is_ok(),
+        "missing optional files in cascade do not fail build"
+    );
+
+    // Malformed file in cascade reports actionable syntax error
+    std::fs::write(&malformed_local, "this is not valid toml = [[[").unwrap();
+    let malformed_loader = Cascade::new("myapp")
+        .local(&malformed_local)
+        .build_loader(&env)
+        .expect("build succeeds");
+    let err = malformed_loader
+        .load_settings()
+        .expect_err("malformed TOML fails load");
+    assert!(err.message().contains("malformed.toml"));
+}
+
+#[test]
+fn line_level_error_citations_for_invalid_setting_values() {
+    use clifacet::settings::Map as EnvMap;
+    use clifacet::settings::figment::Cascade;
+
+    let dir = TestDir::new("test");
+    let config_file = dir.path().join("config.toml");
+    std::fs::write(&config_file, "# Line 1: comment\n[serve]\nport = 99999\n").unwrap();
+
+    let env = EnvMap::new();
+    let loader = Cascade::new("myapp")
+        .local(&config_file)
+        .build_loader(&env)
+        .expect("builds loader");
+
+    let settings = loader.load_settings().expect("loads settings");
+    let port_entry = settings.get(&["serve"], "port").expect("entry exists");
+    assert_eq!(port_entry.location().unwrap().line(), Some(3));
+
+    let cmd = Command::new("app").no_binary_name(true).subcommand(
+        Command::new("serve").arg(
+            Arg::new("port")
+                .long("port")
+                .value_parser(clap::value_parser!(u16)),
+        ),
+    );
+
+    let err = settings.apply(cmd, &[]).expect_err("99999 exceeds u16");
+    let msg = err.message();
+    assert!(
+        msg.contains("config.toml:3"),
+        "error should cite file and line: {msg}"
+    );
+    assert!(msg.contains("serve.port"), "error should cite key: {msg}");
+}
+
+#[test]
+fn profile_nested_line_level_citations() {
+    use clifacet::settings::Map as EnvMap;
+    use clifacet::settings::figment::Cascade;
+
+    let dir = TestDir::new("test");
+    let config_file = dir.path().join("config.toml");
+    std::fs::write(
+        &config_file,
+        r"
+# Profile config
+[default.serve]
+port = 8080
+
+[production.serve]
+# Line 7
+port = 65536
+",
+    )
+    .unwrap();
+
+    let env = EnvMap::new().with("FIGMENT_PROFILE", "production");
+    let loader = Cascade::new("myapp")
+        .local(&config_file)
+        .build_loader(&env)
+        .expect("builds loader");
+
+    let settings = loader.load_settings().expect("loads settings");
+    let port_entry = settings.get(&["serve"], "port").expect("entry exists");
+    assert_eq!(port_entry.location().unwrap().line(), Some(8));
+
+    let cmd = Command::new("app").no_binary_name(true).subcommand(
+        Command::new("serve").arg(
+            Arg::new("port")
+                .long("port")
+                .value_parser(clap::value_parser!(u16)),
+        ),
+    );
+
+    let err = settings.apply(cmd, &[]).expect_err("65536 exceeds u16");
+    let msg = err.message();
+    assert!(
+        msg.contains("config.toml:8"),
+        "error should cite file and line: {msg}"
+    );
+}
+
+#[test]
+fn dry_run_provenance_records_file_source_with_cascade() {
+    use clifacet::settings::Map as EnvMap;
+    use clifacet::settings::figment::Cascade;
+
+    let dir = TestDir::new("test");
+    let user_config = dir.path().join("user_config.toml");
+    std::fs::write(&user_config, "[serve]\nport = 9090\n").unwrap();
+
+    let env = EnvMap::new();
+    let loader = Cascade::new("myapp")
+        .user(&user_config)
+        .build_loader(&env)
+        .expect("builds loader");
+
+    let settings = loader.load_settings().expect("loads settings");
+    let port_entry = settings.get(&["serve"], "port").expect("entry exists");
+    assert_eq!(port_entry.value(), "9090");
+    assert_eq!(port_entry.location().unwrap().path(), user_config);
+
+    let cmd = Command::new("myapp").no_binary_name(true).subcommand(
+        Command::new("serve").arg(
+            Arg::new("port")
+                .long("port")
+                .value_parser(clap::value_parser!(u16)),
+        ),
+    );
+
+    let applied = settings.apply(cmd, &["serve"]).expect("applies");
+    let matches = applied
+        .command()
+        .clone()
+        .try_get_matches_from(["serve"])
+        .expect("matches");
+
+    let mut provenance = Provenance::from_matches(applied.command(), &matches);
+    applied.claim(&mut provenance, &matches);
+
+    assert_eq!(provenance.source_of("port"), Some(Source::File));
+}
