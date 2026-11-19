@@ -75,7 +75,7 @@ jobs:
       # snippets) sees: heading levels, list markers, unclosed fences.
       - name: Check the page structure
         run: pixi run --frozen markdownlint
-      # The README is rendered from templates/README.template.md. This renders it again
+      # The README is rendered from templates/README.md.j2. This renders it again
       # and fails if the committed one differs, so editing the generated file is caught.
       - name: Check the README is what its template renders
         run: pixi run --frozen readme-check

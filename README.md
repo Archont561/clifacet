@@ -1,11 +1,6 @@
 <!--
-  The README's source. `pixi run readme` renders it into README.md;
-  `pixi run readme-check` fails when the two disagree, so a change to the README
-  edits this file, never the rendered one.
-
-  Two rules, both from docs/concepts/documentation-policy.md: this page introduces and
-  links, the pages under docs/ explain, and no fact appears in both. Values in
-  angle-bracket percent tags come from the repository's manifests.
+  Generated file — do not edit README.md by hand.
+  Source template: templates/README.md.j2
 -->
 # clifacet
 

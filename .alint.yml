@@ -192,7 +192,7 @@ rules:
 
   - id: require-readme-template
     kind: file_exists
-    paths: "templates/README.template.md"
+    paths: "templates/README.md.j2"
     level: error
     message: "The README template is missing; `pixi run readme` would have nothing to render."
 
