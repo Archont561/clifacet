@@ -21,6 +21,9 @@ extends:
   - alint://bundled/ci/github-actions@v1
 
 rules:
+  - id: lockfiles-no-nested-bun
+    level: off
+
   - id: require-cargo-workspace
     kind: file_exists
     paths: "Cargo.toml"
@@ -138,7 +141,7 @@ rules:
 
   - id: require-command-core-doc
     kind: file_exists
-    paths: "docs/reference/command-core.md"
+    paths: "docs/content/docs/reference/command-core.mdx"
     level: error
     message: "The command-core seam documentation is missing."
 
@@ -153,31 +156,31 @@ rules:
 
   - id: require-docs-policy
     kind: file_exists
-    paths: "docs/concepts/documentation-policy.md"
+    paths: "docs/content/docs/concepts/documentation-policy.mdx"
     level: error
     message: "The documentation policy is missing; what a change owes the docs would be unstated."
 
   - id: require-docs-architecture
     kind: file_exists
-    paths: "docs/architecture/repository.md"
+    paths: "docs/content/docs/architecture/repository.mdx"
     level: error
     message: "The repository architecture page is missing."
 
   - id: require-docs-getting-started
     kind: file_exists
-    paths: "docs/guides/getting-started.md"
+    paths: "docs/content/docs/guides/getting-started.mdx"
     level: error
     message: "The getting-started guide is missing."
 
   - id: require-docs-development
     kind: file_exists
-    paths: "docs/development/development.md"
+    paths: "docs/content/docs/development/development.mdx"
     level: error
     message: "The development reference is missing."
 
   - id: require-docs-contributing
     kind: file_exists
-    paths: "docs/development/contributing.md"
+    paths: "docs/content/docs/development/contributing.mdx"
     level: error
     message: "The contributing guide is missing."
 

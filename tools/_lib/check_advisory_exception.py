@@ -198,6 +198,14 @@ def _ignored(text: str) -> set[str]:
     return ids
 
 
+def docs_path(root: Path = ROOT) -> Path:
+    """Find the development documentation page in either Fumadocs or legacy path."""
+    mdx = root / "docs" / "content" / "docs" / "development" / "development.mdx"
+    if mdx.is_file():
+        return mdx
+    return root / "docs" / "development" / "development.md"
+
+
 def check(root: Path = ROOT) -> list[Finding]:
     """Every finding about the exception, most important first."""
     lock = load_lock(root / LOCKFILE.name)
@@ -227,13 +235,14 @@ def check(root: Path = ROOT) -> list[Finding]:
                 )
             )
 
-    quoted = documented_path((root / DOCS).read_text(encoding="utf-8"))
+    doc_file = docs_path(root)
+    quoted = documented_path(doc_file.read_text(encoding="utf-8")) if doc_file.is_file() else ""
     actual = render_path(path)
     if quoted != actual:
         findings.append(
             Finding(
                 "documented-path",
-                f"docs/development/development.md quotes '{quoted or '(nothing)'}' but Cargo.lock says "
+                f"{doc_file.relative_to(root)} quotes '{quoted or '(nothing)'}' but Cargo.lock says "
                 f"'{actual}'; update the review in that section",
             )
         )

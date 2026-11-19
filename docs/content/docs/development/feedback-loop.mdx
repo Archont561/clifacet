@@ -1,0 +1,66 @@
+---
+title: The Feedback Loop
+description: Measurements, hook latencies, CI bottlenecks, and strategies for fast inner-loop validation.
+---
+
+A change moves through four places where it can fail: the editor, the commit, the push, and CI.
+
+<Callout type="info">
+Failures belong at the earliest possible stage. The local pre-commit hook runs in ~7 seconds, catching formatting, lint, and documentation issues before hitting CI.
+</Callout>
+
+## The Four Stages
+
+| Stage | Verification Performed | Typical Latency | Visibility Scope |
+| --- | --- | --- | --- |
+| Editor | `cargo check`, rust-analyzer, clippy | Real-time | Active crate only |
+| `pre-commit` | Linters, formatters, alint, docs check | ~7 seconds | Workspace-wide modified files |
+| `pre-push` | Audit, deny, and test suites | ~45 seconds | Local machine test matrix |
+| CI | Multi-OS matrix, MSRV, coverage | 1–9 minutes | Cross-platform guarantees |
+
+## Typical Development Workflow
+
+<Steps>
+<Step>
+### Rapid Edit Cycle
+
+Rely on rust-analyzer and continuous editor feedback during initial coding.
+</Step>
+
+<Step>
+### Local Quality Gate Check
+
+Run the offline check suite before staging:
+
+```sh
+pixi run --frozen --no-install tools run check
+```
+</Step>
+
+<Step>
+### Staging and Pre-Commit Hooks
+
+Git pre-commit hooks verify code formatting, documentation links, and linters in parallel.
+</Step>
+
+<Step>
+### Pre-Push Verification
+
+Pre-push hooks execute nextest suites and dependency license/advisory checks.
+</Step>
+</Steps>
+
+## Quick Command Shortcuts
+
+<Cards>
+  <Card
+    title="Run Test Suites"
+    href="/docs/guides/testing"
+    description="pixi run test: runs unit, BDD, and proptest suites"
+  />
+  <Card
+    title="Check Documentation"
+    href="/docs/concepts/documentation-policy"
+    description="pixi run check-docs: validates snippet compilation and links"
+  />
+</Cards>

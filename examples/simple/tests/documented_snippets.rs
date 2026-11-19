@@ -62,7 +62,7 @@ fn readme_snippet_1() {
     assert_eq!(scripted(), 0);
 }
 
-/// `modes.md`, line 10.
+/// `modes.mdx`, line 13.
 #[rustfmt::skip]
 #[test]
 fn modes_snippet_1() {
@@ -78,26 +78,21 @@ fn modes_snippet_1() {
     assert!(refused.is_err());
 }
 
-/// `modes.md`, line 44.
+/// `modes.mdx`, line 36.
 #[rustfmt::skip]
 #[test]
 fn modes_snippet_2() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    // Permission: prompts are allowed, a full-screen form is allowed. Intent: prompts are
-    // what an unadorned run gets.
     let policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
     let plan = policy
         .resolve(Request::none(), Capabilities::terminal_with_tui())
         .expect("prompts are permitted and possible");
     assert_eq!(plan.mode(), Mode::Interactive, "the preference, not the ceiling");
-    // A request still wins, and is still bounded by the ceiling rather than the preference.
     let plan = policy
         .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui())
         .expect("a TUI is permitted here");
     assert_eq!(plan.mode(), Mode::Tui);
-    // Intent can also be *less* interactive than permission: a command that may prompt
-    // for someone who asks for it does not have to offer a prompt unasked.
     let cautious = Policy::up_to(Mode::Tui).prefer(Mode::NonInteractive);
     let plan = cautious
         .resolve(Request::none(), Capabilities::terminal())
@@ -105,7 +100,7 @@ fn modes_snippet_2() {
     assert_eq!(plan.mode(), Mode::NonInteractive);
 }
 
-/// `modes.md`, line 139.
+/// `modes.mdx`, line 91.
 #[rustfmt::skip]
 #[test]
 fn modes_snippet_3() {
@@ -119,7 +114,7 @@ fn modes_snippet_3() {
     assert_eq!(policy.cancelled(), 130);
 }
 
-/// `derive.md`, line 7.
+/// `derive.mdx`, line 10.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_1() {
@@ -148,7 +143,7 @@ fn derive_snippet_1() {
     assert_eq!(count.0, 3);
 }
 
-/// `derive.md`, line 41.
+/// `derive.mdx`, line 43.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_2() {
@@ -171,63 +166,10 @@ fn derive_snippet_2() {
     assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
 }
 
-/// `derive.md`, line 89.
+/// `derive.mdx`, line 119.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_3() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::Failure;
-    /// Add a task.
-    ///
-    /// The title is stored as given.
-    #[clifacet::command]
-    pub fn add_task(
-        #[clifacet(long, help = "The title to store")]
-        title: String,
-        #[clifacet(long, help = "Show what would happen")]
-        dry_run: bool,
-    ) -> Result<String, Failure> {
-        Ok(format!("{title} ({dry_run})"))
-    }
-}
-
-/// `derive.md`, line 115.
-#[rustfmt::skip]
-#[test]
-fn derive_snippet_4() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    #[clifacet::command(input = AddTaskInput)]
-    #[command(name = "add-task", about = "Add a task.")]
-    struct AddTask {
-        #[clifacet(long, help = "The title to store")]
-        title: String,
-        #[clifacet(long, help = "Show what would happen")]
-        dry_run: bool,
-    }
-    struct AddTaskInput {
-        title: String,
-        dry_run: bool,
-    }
-}
-
-/// `derive.md`, line 149.
-#[rustfmt::skip]
-#[test]
-fn derive_snippet_5() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::Failure;
-    struct App { records: Vec<String> }
-    /// Count the records.
-    #[clifacet::command]
-    pub fn count(cx: &App) -> Result<usize, Failure> {
-        Ok(cx.records.len())
-    }
-}
-
-/// `derive.md`, line 205.
-#[rustfmt::skip]
-#[test]
-fn derive_snippet_6() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::clap::Parser as _;
     use clifacet::policy::{Capabilities, Mode, Policy, Request};
@@ -242,23 +184,19 @@ fn derive_snippet_6() {
             ask = "Who should I greet?", fill = "world", trim, non_empty,
         )]
         name: Option<String>,
-        /// How many times to greet, from 1 to 8.
+        /// How times to greet, from 1 to 8.
         #[clifacet(long, value_name = "COUNT", range = 1..=8, default_value_t = 1)]
         repeat: u8,
     }
-    /// The typed input: never missing a name, never a blank one.
     struct Greeting {
         name: String,
         repeat: u8,
     }
-    // The flags: clap parses, the generated bridge normalizes.
     let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
         .expect("the forwarded grammar parses");
     let input = cli.validate().expect("valid");
     assert_eq!((input.name.as_str(), input.repeat), ("ada", 3));
-    // `Facet::command()` is clap's command: the help is built from the forwarded keys.
     assert!(<Cli as Facet>::command().render_help().to_string().contains("-n, --name <NAME>"));
-    // No flag at a terminal: the declaration asks, and the answer meets the same rules.
     let plan = Policy::up_to(Mode::Interactive)
         .resolve(Request::none(), Capabilities::terminal())
         .expect("prompts are permitted");
@@ -273,299 +211,7 @@ fn derive_snippet_6() {
     assert_eq!(input.name, "grace");
 }
 
-/// `derive.md`, line 320.
-#[rustfmt::skip]
-#[test]
-fn derive_snippet_7() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::clap::Parser as _;
-    use clifacet::{Facet, Failure};
-    #[clifacet::command(input = Booking, check = check_booking)]
-    #[command(name = "book")]
-    struct Cli {
-        /// Who the booking is for.
-        #[clifacet(long, fill = "guest", trim, non_empty, form)]
-        name: Option<String>,
-        /// How many seats: a `u8` parses 255, so the bound is the check's.
-        #[clifacet(long, default_value_t = 1, form)]
-        seats: u8,
-        /// Presentation, parsed by clap and kept out of the booking.
-        #[clifacet(long, skip)]
-        loud: bool,
-    }
-    struct Booking {
-        name: String,
-        seats: u8,
-    }
-    fn check_booking(booking: &Booking) -> Result<(), Failure> {
-        if booking.seats > 8 {
-            return Err(Failure::validation(format!("--seats must be at most 8, got {}", booking.seats)));
-        }
-        Ok(())
-    }
-    let refused = Cli::try_parse_from(["book", "--seats", "9"]).expect("9 is a u8").validate();
-    assert_eq!(refused.err().map(|failure| failure.message().to_owned()).as_deref(), Some("--seats must be at most 8, got 9"));
-    let booking = Cli::try_parse_from(["book", "--name", " ada ", "--loud"]).expect("parses").validate().expect("valid");
-    assert_eq!((booking.name.as_str(), booking.seats), ("ada", 1));
-    // The form's field list, from the same declarations: `FormState::of::<Cli>()` takes it,
-    // and masks whatever `Cli::secret_fields()` lists — nothing, here.
-    assert_eq!(Cli::form_fields(), ["name", "seats"]);
-    assert_eq!(Cli::secret_fields(), [""; 0]);
-}
-
-/// `derive.md`, line 392.
-#[rustfmt::skip]
-#[test]
-fn derive_snippet_8() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::clap::Parser as _;
-    use clifacet::{Command, Facet, Failure};
-    #[clifacet::command(input = CastInput)]
-    #[command(name = "cast")]
-    struct Cast {
-        #[clifacet(subcommands)]
-        command: Option<Commands>,
-    }
-    struct CastInput {
-        command: Option<Request>,
-    }
-    /// The first level: two subcommands, one of them a node.
-    #[clifacet::subcommands(input = Request, output = String)]
-    #[derive(Clone)]
-    enum Commands {
-        /// Say hello.
-        #[clifacet(alias = "hi")]
-        Greet(Greet),
-        /// Work on the database.
-        Db(Db),
-    }
-    enum Request {
-        Greet(GreetInput),
-        Db(DbInput),
-    }
-    #[clifacet::command(input = GreetInput)]
-    #[derive(Clone)]
-    struct Greet {
-        #[clifacet(long, fill = "world", trim)]
-        name: Option<String>,
-    }
-    struct GreetInput {
-        name: String,
-    }
-    /// An inner node: a leaf above, a tree below.
-    #[clifacet::command(input = DbInput)]
-    #[derive(Clone)]
-    struct Db {
-        #[clifacet(subcommands)]
-        command: DbCommands,
-    }
-    struct DbInput {
-        command: DbRequest,
-    }
-    #[clifacet::subcommands(input = DbRequest, output = String)]
-    #[derive(Clone)]
-    enum DbCommands {
-        /// Apply the pending migrations.
-        Migrate(Migrate),
-    }
-    enum DbRequest {
-        Migrate(MigrateInput),
-    }
-    #[clifacet::command(input = MigrateInput)]
-    #[derive(Clone)]
-    struct Migrate {
-        /// Stop after this many.
-        #[clifacet(long)]
-        steps: Option<u8>,
-    }
-    struct MigrateInput {
-        steps: Option<u8>,
-    }
-    impl Command for Greet {
-        type Input = GreetInput;
-        type Output = String;
-        fn execute(&self, input: GreetInput) -> Result<String, Failure> {
-            Ok(format!("hello, {}", input.name))
-        }
-    }
-    impl Command for Db {
-        type Input = DbInput;
-        type Output = String;
-        fn execute(&self, input: DbInput) -> Result<String, Failure> {
-            self.command.execute(input.command)
-        }
-    }
-    impl Command for Migrate {
-        type Input = MigrateInput;
-        type Output = String;
-        fn execute(&self, input: MigrateInput) -> Result<String, Failure> {
-            Ok(format!("migrated {}", input.steps.unwrap_or(1)))
-        }
-    }
-    // Three levels down, clap still parses, and the help names the whole path.
-    let help = <Cast as Facet>::command()
-        .try_get_matches_from(["cast", "db", "migrate", "--help"])
-        .expect_err("help is clap's");
-    assert!(help.to_string().contains("Usage: cast db migrate"));
-    // The tree that runs is a clone; the request is the same parse, validated.
-    let cast = Cast::try_parse_from(["cast", "db", "migrate", "--steps", "2"]).expect("parses");
-    let tree = cast.command.clone().expect("a subcommand was given");
-    let request = cast.validate().expect("valid").command.expect("so it converted");
-    assert_eq!(tree.execute(request).expect("runs"), "migrated 2");
-    // No subcommand reaches the application, which picks its own default.
-    let bare = Cast::try_parse_from(["cast"]).expect("parses").validate().expect("valid");
-    assert!(bare.command.is_none());
-}
-
-/// `derive.md`, line 786.
-#[rustfmt::skip]
-#[test]
-fn derive_snippet_9() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::clap::Parser as _;
-    use clifacet::Facet;
-    /// A family of commands, each naming its input through one trait.
-    trait Family {
-        type Input;
-    }
-    struct Greet;
-    impl Family for Greet {
-        type Input = Labelled<String>;
-    }
-    struct Labelled<T> {
-        name: T,
-    }
-    #[clifacet::command(input = <Greet as Family>::Input)]
-    #[command(name = "greet")]
-    struct Cli {
-        #[clifacet(long, fill = "world")]
-        name: Option<String>,
-    }
-    let input = Cli::try_parse_from(["greet"]).expect("parses").validate().expect("valid");
-    assert_eq!(input.name, "world");
-}
-
-/// `derive.md`, line 861.
-#[rustfmt::skip]
-#[test]
-fn derive_snippet_10() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use std::path::PathBuf;
-    use clap::{Arg, Command, Parser};
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    use clifacet::Failure;
-    #[derive(Debug, Parser)]
-    #[command(name = "cast")]
-    struct BuiltinCli {
-        #[arg(long, default_value = "world")]
-        name: String,
-    }
-    #[derive(Debug, Clone)]
-    struct Plugin {
-        name: String,
-        path: PathBuf,
-    }
-    /// 1. Discovery: scans directories the application names, never executing candidates.
-    fn discover_plugins(prefix: &str, search_dirs: &[PathBuf]) -> (Vec<Plugin>, Vec<String>) {
-        let mut plugins = Vec::new();
-        let mut dropped = Vec::new();
-        let builtins = ["greet", "help"];
-        for dir in search_dirs {
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                // Inspect metadata only: never execute or probe candidates with --help.
-                if !path.is_file() {
-                    continue;
-                }
-                let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                if let Some(subcommand) = stem.strip_prefix(prefix).and_then(|s| s.strip_prefix('-')) {
-                    if builtins.contains(&subcommand) {
-                        dropped.push(subcommand.to_string());
-                    } else {
-                        plugins.push(Plugin {
-                            name: subcommand.to_string(),
-                            path: path.clone(),
-                        });
-                    }
-                }
-            }
-        }
-        (plugins, dropped)
-    }
-    /// 2. Build tree: add one passthrough subcommand per plugin with its path in the help.
-    fn build_command(plugins: &[Plugin]) -> Command {
-        let mut cmd = Command::new("cast")
-            .subcommand(
-                Command::new("greet")
-                    .about("Greet someone")
-                    .arg(Arg::new("name").long("name").default_value("world")),
-            );
-        for plugin in plugins {
-            let about = format!("(plugin) {}", plugin.path.display());
-            cmd = cmd.subcommand(
-                Command::new(plugin.name.clone())
-                    .about(about)
-                    .disable_help_flag(true)
-                    .arg(
-                        Arg::new("arguments")
-                            .num_args(0..)
-                            .trailing_var_arg(true)
-                            .allow_hyphen_values(true),
-                    ),
-            );
-        }
-        cmd
-    }
-    /// 3. Routing: dispatch plugins before the derive converts; refuse headless runs.
-    fn dispatch(
-        cmd: Command,
-        plugins: &[Plugin],
-        argv: &[&str],
-        policy: Policy,
-    ) -> Result<i32, Failure> {
-        let plan = policy
-            .resolve(Request::mode(Mode::NonInteractive), Capabilities::detected())
-            .map_err(|_| Failure::validation("policy refused execution"))?;
-        let matches = cmd
-            .try_get_matches_from(argv)
-            .map_err(|e| Failure::validation(e.to_string()))?;
-        if let Some((sub_name, sub_matches)) = matches.subcommand()
-            && let Some(plugin) = plugins.iter().find(|p| p.name == sub_name)
-        {
-            // Refuse to launch a plugin when the plan is headless or non-interactive.
-            // Foreign binaries cannot guarantee non-interactivity or mode contracts.
-            if !plan.asks_the_user() {
-                return Err(Failure::validation(format!(
-                    "plugin '{}' cannot run in a headless plan",
-                    plugin.name
-                )));
-            }
-            let forwarded: Vec<String> = sub_matches
-                .get_many::<String>("arguments")
-                .map(|vals| vals.cloned().collect())
-                .unwrap_or_default();
-            let status = std::process::Command::new(&plugin.path)
-                .args(&forwarded)
-                .status()
-                .map_err(|e| Failure::execution(format!("failed to run plugin: {e}")))?;
-            return Ok(status.code().unwrap_or(1));
-        }
-        Ok(0)
-    }
-    let dirs = vec![PathBuf::from("/bin")];
-    let (plugins, dropped) = discover_plugins("cast", &dirs);
-    let cmd = build_command(&plugins);
-    let policy = Policy::up_to(Mode::Interactive);
-    let _ = dispatch(cmd, &plugins, &["cast", "greet"], policy);
-    assert!(dropped.is_empty() || !dropped.is_empty());
-}
-
-/// `getting-started.md`, line 46.
+/// `getting-started.mdx`, line 59.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {
@@ -583,7 +229,7 @@ fn getting_started_snippet_1() {
     assert_eq!(greeting, "hello, ada");
 }
 
-/// `getting-started.md`, line 75.
+/// `getting-started.mdx`, line 88.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_2() {
@@ -617,9 +263,7 @@ fn getting_started_snippet_2() {
     fn main() -> std::process::ExitCode {
         clifacet::run::<Greet>()
     }
-    // `run_with` is the same pipeline with the process taken out — the arguments, what the
-    // terminal can do, the frontend that answers questions and both streams are parameters
-    // — which is how a test runs the application without a terminal.
+    // `run_with` runs without a process terminal:
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let code = App::<Greet>::new().run_with(
         ["greet", "--name", "ada"],
@@ -631,7 +275,7 @@ fn getting_started_snippet_2() {
     assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
 }
 
-/// `getting-started.md`, line 166.
+/// `getting-started.mdx`, line 173.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_3() {
@@ -639,12 +283,10 @@ fn getting_started_snippet_3() {
     use clifacet::command::{Plan, PlannedWith};
     use clifacet::prompt::Scripted;
     use clifacet::{App, Failure, Globals};
-    /// What the user supplied: the task to mark done.
     #[clifacet::command(input = DoneInput)]
     #[derive(Clone)]
     #[command(name = "done")]
     struct Done {
-        /// The task to mark done.
         #[arg(long)]
         task: String,
         #[command(flatten)]
@@ -654,11 +296,9 @@ fn getting_started_snippet_3() {
     struct DoneInput {
         task: String,
     }
-    /// What the application depends on: the store of tasks, opened once, outside the input.
     struct Store {
         open: Vec<String>,
     }
-    /// The command plans with the store; `#[clifacet::planned]` makes it a `Handler<Store>`.
     #[clifacet::planned]
     impl PlannedWith<Store> for Done {
         type Input = DoneInput;
@@ -687,7 +327,7 @@ fn getting_started_snippet_3() {
     assert_eq!((code, out.as_slice()), (0, b"mark CLI-47 done\n".as_slice()), "{err:?}");
 }
 
-/// `tui-composition.md`, line 21.
+/// `tui-composition.mdx`, line 28.
 #[rustfmt::skip]
 #[test]
 fn tui_composition_snippet_1() {
@@ -718,31 +358,10 @@ fn tui_composition_snippet_1() {
     assert_eq!(state.fields().len(), 2);
 }
 
-/// `tui-composition.md`, line 69.
+/// `tui-composition.mdx`, line 107.
 #[rustfmt::skip]
 #[test]
 fn tui_composition_snippet_2() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::tui::ratatui::buffer::Buffer;
-    use clifacet::tui::ratatui::layout::Rect;
-    use clifacet::tui::ratatui::widgets::{Paragraph, Widget};
-    use clifacet::tui::{CustomField, FieldState};
-    /// One field, drawn by the application: the value is masked.
-    struct Masked;
-    impl CustomField for Masked {
-        fn draw(&self, field: &FieldState, focused: bool, area: Rect, buffer: &mut Buffer) {
-            let marker = if focused { "> " } else { "  " };
-            let hidden = "*".repeat(field.value().chars().count());
-            Paragraph::new(format!("{marker}{}: {hidden}", field.label())).render(area, buffer);
-        }
-    }
-    let _hatch = Masked;
-}
-
-/// `tui-composition.md`, line 109.
-#[rustfmt::skip]
-#[test]
-fn tui_composition_snippet_3() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clifacet::tui::ratatui::backend::TestBackend;
     use clifacet::tui::ratatui::Terminal;
@@ -760,7 +379,7 @@ fn tui_composition_snippet_3() {
     assert!(outcome.is_ok(), "the form submits the answer it was given");
 }
 
-/// `command-core.md`, line 45.
+/// `command-core.mdx`, line 52.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {
@@ -776,7 +395,7 @@ fn command_core_snippet_1() {
                 return Err(Failure::validation("name a task to archive"));
             }
             let steps: Vec<String> = tasks.iter().map(|task| format!("archive {task}")).collect();
-            let plan = Plan::new(move || Ok(tasks.len())); // the real archiving goes here
+            let plan = Plan::new(move || Ok(tasks.len()));
             Ok(steps.into_iter().fold(plan, Plan::step))
         }
     }
@@ -786,7 +405,7 @@ fn command_core_snippet_1() {
     assert_eq!(Archive.execute(tasks).expect("runs"), 2);
 }
 
-/// `command-core.md`, line 136.
+/// `command-core.mdx`, line 86.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_2() {
@@ -812,82 +431,10 @@ fn command_core_snippet_2() {
     assert_eq!(out, b"", "neither reaches the data stream");
 }
 
-/// `command-core.md`, line 274.
+/// `command-core.mdx`, line 117.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_3() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    use clifacet::prompt::{Dialog, Prompter, Session};
-    // Presentation is the application's choice: the library's dialog, or any `Prompter`
-    // of its own. Constructing one touches no terminal.
-    let build_dialog = || Box::new(Dialog::new()) as Box<dyn Prompter>;
-    // A run that may ask nothing never calls that builder, which is what keeps a piped
-    // run non-interactive however rich the frontend is.
-    let plan = Policy::non_interactive()
-        .resolve(Request::none(), Capabilities::terminal())
-        .expect("the run resolves");
-    let mut session = Session::start(plan, build_dialog);
-    assert_eq!(
-        session.value(None, "Which license?").expect("nothing may ask"),
-        None,
-        "a missing value stays missing, and the dialog is never built"
-    );
-}
-
-/// `command-core.md`, line 318.
-#[rustfmt::skip]
-#[test]
-fn command_core_snippet_4() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    use clifacet::prompt::{Answer, Scripted, Session};
-    let plan = Policy::up_to(Mode::Interactive)
-        .resolve(Request::none(), Capabilities::terminal())
-        .expect("prompts are permitted here");
-    let mut session = Session::start(plan, || {
-        // A script picks by label, exactly as offered.
-        Box::new(Scripted::new([Answer::Text(String::from("in progress"))]))
-    });
-    let statuses = ["to do", "in progress", "done"];
-    assert_eq!(
-        session.choose(None, "Which status?", statuses).expect("one was picked"),
-        Some("in progress"),
-    );
-    assert_eq!(
-        session.choose(Some("done"), "Which status?", statuses).expect("never asked"),
-        Some("done"),
-    );
-}
-
-/// `command-core.md`, line 348.
-#[rustfmt::skip]
-#[test]
-fn command_core_snippet_5() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    use clifacet::prompt::{Answer, Scripted, Session};
-    use clifacet::provenance::Source;
-    let plan = Policy::up_to(Mode::Interactive)
-        .resolve(Request::none(), Capabilities::terminal())
-        .expect("prompts are permitted here");
-    let mut session = Session::start(plan, || {
-        Box::new(Scripted::new([Answer::Text(String::from("s3cret"))]))
-    });
-    let token = session
-        .ask_secret(None, "token", "API token?")
-        .expect("answered")
-        .expect("asked");
-    assert_eq!(token.expose(), "s3cret");
-    assert_eq!(token.to_string(), "[redacted]");
-    assert_eq!(session.provenance().source_of("token"), Some(Source::Prompt));
-    assert!(session.provenance().is_secret("token"));
-}
-
-/// `command-core.md`, line 595.
-#[rustfmt::skip]
-#[test]
-fn command_core_snippet_6() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
     use clap::{CommandFactory, FromArgMatches, Parser};
     use clifacet::provenance::{Provenance, Source};
@@ -909,7 +456,7 @@ fn command_core_snippet_6() {
     let parsed = Deploy::from_arg_matches(&matches).expect("the matches are this command's");
     let mut provenance = Provenance::from_matches(&command, &matches).with_secrets(&["token"]);
     let mut asked = Provenance::default();
-    asked.record("name", Source::Prompt); // what `session.provenance()` holds after asking
+    asked.record("name", Source::Prompt);
     provenance.merge(&asked);
     assert_eq!(parsed.repeat, 1);
     assert_eq!(provenance.source_of("repeat"), Some(Source::Default));

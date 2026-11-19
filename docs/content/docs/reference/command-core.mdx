@@ -1,0 +1,161 @@
+---
+title: Command Core and Its Seams
+description: Seams, contracts, layers, stream separation, secret redaction, and provenance tracking.
+---
+
+The core model connects Clap parsing, typed validation, UI-free command execution, and stream routing.
+
+<Callout type="info">
+`Command` is the only seam between validation and presentation. Commands never read stdin or write directly to stdout/stderr, guaranteeing reachability across all terminal frontends.
+</Callout>
+
+## The Four Layers
+
+| Layer | Implementation | Responsibility | Invariant |
+| --- | --- | --- | --- |
+| Clap Surface | Parameter list / Clap struct | Flags, help, usage errors | Must not execute operations |
+| Validation | `Facet::validate`, `TryFrom` bridge | Reject bad values, normalize inputs | Must not execute operations |
+| Command | `impl Command`, `execute` | The operation logic | Must not touch streams or read TTY |
+| Application | `clifacet::App`, `run_with` | Pipeline: streams, exit codes, UI | Must not contain operation logic |
+
+### Core Types and Traits
+
+<TypeTable
+  type={{
+    Command: {
+      description: "The core execution trait implemented by UI-free commands.",
+      type: "trait Command",
+    },
+    Planned: {
+      description: "Trait for commands that produce an inspectable Plan before execution.",
+      type: "trait Planned",
+    },
+    Failure: {
+      description: "Structured error carrying validation, execution, or cancellation status.",
+      type: "struct Failure",
+    },
+    Secret: {
+      description: "Wrapper that redacts sensitive values from logs and error messages.",
+      type: "struct Secret<T>",
+    },
+    Provenance: {
+      description: "Tracks where each parsed CLI argument originated without leaking values.",
+      type: "struct Provenance",
+    },
+  }}
+/>
+
+## Planned Commands and Dry Runs
+
+A command modifying system state can implement `Planned` instead of `Command`:
+
+```rust
+use clifacet::command::{Plan, Planned};
+use clifacet::{Command, Failure};
+
+struct Archive;
+
+impl Planned for Archive {
+    type Input = Vec<String>;
+    type Output = usize;
+
+    fn plan(&self, tasks: Vec<String>) -> Result<Plan<'_, usize>, Failure> {
+        if tasks.is_empty() {
+            return Err(Failure::validation("name a task to archive"));
+        }
+        let steps: Vec<String> = tasks.iter().map(|task| format!("archive {task}")).collect();
+        let plan = Plan::new(move || Ok(tasks.len()));
+        Ok(steps.into_iter().fold(plan, Plan::step))
+    }
+}
+
+let tasks = vec![String::from("CLI-7"), String::from("CLI-9")];
+let dry_run = Archive.plan(tasks.clone()).expect("a valid request");
+assert_eq!(dry_run.describe(), "archive CLI-7\narchive CLI-9");
+assert_eq!(Archive.execute(tasks).expect("runs"), 2);
+```
+
+- **One execution path**: `Command::execute` for a planned command is `plan(input)?.execute()`.
+- **Building a plan does nothing**: Planned actions run exclusively inside `Plan::execute`.
+- **`--dry-run` prints the plan**: Automatically dispatched via `Command::preview`.
+
+## Stream Separation and Error Reporting
+
+Both failures and Clap usage diagnostics pass through `clifacet::report::render`:
+
+```rust
+use clap::Parser;
+use clifacet::contract::ExitPolicy;
+use clifacet::{Failure, report};
+
+#[derive(Debug, Parser)]
+#[command(name = "greet")]
+struct Greet {
+    #[arg(long)]
+    name: Option<String>,
+}
+
+let policy = ExitPolicy::standard();
+let (mut out, mut err) = (Vec::new(), Vec::new());
+
+let usage = Greet::try_parse_from(["greet", "--nope"]).expect_err("an unknown flag");
+assert_eq!(report::render("greet", &usage, &policy, &mut out, &mut err), policy.usage());
+
+let failure = Failure::execution("the greeting could not be sent");
+assert_eq!(report::render("greet", &failure, &policy, &mut out, &mut err), policy.execution());
+
+let err = String::from_utf8(err).expect("utf-8");
+assert!(err.contains("Usage: greet"));
+assert!(err.ends_with("greet: the greeting could not be sent\n"));
+assert_eq!(out, b"", "neither reaches the data stream");
+```
+
+## Provenance and Secret Redaction
+
+Provenance records where each argument originated (argv, environment, defaults, or interactive prompts) without leaking secrets:
+
+```rust
+use clap::{CommandFactory, FromArgMatches, Parser};
+use clifacet::provenance::{Provenance, Source};
+
+#[derive(Debug, Parser)]
+#[command(name = "deploy")]
+struct Deploy {
+    #[arg(long)]
+    name: Option<String>,
+    #[arg(long, default_value_t = 1)]
+    repeat: u8,
+    #[arg(long)]
+    token: Option<String>,
+}
+
+let command = Deploy::command();
+let matches = command
+    .clone()
+    .try_get_matches_from(["deploy", "--token", "s3cret"])
+    .expect("a valid invocation");
+let parsed = Deploy::from_arg_matches(&matches).expect("the matches are this command's");
+
+let mut provenance = Provenance::from_matches(&command, &matches).with_secrets(&["token"]);
+let mut asked = Provenance::default();
+asked.record("name", Source::Prompt);
+provenance.merge(&asked);
+
+assert_eq!(parsed.repeat, 1);
+assert_eq!(provenance.source_of("repeat"), Some(Source::Default));
+assert_eq!(provenance.source_of("name"), Some(Source::Prompt));
+assert!(!provenance.to_string().contains("s3cret"));
+```
+
+## Known unsupported behavior
+
+<Accordions>
+<Accordion title="Architectural Scope and Deliberate Exclusions">
+
+- **Widgets beyond forms**: Clifacet ships full-screen forms and labeled fields. Custom dashboards or tables use Ratatui directly via escape hatches.
+- **Direct JSON generation**: Clifacet writes no JSON directly. Applications enable the `serde` feature to serialize `Failure` and `Secret` with `serde_json`.
+- **Heuristic mode detection**: Terminal detection does not probe obscure escape sequences or locale heuristics.
+- **Line terminal secret prompting**: Dumb line terminals cannot disable terminal echo, so `Session::ask_secret` fails rather than echoing credentials to scrollback.
+
+</Accordion>
+</Accordions>

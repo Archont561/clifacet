@@ -38,8 +38,8 @@ def test_every_page_the_guides_are_made_of_is_checked(config):
 
     assert "README.md" in pages
     assert "AGENTS.md" in pages
-    assert "docs/development/development.md" in pages
-    assert all(page.endswith(".md") for page in pages), pages
+    assert "docs/content/docs/development/development.mdx" in pages
+    assert all(page.endswith((".md", ".mdx")) for page in pages), pages
 
 
 def test_an_installed_package_cannot_overwrite_the_repository_style(config):

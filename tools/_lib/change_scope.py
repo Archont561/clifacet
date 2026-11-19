@@ -38,7 +38,7 @@ from tools._lib.github_actions import append_summary, set_output  # noqa: E402
 DOCS_ONLY = "docs-only"
 
 DOCUMENTATION_DIRECTORIES = ("backlog", "docs")
-DOCUMENTATION_SUFFIX = ".md"
+DOCUMENTATION_SUFFIX = (".md", ".mdx")
 # Only the repository's own licenses: one inside a crate is part of what it publishes.
 ROOT_DOCUMENT_PREFIX = "LICENSE"
 
