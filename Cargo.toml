@@ -44,6 +44,16 @@ inquire = { version = "0.9.4", default-features = false, features = ["crossterm"
 ratatui = { version = "0.30.2", default-features = false, features = ["crossterm_0_29"] }
 crossterm = "0.29.0"
 
+# Agent protocols, schema introspection, and templating (decision-25).
+# Official Model Context Protocol SDK for Rust (CLI-77).
+rmcp = { version = "3.11.0", default-features = false, features = ["server", "transport-io"] }
+# Template engine for agent skill generation (CLI-75).
+minijinja = { version = "3.1.0", default-features = false, features = ["loader"] }
+# Machine-readable JSON Schema introspection and MCP tool schema (CLI-73, CLI-77).
+schemars = { version = "1.0.4", default-features = false, features = ["derive"] }
+# Dynamic shell completion generation for bash, zsh, fish, and powershell (CLI-78).
+clap_complete = { version = "4.6.0", default-features = false }
+
 # Companion derive implementation.
 # `span-locations`: `Span::local_file()`, which is how `clifacet::commands!()` with no
 # list finds the folder it was written in (decision-19 item 4, CLI-50). The method needs
