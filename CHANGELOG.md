@@ -15,6 +15,11 @@ copy has drifted. Edit the commit messages, not the file.
 * **settings:** cascading configuration presets and line citations (CLI-60, CLI-61)
 ([d6acd0c](https://github.com/Archont561/clifacet/commit/d6acd0c8f93621dba205efb221d9d7bf73f143c2))
 
+### Fixed
+
+* **docs:** resolve clippy warnings in plugin snippet (CLI-29)
+([c4a4b64](https://github.com/Archont561/clifacet/commit/c4a4b642bd81c869265c55be18c6f6da9aeac1bc))
+
 ## [0.6.0] - 2026-11-18
 
 ### Added
