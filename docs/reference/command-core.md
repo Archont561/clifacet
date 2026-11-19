@@ -411,10 +411,10 @@ Five rules keep it a frontend rather than a second command:
   possible values is a choice, drawn `‹green›`: Space moves to the next option, a
   letter jumps to the next option starting with it, and an optional choice without a
   default passes through `‹(none)›`, which submits nothing. Everything else is text.
-  A list — a repeatable or counted flag, or more than one value — is refused by
-  `FormState::generated`, because cutting it to one value would be a silent lie;
-  `FieldState::choices()`, `is_toggle()` and `is_on()` let a custom field draw the
-  same kinds its own way.
+  Repeatable flags and multi-value arguments are collected as lists, submitting
+  multiple flag instances to clap. Counters and actions with no value are refused by
+  `FormState::generated`; `FieldState::choices()`, `is_toggle()`, `is_on()` and
+  `is_list()` let a custom field draw the same kinds its own way.
 - **Submission goes through `clap`.** The answers become arguments,
   `Example::try_parse_from` parses them, and `Facet::validate` plus the handler run as
   they would for flags. A rejected answer — `--repeat 9`, `--repeat x` — keeps the

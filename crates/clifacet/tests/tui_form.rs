@@ -504,15 +504,109 @@ fn a_toggle_submits_its_bare_flag_when_it_differs_from_the_default() {
     assert!(!parsed.color, "the SetFalse flag was switched off");
 }
 
-#[rstest]
-#[case::a_repeatable_value("tags", "--tags")]
-#[case::a_counter("verbose", "-v")]
-fn a_list_is_refused_rather_than_cut_to_one_value(#[case] name: &str, #[case] flag: &str) {
-    let failure = FormState::generated(&Settings::command(), &[name])
-        .expect_err("a form field holds one value");
+#[test]
+fn a_counter_is_refused_for_what_it_is() {
+    let failure = FormState::generated(&Settings::command(), &["verbose"])
+        .expect_err("a counter takes no value");
 
     assert_eq!(failure.kind(), FailureKind::Execution);
-    assert!(failure.message().contains(flag), "{}", failure.message());
+    assert!(failure.message().contains("-v"), "{}", failure.message());
+}
+
+#[test]
+fn a_repeatable_argument_becomes_a_multi_value_list_field() {
+    let form = FormState::generated(&Settings::command(), &["tags"])
+        .expect("repeatable arguments are now supported");
+    let tags = form.field("tags").expect("tags exists");
+    assert!(tags.is_list());
+    assert!(tags.is_empty());
+    assert_eq!(tags.values(), Vec::<String>::new());
+    assert_eq!(form.arguments(), Vec::<String>::new());
+}
+
+#[test]
+fn a_multi_value_field_submits_multiple_arguments_into_clap() {
+    let mut form = FormState::generated(&Settings::command(), &["shape", "tags"])
+        .expect("repeatable arguments are supported");
+
+    // shape is a required choice: press space to select "round"
+    form.handle(Key::Char(' '));
+    // move focus to tags
+    form.handle(Key::Tab);
+
+    for c in "alpha, beta, gamma".chars() {
+        form.handle(Key::Char(c));
+    }
+
+    assert_eq!(
+        form.field("tags").expect("tags").values(),
+        ["alpha", "beta", "gamma"]
+    );
+    assert_eq!(
+        form.arguments(),
+        [
+            "--shape", "round", "--tags", "alpha", "--tags", "beta", "--tags", "gamma"
+        ]
+    );
+
+    let parsed =
+        Settings::try_parse_from(std::iter::once(String::from("settings")).chain(form.arguments()))
+            .expect("clap parses multiple --tags");
+    assert_eq!(parsed.shape, "round");
+    assert_eq!(parsed.tags, ["alpha", "beta", "gamma"]);
+}
+
+#[test]
+fn a_hand_built_list_field_submits_multiple_entries() {
+    let form = FormState::new(vec![FieldState::list("tag", "Tags", ["one", "two"])]);
+    assert!(form.field("tag").expect("tag exists").is_list());
+    assert_eq!(form.arguments(), ["--tag", "one", "--tag", "two"]);
+}
+
+#[test]
+fn a_positional_list_argument_submits_bare_values() {
+    #[derive(Debug, Parser)]
+    #[command(name = "files")]
+    struct FileCmd {
+        items: Vec<String>,
+    }
+
+    let mut form =
+        FormState::generated(&FileCmd::command(), &["items"]).expect("positional list supported");
+    let items_field = form.field("items").expect("items field exists");
+    assert!(items_field.is_list());
+    assert!(items_field.is_positional());
+
+    for c in "foo, bar".chars() {
+        form.handle(Key::Char(c));
+    }
+
+    assert_eq!(form.arguments(), ["foo", "bar"]);
+    let parsed =
+        FileCmd::try_parse_from(std::iter::once(String::from("files")).chain(form.arguments()))
+            .expect("clap parses positional args");
+    assert_eq!(parsed.items, ["foo", "bar"]);
+}
+
+#[test]
+fn a_multi_argument_takes_more_than_one_value_per_flag() {
+    #[derive(Debug, Parser)]
+    #[command(name = "multi")]
+    struct MultiCmd {
+        #[arg(long, num_args = 2)]
+        pair: Vec<String>,
+    }
+
+    let mut form =
+        FormState::generated(&MultiCmd::command(), &["pair"]).expect("num_args > 1 supported");
+    let pair = form.field("pair").expect("pair field exists");
+    assert!(pair.is_list());
+
+    for c in "left, right".chars() {
+        form.handle(Key::Char(c));
+    }
+
+    assert_eq!(form.arguments(), ["--pair", "left", "--pair", "right"]);
 }
 
 #[test]

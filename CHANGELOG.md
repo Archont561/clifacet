@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **tui:** expand form with multi-value collectors and choice/toggle widgets (CLI-62)
+([3dc0128](https://github.com/Archont561/clifacet/commit/3dc0128fd34112d4451fe8d64bceb7687434154f))
 * **settings:** cascading configuration presets and line citations (CLI-60, CLI-61)
 ([d6acd0c](https://github.com/Archont561/clifacet/commit/d6acd0c8f93621dba205efb221d9d7bf73f143c2))
 

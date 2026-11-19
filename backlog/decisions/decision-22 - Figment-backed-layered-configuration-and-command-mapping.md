@@ -2,7 +2,7 @@
 id: decision-22
 title: Figment-backed layered configuration and command mapping
 date: '2026-11-18 15:00'
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -171,3 +171,9 @@ App::<Cli>::new()
 - **Audit & Vendoring:** Adding `figment` requires vendoring `figment = "0.10"` and its
   transitive dependency `uncased = "0.9"`. Both are MIT/Apache-2.0 licensed, satisfying
   the repository's `deny.toml` policy.
+
+## Implementation and acceptance
+
+Implemented across milestones m-14 and m-15:
+- **Phase 1 (CLI-59, m-14):** `clifacet::settings::figment::FigmentLoader`, command-to-section flattening, automatic `serde` derives on generated input structs, and snake/kebab-case key normalization.
+- **Phase 2 (CLI-60 & CLI-61, m-15):** Cascading multi-source configuration presets (`Cascade::new(app)` with system, user, and local paths), profile switching (`FIGMENT_PROFILE` and `<APP>_PROFILE`), CST line span tracking for line-level provenance, and actionable file and line citations in error diagnostics.
