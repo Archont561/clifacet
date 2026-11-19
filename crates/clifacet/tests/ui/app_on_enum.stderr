@@ -1,0 +1,8 @@
+error: #[clifacet::app] can only be applied to a struct with named fields
+ --> tests/ui/app_on_enum.rs:2:1
+  |
+2 | / enum NotAStruct {
+3 | |     A,
+4 | |     B,
+5 | | }
+  | |_^

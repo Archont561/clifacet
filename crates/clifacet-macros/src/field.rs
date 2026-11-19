@@ -173,7 +173,9 @@ pub(crate) fn parse(attribute: &Attribute, ty: &Type) -> syn::Result<Declared> {
         declared.push(syn::parse_quote!(hide_env_values = true));
     }
 
-    let subcommand = rules.iter().any(|entry| entry.path().is_ident(SUBCOMMANDS));
+    let subcommand = rules
+        .iter()
+        .any(|entry| entry.path().is_ident(SUBCOMMANDS) || entry.path().is_ident("subcommand"));
     if subcommand && let Some(argument) = declared.first() {
         return Err(syn::Error::new_spanned(
             argument,

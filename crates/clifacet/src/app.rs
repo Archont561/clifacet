@@ -213,7 +213,14 @@ pub struct App<'c, Cli, C = Cli, R = Plain, Cx = ()> {
     mode_from: fn(&Cli) -> Request,
     command: Chosen<'c, Cli, C>,
     render: R,
-    context: Rc<dyn Fn() -> Result<Cx, Failure>>,
+    #[allow(clippy::type_complexity)]
+    context: Rc<dyn Fn(&Cli) -> Result<Cx, Failure>>,
+    #[allow(clippy::type_complexity)]
+    before_run: Option<Rc<dyn Fn(&Cli, &str, &Cx) -> Result<(), Failure>>>,
+    #[allow(clippy::type_complexity)]
+    after_success: Option<Rc<dyn Fn(&Cli, &str, &Cx) -> Result<(), Failure>>>,
+    #[allow(clippy::type_complexity)]
+    after_failure: Option<Rc<dyn Fn(&Cli, &str, &Failure, Option<&Cx>)>>,
     settings: Option<Settings>,
 }
 
@@ -233,7 +240,38 @@ impl<Cli: Clone> App<'_, Cli> {
             mode_from: |_| Request::none(),
             command: Chosen::Parsed(Cli::clone),
             render: Plain,
-            context: Rc::new(|| Ok(())),
+            context: Rc::new(|_| Ok(())),
+            before_run: None,
+            after_success: None,
+            after_failure: None,
+            settings: None,
+        }
+    }
+}
+
+impl<C> App<'static, C, C, Plain, C::Context>
+where
+    C: crate::cli::Cli + Clone,
+{
+    /// The pipeline for an application implementing [`Cli`](crate::cli::Cli).
+    ///
+    /// Lazily constructs [`Cli::Context`] using [`Cli::init_context`], and wires
+    /// the lifecycle hooks ([`before_run`](crate::cli::Cli::before_run),
+    /// [`after_success`](crate::cli::Cli::after_success), and
+    /// [`after_failure`](crate::cli::Cli::after_failure)).
+    #[must_use]
+    #[allow(clippy::redundant_closure_for_method_calls)]
+    pub fn for_cli() -> Self {
+        Self {
+            policy: Policy::up_to(Mode::Interactive),
+            exit: ExitPolicy::standard(),
+            mode_from: |_| Request::none(),
+            command: Chosen::Parsed(C::clone),
+            render: Plain,
+            context: Rc::new(|cli: &C| cli.init_context()),
+            before_run: Some(Rc::new(|cli, cmd, cx| cli.before_run(cmd, cx))),
+            after_success: Some(Rc::new(|cli, cmd, cx| cli.after_success(cmd, cx))),
+            after_failure: Some(Rc::new(|cli, cmd, err, cx| cli.after_failure(cmd, err, cx))),
             settings: None,
         }
     }
@@ -245,7 +283,7 @@ impl<Cli: Clone> Default for App<'_, Cli> {
     }
 }
 
-impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
+impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
     /// How interactive a run may be, and how interactive it is unasked.
     #[must_use]
     pub fn policy(mut self, policy: Policy) -> Self {
@@ -284,6 +322,9 @@ impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
             command: Chosen::Given(command),
             render: self.render,
             context: self.context,
+            before_run: self.before_run,
+            after_success: self.after_success,
+            after_failure: self.after_failure,
             settings: self.settings,
         }
     }
@@ -298,6 +339,9 @@ impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
             command: self.command,
             render,
             context: self.context,
+            before_run: self.before_run,
+            after_success: self.after_success,
+            after_failure: self.after_failure,
             settings: self.settings,
         }
     }
@@ -311,7 +355,7 @@ impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
     /// it. A context that cannot be built is an execution failure, reported as
     /// `cannot prepare the application: {error}`, and nothing runs.
     #[must_use]
-    pub fn context<D, E, F>(self, build: F) -> App<'c, Cli, C, R, D>
+    pub fn context<D: 'static, E, F>(self, build: F) -> App<'c, Cli, C, R, D>
     where
         F: Fn() -> Result<D, E> + 'static,
         E: Display,
@@ -322,19 +366,95 @@ impl<'c, Cli, C, R, Cx> App<'c, Cli, C, R, Cx> {
             mode_from: self.mode_from,
             command: self.command,
             render: self.render,
-            context: Rc::new(move || {
+            context: Rc::new(move |_| {
                 build().map_err(|error| {
                     Failure::execution(format!("cannot prepare the application: {error}"))
                 })
             }),
+            before_run: None,
+            after_success: None,
+            after_failure: None,
             settings: self.settings,
         }
+    }
+
+    /// How to build the application's context from the parsed command line.
+    #[must_use]
+    pub fn context_from<D: 'static, E, F>(self, build: F) -> App<'c, Cli, C, R, D>
+    where
+        F: Fn(&Cli) -> Result<D, E> + 'static,
+        E: Display,
+    {
+        App {
+            policy: self.policy,
+            exit: self.exit,
+            mode_from: self.mode_from,
+            command: self.command,
+            render: self.render,
+            context: Rc::new(move |cli: &Cli| {
+                build(cli).map_err(|error| {
+                    Failure::execution(format!("cannot prepare the application: {error}"))
+                })
+            }),
+            before_run: None,
+            after_success: None,
+            after_failure: None,
+            settings: self.settings,
+        }
+    }
+
+    /// Hook executed immediately before command execution starts.
+    #[must_use]
+    pub fn before_run<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(&str, &Cx) -> Result<(), Failure> + 'static,
+    {
+        let prev = self.before_run.take();
+        self.before_run = Some(Rc::new(move |cli, cmd, cx| {
+            if let Some(prev) = &prev {
+                prev(cli, cmd, cx)?;
+            }
+            hook(cmd, cx)
+        }));
+        self
+    }
+
+    /// Hook executed after successful command execution.
+    #[must_use]
+    pub fn after_success<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(&str, &Cx) -> Result<(), Failure> + 'static,
+    {
+        let prev = self.after_success.take();
+        self.after_success = Some(Rc::new(move |cli, cmd, cx| {
+            if let Some(prev) = &prev {
+                prev(cli, cmd, cx)?;
+            }
+            hook(cmd, cx)
+        }));
+        self
+    }
+
+    /// Hook executed when command execution, `before_run`, or context initialization fails.
+    #[must_use]
+    pub fn after_failure<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(&str, &Failure, Option<&Cx>) + 'static,
+    {
+        let prev = self.after_failure.take();
+        self.after_failure = Some(Rc::new(move |cli, cmd, err, cx| {
+            if let Some(prev) = &prev {
+                prev(cli, cmd, err, cx);
+            }
+            hook(cmd, err, cx);
+        }));
+        self
     }
 }
 
 impl<Cli, C, R, Cx> App<'_, Cli, C, R, Cx>
 where
-    Cli: Parser + Facet + Collect,
+    Cli: Parser + Facet + Collect + Clone + 'static,
     C: Handler<Cx, Input = <Cli as Facet>::Input>,
     R: Render<<C as Handler<Cx>>::Output>,
     Cx: 'static,
@@ -524,7 +644,9 @@ where
         let requested = (self.mode_from)(&cli);
         let requested = requested.assuming_yes(requested.assumes_yes() || globals.yes);
         // One context per run, shared by the questions and the command, built on first use.
-        let context = Rc::new(Lazy::new(Rc::clone(&self.context)));
+        let cli_for_cx = cli.clone();
+        let builder = Rc::clone(&self.context);
+        let context = Rc::new(Lazy::new(Rc::new(move || builder(&cli_for_cx))));
         let outcome = match self.policy.resolve(requested, capabilities) {
             Ok(plan) if plan.mode() == Mode::Tui => self.full_screen(&globals, &context, out, err),
             Ok(plan) => {
@@ -590,6 +712,7 @@ where
     }
 
     /// Validates, then runs or previews, then renders: everything after the questions.
+    #[allow(clippy::collapsible_if)]
     fn settle(
         &self,
         cli: Cli,
@@ -597,6 +720,7 @@ where
         context: &Lazy<Cx>,
         out: &mut dyn Write,
     ) -> Result<(), Failure> {
+        let cmd = program::<Cli>();
         // The command is taken before validation consumes the command line it is
         // built from — the clone a declared tree keeps of itself.
         let parsed;
@@ -607,23 +731,70 @@ where
             }
             Chosen::Given(command) => *command,
         };
+        let cli_ref = cli.clone();
         let input = cli.validate()?;
-        // Built only now that the input is valid — unless a question already needed it.
-        let cx = context.get()?;
-        // A dry run previews through the same validated input a real run executes, so
-        // what it prints is what the real run would do — or the reason it cannot say.
-        let written = if globals.dry_run {
-            let steps = Handler::<Cx>::preview(command, input, &cx)?.describe();
-            if steps.is_empty() {
-                Ok(())
-            } else {
-                writeln!(out, "{steps}")
+
+        let cx = match context.get() {
+            Ok(cx) => cx,
+            Err(err) => {
+                if let Some(hook) = &self.after_failure {
+                    hook(&cli_ref, &cmd, &err, None);
+                }
+                return Err(err);
+            }
+        };
+
+        if let Some(hook) = &self.before_run {
+            if let Err(err) = hook(&cli_ref, &cmd, &cx) {
+                if let Some(fail_hook) = &self.after_failure {
+                    fail_hook(&cli_ref, &cmd, &err, Some(&cx));
+                }
+                return Err(err);
+            }
+        }
+
+        let outcome = if globals.dry_run {
+            match Handler::<Cx>::preview(command, input, &cx) {
+                Ok(plan) => {
+                    let steps = plan.describe();
+                    if steps.is_empty() {
+                        Ok(())
+                    } else {
+                        writeln!(out, "{steps}").map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    }
+                }
+                Err(err) => Err(err),
             }
         } else {
-            self.render
-                .render(Handler::<Cx>::handle(command, input, &cx)?, out)
+            match Handler::<Cx>::handle(command, input, &cx) {
+                Ok(output) => self.render.render(output, out).map_err(|error| {
+                    Failure::execution(format!("cannot write the output: {error}"))
+                }),
+                Err(err) => Err(err),
+            }
         };
-        written.map_err(|error| Failure::execution(format!("cannot write the output: {error}")))
+
+        match outcome {
+            Ok(()) => {
+                if let Some(hook) = &self.after_success {
+                    if let Err(err) = hook(&cli_ref, &cmd, &cx) {
+                        if let Some(fail_hook) = &self.after_failure {
+                            fail_hook(&cli_ref, &cmd, &err, Some(&cx));
+                        }
+                        return Err(err);
+                    }
+                }
+                Ok(())
+            }
+            Err(err) => {
+                if let Some(fail_hook) = &self.after_failure {
+                    fail_hook(&cli_ref, &cmd, &err, Some(&cx));
+                }
+                Err(err)
+            }
+        }
     }
 
     /// The exit code a finished run answers with, its failure reported if it had one.
@@ -647,10 +818,27 @@ where
 #[must_use]
 pub fn run<Cli>() -> ExitCode
 where
-    Cli: Parser + Facet + Collect + Clone + Command<Input = <Cli as Facet>::Input>,
+    Cli: Parser + Facet + Collect + Clone + Command<Input = <Cli as Facet>::Input> + 'static,
     <Cli as Command>::Output: Display,
 {
     App::<Cli>::new().run()
+}
+
+/// Runs `C` as an application implementing [`Cli`](crate::cli::Cli).
+#[must_use]
+pub fn run_cli<C>() -> ExitCode
+where
+    C: crate::cli::Cli
+        + Parser
+        + Facet
+        + Collect
+        + Clone
+        + Handler<C::Context, Input = <C as Facet>::Input>
+        + 'static,
+    <C as Handler<C::Context>>::Output: Display,
+    C::Context: 'static,
+{
+    App::<C, C, Plain, C::Context>::for_cli().run()
 }
 
 /// Whether the argument list asks for help or a version, which is answered without a file.

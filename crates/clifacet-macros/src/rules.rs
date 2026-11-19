@@ -32,8 +32,15 @@ pub(crate) const ATTRIBUTE: &str = "facet";
 pub(crate) const VALUE_KEYS: &[&str] = &["ask", "confirm", "fill"];
 
 /// Field keys that are flags.
-pub(crate) const FLAG_KEYS: &[&str] =
-    &["form", "non_empty", "secret", "skip", "subcommands", "trim"];
+pub(crate) const FLAG_KEYS: &[&str] = &[
+    "form",
+    "non_empty",
+    "secret",
+    "skip",
+    "subcommand",
+    "subcommands",
+    "trim",
+];
 
 /// Keys that change the value the generated bridge copies.
 const NORMALIZATION_KEYS: &[&str] = &["fill", "non_empty", "secret", "trim"];
@@ -102,7 +109,10 @@ pub(crate) fn parse(field: &Field) -> syn::Result<Rules> {
     }
 
     if rules.subcommands.is_some()
-        && let Some((key, span)) = rules.keys.iter().find(|(key, _)| key != "subcommands")
+        && let Some((key, span)) = rules
+            .keys
+            .iter()
+            .find(|(key, _)| key != "subcommands" && key != "subcommand")
     {
         return Err(syn::Error::new(
             *span,
@@ -226,7 +236,7 @@ fn record_flag(rules: &mut Rules, key: &str, span: Span) -> bool {
         "non_empty" => rules.non_empty.replace(span).is_some(),
         "skip" => rules.skip.replace(span).is_some(),
         "form" => rules.form.replace(span).is_some(),
-        "subcommands" => rules.subcommands.replace(span).is_some(),
+        "subcommands" | "subcommand" => rules.subcommands.replace(span).is_some(),
         _ => rules.secret.replace(span).is_some(),
     }
 }

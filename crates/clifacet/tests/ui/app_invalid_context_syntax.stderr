@@ -1,0 +1,5 @@
+error: expected path to context factory function
+ --> tests/ui/app_invalid_context_syntax.rs:6:26
+  |
+6 |     #[clifacet(context = "not_a_path")]
+  |                          ^^^^^^^^^^^^

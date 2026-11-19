@@ -1,0 +1,527 @@
+//! `#[clifacet::app(...)]`: the declarative application controller macro (decision-24).
+
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::punctuated::Punctuated;
+use syn::{
+    Attribute, Data, DeriveInput, Expr, Fields, Ident, Lit, LitStr, Meta, Path, PathArguments,
+    Token, Type,
+};
+
+enum VersionArg {
+    Default,
+    Specified(LitStr),
+}
+
+#[derive(Default)]
+struct AppArgs {
+    name: Option<LitStr>,
+    version: Option<VersionArg>,
+    about: Option<LitStr>,
+    long_about: Option<LitStr>,
+    author: Option<LitStr>,
+    before_run: Option<Path>,
+    after_success: Option<Path>,
+    after_failure: Option<Path>,
+    input: Option<Type>,
+    commands: Option<Option<Ident>>,
+}
+
+struct ContextFieldInfo {
+    ident: Ident,
+    ty: Type,
+    custom_factory: Option<Path>,
+}
+
+struct SubcommandFieldInfo {
+    ident: Ident,
+    is_option: bool,
+}
+
+pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
+    let mut parsed = syn::parse2::<DeriveInput>(item)?;
+    let Data::Struct(data_struct) = &mut parsed.data else {
+        return Err(syn::Error::new_spanned(
+            &parsed,
+            "#[clifacet::app] can only be applied to a struct with named fields",
+        ));
+    };
+    let Fields::Named(fields_named) = &mut data_struct.fields else {
+        return Err(syn::Error::new_spanned(
+            &parsed,
+            "#[clifacet::app] can only be applied to a struct with named fields",
+        ));
+    };
+
+    let app_args = parse_app_args(attribute)?;
+
+    let mut context_field: Option<ContextFieldInfo> = None;
+    let mut subcommand_field: Option<SubcommandFieldInfo> = None;
+
+    for field in &mut fields_named.named {
+        let field_ident = field
+            .ident
+            .clone()
+            .ok_or_else(|| syn::Error::new_spanned(&field, "expected named field"))?;
+
+        let mut is_context = false;
+        let mut custom_factory: Option<Path> = None;
+        let mut is_subcommand = false;
+        let mut remaining_attrs = Vec::new();
+
+        for attr in field.attrs.drain(..) {
+            if attr.path().is_ident("context") {
+                is_context = true;
+            } else if attr.path().is_ident("subcommand") {
+                is_subcommand = true;
+            } else if attr.path().is_ident(crate::field::ATTRIBUTE) {
+                let (has_ctx, factory, has_subcmd, other_metas) = process_clifacet_attr(&attr)?;
+                if has_ctx {
+                    is_context = true;
+                    custom_factory = factory;
+                }
+                if has_subcmd {
+                    is_subcommand = true;
+                }
+                if !other_metas.is_empty() {
+                    let new_attr: Attribute = syn::parse_quote!(#[clifacet(#(#other_metas),*)]);
+                    remaining_attrs.push(new_attr);
+                }
+            } else {
+                remaining_attrs.push(attr);
+            }
+        }
+
+        if is_context {
+            if context_field.is_some() {
+                return Err(syn::Error::new_spanned(
+                    &field,
+                    "only one field can be marked with `#[clifacet(context)]`",
+                ));
+            }
+            context_field = Some(ContextFieldInfo {
+                ident: field_ident.clone(),
+                ty: field.ty.clone(),
+                custom_factory,
+            });
+            let orig_ty = &field.ty;
+            field.ty = syn::parse_quote!(::clifacet::ContextCell<#orig_ty>);
+            remaining_attrs.push(syn::parse_quote!(#[arg(skip)]));
+        }
+
+        if is_subcommand {
+            let is_option = is_option_type(&field.ty);
+            subcommand_field = Some(SubcommandFieldInfo {
+                ident: field_ident,
+                is_option,
+            });
+            remaining_attrs.push(syn::parse_quote!(#[command(subcommand)]));
+        }
+
+        field.attrs = remaining_attrs;
+    }
+
+    if let Some(custom_commands_name) = &app_args.commands {
+        if subcommand_field.is_none() {
+            let enum_ident = custom_commands_name
+                .clone()
+                .unwrap_or_else(|| quote::format_ident!("{}Commands", parsed.ident));
+            let cmd_field_ident = quote::format_ident!("command");
+            subcommand_field = Some(SubcommandFieldInfo {
+                ident: cmd_field_ident.clone(),
+                is_option: true,
+            });
+            fields_named.named.push(syn::parse_quote! {
+                #[command(subcommand)]
+                pub #cmd_field_ident: Option<#enum_ident>
+            });
+        }
+    }
+
+    // Forward any remaining field attributes through crate::field
+    crate::command::forward_field_attributes(&mut parsed)?;
+
+    // Build clap #[command(...)] attribute
+    let mut command_args = Vec::new();
+    if let Some(name) = &app_args.name {
+        command_args.push(quote!(name = #name));
+    }
+    if let Some(version) = &app_args.version {
+        match version {
+            VersionArg::Default => command_args.push(quote!(version = env!("CARGO_PKG_VERSION"))),
+            VersionArg::Specified(v) => command_args.push(quote!(version = #v)),
+        }
+    }
+    if let Some(about) = &app_args.about {
+        command_args.push(quote!(about = #about));
+    }
+    if let Some(long_about) = &app_args.long_about {
+        command_args.push(quote!(long_about = #long_about));
+    }
+    if let Some(author) = &app_args.author {
+        command_args.push(quote!(author = #author));
+    }
+
+    let command_attr = if command_args.is_empty() {
+        quote!()
+    } else {
+        quote!(#[command(#(#command_args),*)])
+    };
+
+    let name = &parsed.ident;
+    let (impl_generics, type_generics, where_clause) = parsed.generics.split_for_impl();
+
+    let init_from_parent = quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            #[doc(hidden)]
+            pub fn init_from_parent<P>(&self, _parent: &P) {}
+        }
+    };
+
+    let (context_type, init_body) = if let Some(cx) = &context_field {
+        let cx_ident = &cx.ident;
+        let cx_ty = &cx.ty;
+        let init = if let Some(factory) = &cx.custom_factory {
+            quote! {
+                let cx = #factory(self)?;
+                let _ = self.#cx_ident.set(::std::clone::Clone::clone(&cx));
+                ::core::result::Result::Ok(cx)
+            }
+        } else {
+            quote! {
+                use ::clifacet::cli::auto_wire::{AutoWireDefault as _, AutoWireFromCli as _};
+                let cx = (&&::clifacet::cli::auto_wire::AutoWire::<#cx_ty>(::std::marker::PhantomData)).init_ctx(self)?;
+                let _ = self.#cx_ident.set(::std::clone::Clone::clone(&cx));
+                ::core::result::Result::Ok(cx)
+            }
+        };
+        (quote!(#cx_ty), init)
+    } else {
+        (quote!(()), quote!(::core::result::Result::Ok(())))
+    };
+
+    let before_run_impl = app_args.before_run.as_ref().map(|path| {
+        quote! {
+            fn before_run(&self, cmd: &str, cx: &Self::Context) -> ::core::result::Result<(), ::clifacet::Failure> {
+                #path(self, cmd, cx)
+            }
+        }
+    });
+    let after_success_impl = app_args.after_success.as_ref().map(|path| {
+        quote! {
+            fn after_success(&self, cmd: &str, cx: &Self::Context) -> ::core::result::Result<(), ::clifacet::Failure> {
+                #path(self, cmd, cx)
+            }
+        }
+    });
+    let after_failure_impl = app_args.after_failure.as_ref().map(|path| {
+        quote! {
+            fn after_failure(&self, cmd: &str, err: &::clifacet::Failure, cx: ::core::option::Option<&Self::Context>) {
+                #path(self, cmd, err, cx);
+            }
+        }
+    });
+
+    let cli_impl = quote! {
+        impl #impl_generics ::clifacet::Cli for #name #type_generics #where_clause {
+            type Context = #context_type;
+
+            fn init_context(&self) -> ::core::result::Result<Self::Context, ::clifacet::Failure> {
+                #init_body
+            }
+
+            #before_run_impl
+            #after_success_impl
+            #after_failure_impl
+        }
+    };
+
+    let input_type = app_args
+        .input
+        .as_ref()
+        .map_or_else(|| quote!(Self), |ty| quote!(#ty));
+    let facet_validate = if app_args.input.is_some() {
+        quote!(::core::convert::TryFrom::try_from(self))
+    } else {
+        quote!(::core::result::Result::Ok(self))
+    };
+
+    let facet_impl = quote! {
+        impl #impl_generics ::clifacet::Facet for #name #type_generics #where_clause {
+            type Input = #input_type;
+
+            fn command() -> ::clap::Command {
+                <Self as ::clap::CommandFactory>::command()
+            }
+
+            fn validate(self) -> ::core::result::Result<Self::Input, ::clifacet::Failure> {
+                #facet_validate
+            }
+        }
+    };
+
+    let collect_impl = if let Some(subcmd) = &subcommand_field {
+        let subcmd_id = &subcmd.ident;
+        let collect_tree_call = if subcmd.is_option {
+            quote!(::clifacet::facet::__derive::collect_optional_tree(self.#subcmd_id, session)?)
+        } else {
+            quote!(::clifacet::facet::__derive::collect_tree(self.#subcmd_id, session)?)
+        };
+        quote! {
+            impl #impl_generics ::clifacet::prompt::Collect for #name #type_generics #where_clause {
+                fn collect(
+                    mut self,
+                    session: &mut ::clifacet::prompt::Session,
+                ) -> ::core::result::Result<Self, ::clifacet::Failure> {
+                    self.#subcmd_id = #collect_tree_call;
+                    ::core::result::Result::Ok(self)
+                }
+            }
+        }
+    } else {
+        quote! {
+            impl #impl_generics ::clifacet::prompt::Collect for #name #type_generics #where_clause {
+                fn collect(
+                    self,
+                    _session: &mut ::clifacet::prompt::Session,
+                ) -> ::core::result::Result<Self, ::clifacet::Failure> {
+                    ::core::result::Result::Ok(self)
+                }
+            }
+        }
+    };
+
+    parsed.attrs.insert(
+        0,
+        syn::parse_quote!(#[derive(::clap::Parser, ::std::clone::Clone)]),
+    );
+    if !command_attr.is_empty() {
+        parsed.attrs.insert(1, syn::parse_quote!(#command_attr));
+    }
+
+    Ok(quote! {
+        #parsed
+        #init_from_parent
+        #cli_impl
+        #facet_impl
+        #collect_impl
+    })
+}
+
+fn process_clifacet_attr(attr: &Attribute) -> syn::Result<(bool, Option<Path>, bool, Vec<Meta>)> {
+    let entries = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
+    let mut has_context = false;
+    let mut custom_factory: Option<Path> = None;
+    let mut has_subcmd = false;
+    let mut other_metas = Vec::new();
+
+    for entry in entries {
+        if entry.path().is_ident("context") {
+            has_context = true;
+            match &entry {
+                Meta::Path(_) => {}
+                Meta::NameValue(nv) => {
+                    if let Expr::Path(expr_path) = &nv.value {
+                        custom_factory = Some(expr_path.path.clone());
+                    } else {
+                        return Err(syn::Error::new_spanned(
+                            &nv.value,
+                            "expected path to context factory function",
+                        ));
+                    }
+                }
+                Meta::List(list) => {
+                    return Err(syn::Error::new_spanned(
+                        list,
+                        "invalid `context` attribute: use `#[clifacet(context)]` or `#[clifacet(context = path)]`",
+                    ));
+                }
+            }
+        } else if entry.path().is_ident("subcommand") || entry.path().is_ident("subcommands") {
+            has_subcmd = true;
+        } else {
+            other_metas.push(entry);
+        }
+    }
+
+    Ok((has_context, custom_factory, has_subcmd, other_metas))
+}
+
+fn parse_app_args(attribute: TokenStream) -> syn::Result<AppArgs> {
+    if attribute.is_empty() {
+        return Ok(AppArgs::default());
+    }
+
+    let entries =
+        syn::parse::Parser::parse2(Punctuated::<Meta, Token![,]>::parse_terminated, attribute)?;
+
+    let mut args = AppArgs::default();
+    for entry in entries {
+        let Some(ident) = entry.path().get_ident() else {
+            return Err(syn::Error::new_spanned(
+                &entry,
+                "#[clifacet::app] attributes must be plain identifiers",
+            ));
+        };
+        let key = ident.to_string();
+        match key.as_str() {
+            "name" => {
+                if args.name.is_some() {
+                    return Err(syn::Error::new_spanned(ident, "`name` is declared twice"));
+                }
+                args.name = Some(parse_lit_str(&entry)?);
+            }
+            "version" => {
+                if args.version.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        ident,
+                        "`version` is declared twice",
+                    ));
+                }
+                match entry {
+                    Meta::Path(_) => args.version = Some(VersionArg::Default),
+                    Meta::NameValue(_) => {
+                        args.version = Some(VersionArg::Specified(parse_lit_str(&entry)?));
+                    }
+                    _ => {
+                        return Err(syn::Error::new_spanned(
+                            entry,
+                            "`version` must be a flag or `version = \"...\"`",
+                        ));
+                    }
+                }
+            }
+            "about" => {
+                if args.about.is_some() {
+                    return Err(syn::Error::new_spanned(ident, "`about` is declared twice"));
+                }
+                args.about = Some(parse_lit_str(&entry)?);
+            }
+            "long_about" => {
+                if args.long_about.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        ident,
+                        "`long_about` is declared twice",
+                    ));
+                }
+                args.long_about = Some(parse_lit_str(&entry)?);
+            }
+            "author" => {
+                if args.author.is_some() {
+                    return Err(syn::Error::new_spanned(ident, "`author` is declared twice"));
+                }
+                args.author = Some(parse_lit_str(&entry)?);
+            }
+            "before_run" => {
+                if args.before_run.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        ident,
+                        "`before_run` is declared twice",
+                    ));
+                }
+                args.before_run = Some(parse_path(&entry)?);
+            }
+            "after_success" => {
+                if args.after_success.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        ident,
+                        "`after_success` is declared twice",
+                    ));
+                }
+                args.after_success = Some(parse_path(&entry)?);
+            }
+            "after_failure" => {
+                if args.after_failure.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        ident,
+                        "`after_failure` is declared twice",
+                    ));
+                }
+                args.after_failure = Some(parse_path(&entry)?);
+            }
+            "input" => {
+                if args.input.is_some() {
+                    return Err(syn::Error::new_spanned(ident, "`input` is declared twice"));
+                }
+                args.input = Some(parse_type(&entry)?);
+            }
+            "commands" => match entry {
+                Meta::Path(_) => args.commands = Some(None),
+                Meta::NameValue(nv) => {
+                    if let syn::Expr::Path(ep) = nv.value {
+                        args.commands = Some(ep.path.get_ident().cloned());
+                    }
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        entry,
+                        "`commands` must be a flag or `commands = Commands`",
+                    ));
+                }
+            },
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    ident,
+                    format!(
+                        "unknown key `{key}` in #[clifacet::app]: supported keys are `name`, \
+                         `version`, `about`, `long_about`, `author`, `before_run`, \
+                         `after_success`, `after_failure`, `input`, `commands`"
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(args)
+}
+
+fn parse_lit_str(meta: &Meta) -> syn::Result<LitStr> {
+    match meta {
+        Meta::NameValue(nv) => {
+            if let Expr::Lit(expr_lit) = &nv.value {
+                if let Lit::Str(lit_str) = &expr_lit.lit {
+                    return Ok(lit_str.clone());
+                }
+            }
+            Err(syn::Error::new_spanned(
+                &nv.value,
+                "expected a string literal",
+            ))
+        }
+        _ => Err(syn::Error::new_spanned(meta, "expected key = \"value\"")),
+    }
+}
+
+fn parse_path(meta: &Meta) -> syn::Result<Path> {
+    match meta {
+        Meta::NameValue(nv) => {
+            if let Expr::Path(expr_path) = &nv.value {
+                return Ok(expr_path.path.clone());
+            }
+            Err(syn::Error::new_spanned(&nv.value, "expected a path"))
+        }
+        _ => Err(syn::Error::new_spanned(meta, "expected key = path")),
+    }
+}
+
+fn parse_type(meta: &Meta) -> syn::Result<Type> {
+    match meta {
+        Meta::NameValue(nv) => {
+            let expr = &nv.value;
+            syn::parse2::<Type>(quote!(#expr))
+        }
+        _ => Err(syn::Error::new_spanned(meta, "expected key = Type")),
+    }
+}
+
+fn is_option_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            if segment.ident == "Option" {
+                if let PathArguments::AngleBracketed(_) = &segment.arguments {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}

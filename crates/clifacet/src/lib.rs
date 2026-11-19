@@ -77,6 +77,7 @@
 extern crate self as clifacet;
 
 pub mod app;
+pub mod cli;
 pub mod command;
 pub mod contract;
 pub mod facet;
@@ -143,12 +144,7 @@ pub const fn version() -> &'static str {
 /// `$crate` is used for every path it emits, so a caller needs only `clifacet` and `clap`.
 /// The work is done by a proc macro (`#[doc(hidden)]`), because a `macro_rules!` cannot
 /// write an attribute that carries a type it was handed.
-#[macro_export]
-macro_rules! commands {
-    ($($tokens:tt)*) => {
-        $crate::__commands!($($tokens)*);
-    };
-}
+pub use clifacet_macros::commands;
 
 /// The proc macro behind [`commands!`]; hidden because calling it directly skips `$crate`.
 #[doc(hidden)]
@@ -198,7 +194,8 @@ pub use clifacet_macros::__commands;
 /// may keep a hand-written `Request` of its own beside it.
 pub use clifacet_macros::registry;
 
-pub use app::{App, Globals, Plain, Render, run};
+pub use app::{App, Globals, Plain, Render, run, run_cli};
+pub use cli::{Cli, ContextCell, FromCli, IntoFailure, IntoOutcome, OutcomePayload};
 pub use command::{Command, Handler};
 pub use facet::Facet;
 pub use failure::{Failure, FailureKind};
@@ -213,6 +210,7 @@ pub use clap;
 /// Expands to the version of the `clifacet-macros` package.
 pub use clifacet_macros::version;
 
+pub use clifacet_macros::app;
 /// Wraps a struct in clap's parser and the [`Facet`] bridge, in one attribute.
 ///
 /// This is the same pairing as `#[derive(clap::Parser, clifacet::Facet)]` plus
@@ -245,6 +243,7 @@ pub use clifacet_macros::version;
 /// The name lives in the macro namespace, which is why it can sit beside the [`command`]
 /// module without either shadowing the other.
 pub use clifacet_macros::command;
+pub use clifacet_macros::group;
 
 /// Declares a command tree where its commands live (decision-14).
 ///
