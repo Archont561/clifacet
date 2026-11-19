@@ -75,7 +75,7 @@ Several files are rendered from authoritative sources and committed to Git to ma
 
 | Committed Output | Authoritative Source | Generation Task |
 | --- | --- | --- |
-| `README.md` | `templates/README.template.md` | `pixi run readme` |
+| `README.md` | `templates/README.md.j2` | `pixi run readme` |
 | `CHANGELOG.md` | Conventional commits | `pixi run changelog` |
 | `.vale.ini` | `vale.toml` | `pixi run prose-sync` |
 | `examples/simple/tests/documented_snippets.rs` | MDX code blocks | `pixi run docs-snippets` |

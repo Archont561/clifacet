@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render `README.md` from `templates/README.template.md`.
+"""Render `README.md` from `templates/README.md.j2`.
 
 The facts come from this repository: the template's variables are derived from
 `Cargo.toml` (`version`, `repository`, `author`, `license`).
@@ -16,6 +16,7 @@ that rewrites a file is a person's action rather than a check's.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import tomllib
 from collections.abc import Sequence
@@ -24,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-TEMPLATE = ROOT / "templates" / "README.template.md"
+TEMPLATE = ROOT / "templates" / "README.md.j2"
 README = ROOT / "README.md"
 PACKAGE = ROOT / "package.json"
 CARGO = ROOT / "Cargo.toml"
@@ -70,16 +71,30 @@ def render() -> str:
         raise SystemExit(f"readme: the template is missing: {shown}")
     content = TEMPLATE.read_text(encoding="utf-8")
     ctx = context()
-    replacements = {
-        "<%= projectVersion %>": ctx["version"],
-        "<%= authorName %>": ctx["author"],
-        "<%= repositoryUrl %>": ctx["repository"]["url"],
-        "<%= projectName %>": ctx["name"],
-        "<%= projectDescription %>": ctx["description"],
+    values = {
+        "version": ctx["version"],
+        "projectVersion": ctx["version"],
+        "author": ctx["author"],
+        "authorName": ctx["author"],
+        "repository": ctx["repository"]["url"],
+        "repositoryUrl": ctx["repository"]["url"],
+        "name": ctx["name"],
+        "projectName": ctx["name"],
+        "description": ctx["description"],
+        "projectDescription": ctx["description"],
     }
-    for marker, value in replacements.items():
-        content = content.replace(marker, value)
-    return content
+    # Substitute Jinja2-style variables: {{ variable }}
+    def replace_var(match: re.Match[str]) -> str:
+        var_name = match.group(1).strip()
+        if var_name in values:
+            return values[var_name]
+        return match.group(0)
+
+    rendered = re.sub(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}", replace_var, content)
+    # Also substitute legacy <% tags if any are present
+    for key, val in values.items():
+        rendered = rendered.replace(f"<%= {key} %>", val)
+    return rendered
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -97,7 +112,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         current = README.read_text(encoding="utf-8") if README.is_file() else ""
         if current != rendered:
             print(
-                "readme: README.md is not what templates/README.template.md renders.\n"
+                "readme: README.md is not what templates/README.md.j2 renders.\n"
                 "        Edit the template, then run `pixi run readme`.",
                 file=sys.stderr,
             )
@@ -107,7 +122,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     README.write_text(rendered, encoding="utf-8")
     print(
-        f"readme: wrote README.md from templates/README.template.md "
+        f"readme: wrote README.md from templates/README.md.j2 "
         f"({len(rendered.splitlines())} lines)"
     )
     return 0

@@ -1,7 +1,7 @@
-"""The README is rendered from templates/README.template.md.
+"""The README is rendered from templates/README.md.j2.
 
 The template is the source: `README.md` is generated from
-`templates/README.template.md`. If the two disagree, somebody edited the rendered
+`templates/README.md.j2`. If the two disagree, somebody edited the rendered
 file, and the next render silently discards the edit.
 """
 
@@ -44,7 +44,7 @@ def test_the_author_is_a_name_rather_than_a_name_and_address():
 
 def test_the_template_exists():
     assert readme.TEMPLATE.is_file()
-    assert readme.TEMPLATE.name == "README.template.md"
+    assert readme.TEMPLATE.name == "README.md.j2"
     assert readme.TEMPLATE.parent.name == "templates"
 
 

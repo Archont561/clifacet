@@ -132,7 +132,7 @@ change-scope = "python tools/_lib/change_scope.py"
 advisory-cache = "python tools/_lib/advisory_cache.py"
 # Canonical Tasknest workspace automation runner for tools/.
 tools = "python -B -m tasknest"
-# The README is rendered from templates/README.template.md. Editing the rendered file
+# The README is rendered from templates/README.md.j2. Editing the rendered file
 # instead of the template is the mistake these two exist to make impossible to keep.
 readme = "python -B -m tasknest run docs.readme"
 readme-check = "python -B -m tasknest run docs.readme --check"

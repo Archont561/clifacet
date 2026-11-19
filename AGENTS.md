@@ -131,7 +131,7 @@ Each of these cost a CI run at least once. Where a check was possible, there is 
 
 - **`pixi run <task>` after a restore needs `bun-install`** before anything that reads
   `node_modules` (backlog board, skills).
-- **The README is rendered by `tools/_lib/readme.py`** from `templates/README.template.md`.
+- **The README is rendered by `tools/_lib/readme.py`** from `templates/README.md.j2`.
 - **trybuild rewrites path-like text** in compile-fail output. Keep paths out of messages.
 - **A shallow clone breaks `changelog`**: `git fetch --unshallow origin` first.
 - **CI job logs are unreadable from this sandbox** (`EOF`). Use `gh run view --json` step
@@ -304,7 +304,7 @@ The policy is
 before changing behavior. In short: a fact has one canonical home and every other page
 links to it; a change that makes a page wrong fixes the page or the review records why not;
 an obsolete instruction is removed rather than annotated; and every command in the prose
-was run. `README.md` is generated from `templates/README.template.md` by
+was run. `README.md` is generated from `templates/README.md.j2` by
 `tools/_lib/readme.py`, so a README change edits the template and runs `pixi run readme`.
 
 ## Prose: two tools, two questions
