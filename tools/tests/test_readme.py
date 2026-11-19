@@ -1,27 +1,12 @@
-"""The README is rendered, and the renderer is the only thing that knows how.
+"""The README is rendered from templates/README.template.md.
 
-Three claims are checked here, and each one stands for a way the README has already been
-got wrong:
-
-- **The template is the source.** `README.md` is generated from
-  `.readme/README.template.md` by `readme-md-generator`, an npm tool. If the two disagree,
-  somebody edited the rendered file, and the next render silently discards the edit.
-- **The values are the repository's.** The generator reads a `package.json`, and this
-  repository's describes the development tooling — name `clifacet-dev`, version `0.1.0`,
-  while the crate is `clifacet` at whatever `Cargo.toml` says. A context built from it
-  would put the wrong name in the first line and the wrong version in the install snippet.
-- **The tool is invoked correctly.** The generator prompts before overwriting an existing
-  README and has no flag to skip the prompt, so the render has to happen in a directory
-  where no README exists. A renderer that ran it in the repository root would hang.
-
-The generator itself is not run here: it needs the network on a cold cache, and a test
-that fails for the network teaches nothing about the README. `main` is exercised with the
-render substituted, which is where the decisions live.
+The template is the source: `README.md` is generated from
+`templates/README.template.md`. If the two disagree, somebody edited the rendered
+file, and the next render silently discards the edit.
 """
 
 from __future__ import annotations
 
-import json
 import tomllib
 from pathlib import Path
 
@@ -32,58 +17,43 @@ from tools._lib import readme
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_the_context_names_the_crate_not_the_tooling_package():
-    """`package.json` says `clifacet-dev`; the README must say `clifacet`."""
+def test_the_context_names_the_crate():
+    """The README must say `clifacet`."""
     context = readme.context()
-    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-
     assert context["name"] == "clifacet"
-    assert context["name"] != package["name"], (
-        "the tooling package's name is not the crate's name; deriving one from the other "
-        "is how the README came to be about the wrong project"
-    )
 
 
 def test_the_context_version_is_the_workspace_version():
     """The version a reader installs is the one `bump_version.py` records."""
     manifest = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
-
     assert readme.context()["version"] == manifest["workspace"]["package"]["version"]
 
 
 def test_the_context_repository_is_the_published_one():
     """A checkout's remote may be a fork or an SSH alias; the manifest is canonical."""
     manifest = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
-
     assert readme.context()["repository"]["url"] == manifest["workspace"]["package"]["repository"]
 
 
 def test_the_author_is_a_name_rather_than_a_name_and_address():
     """The template prints the author; `Name <address>` would print the address too."""
     author = readme.context()["author"]
-
     assert author
     assert "<" not in author
 
 
-def test_the_template_exists_and_belongs_to_the_generator():
+def test_the_template_exists():
     assert readme.TEMPLATE.is_file()
     assert readme.TEMPLATE.name == "README.template.md"
-    assert readme.TEMPLATE.parent.name == ".readme"
+    assert readme.TEMPLATE.parent.name == "templates"
 
 
-def test_the_generator_is_pinned_in_the_manifest_the_installer_reads():
-    """A name installs whatever is newest, so the README could change with no commit.
-
-    The pin lives in `package.json`, which is what `bun install` resolves into `bun.lock`;
-    the module itself names the package without a version, because two pins would be one
-    pin too many.
-    """
-    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-
-    assert readme.GENERATOR in package["devDependencies"]
-    assert package["devDependencies"][readme.GENERATOR].count(".") == 2
-    assert "@" not in readme.GENERATOR
+def test_rendering_substitutes_all_placeholders():
+    rendered = readme.render()
+    assert "<%=" not in rendered
+    assert "%>" not in rendered
+    manifest = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    assert manifest["workspace"]["package"]["version"] in rendered
 
 
 def test_check_passes_when_the_readme_is_what_the_template_renders(monkeypatch, capsys, tmp_path):
@@ -125,13 +95,3 @@ def test_rendering_without_the_template_says_which_file_is_missing(monkeypatch, 
         readme.render()
 
     assert "template is missing" in str(exit_info.value)
-
-
-def test_a_missing_bun_is_reported_rather_than_crashing(monkeypatch):
-    """The renderer runs through Pixi; without it the message should say so."""
-    monkeypatch.setattr(readme.shutil, "which", lambda _: None)
-
-    with pytest.raises(SystemExit) as exit_info:
-        readme.bun()
-
-    assert "pixi run readme" in str(exit_info.value)

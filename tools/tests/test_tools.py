@@ -64,8 +64,6 @@ def test_tasknest_manifest_autodiscovery():
         check=False,
     )
     assert proc.returncode == 0, f"tasknest ls -p root failed:\n{proc.stderr}\n{proc.stdout}"
-    assert "root.agents-md" in proc.stdout
-    assert "root.readme" in proc.stdout
     assert "root.test" in proc.stdout
     assert "root.lint" in proc.stdout
     assert "root.format" in proc.stdout

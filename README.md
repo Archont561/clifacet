@@ -1,7 +1,7 @@
 <!--
-  The README's source. `pixi run readme` renders it into README.md with
-  readme-md-generator; `pixi run readme-check` fails when the two disagree, so a change to
-  the README edits this file, never the rendered one.
+  The README's source. `pixi run readme` renders it into README.md;
+  `pixi run readme-check` fails when the two disagree, so a change to the README
+  edits this file, never the rendered one.
 
   Two rules, both from docs/concepts/documentation-policy.md: this page introduces and
   links, the pages under docs/ explain, and no fact appears in both. Values in
@@ -175,13 +175,11 @@ all-features together, on Linux, macOS and Windows, with Rust 1.88 as the floor.
 
 ## Built with
 
-The repository's own tooling, all pinned in `package.json`:
+The repository's documentation and quality tooling:
 
 | Tool | Renders or checks |
 | --- | --- |
-| [readme-md-generator](https://www.npmjs.com/package/readme-md-generator) | this README, from `.readme/README.template.md` |
-| [@eugeniughelbur/agents-md](https://www.npmjs.com/package/@eugeniughelbur/agents-md) | [AGENTS.md](AGENTS.md), the instructions agents read |
-| [markdownlint-cli2](https://www.npmjs.com/package/markdownlint-cli2) | the structure of every page |
+| [rumdl](https://github.com/Archont561/rumdl) | the structure and formatting of Markdown and MDX pages |
 | [Vale](https://vale.sh) | the words: spelling, terminology, house style |
 
 ## Contributing

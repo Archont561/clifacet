@@ -1,0 +1,50 @@
+# rumdl — fast Rust Markdown & MDX linter/formatter.
+# Run locally and in CI with `pixi run tools run docs md` (or `--fix`).
+
+[global]
+flavor = "gfm"
+line-length = 100
+respect-gitignore = true
+cache = true
+cache-dir = ".rumdl_cache"
+exclude = [
+  ".agents/skills/**",
+  ".pixi/**",
+  ".pixi-sandbox/**",
+  "docs/.next/**",
+  "docs/.source/**",
+  "docs/out/**",
+  "docs/node_modules/**",
+  "backlog/**",
+  "coverage/**",
+  "dist/**",
+  "node_modules/**",
+  "target/**",
+  "templates/**",
+  ".vale/**",
+  "CHANGELOG.md",
+]
+disable = [
+  "MD013", # Allow flexible prose and wide tables
+  "MD033", # Allow inline HTML in Markdown
+  "MD041", # Allow first line without heading
+  "MD057", # Doc link mapping handled by check_docs.py
+]
+
+[per-file-flavor]
+"docs/content/**/*.mdx" = "mdx"
+
+[MD004]
+style = "dash"
+
+[MD024]
+siblings-only = true
+
+[MD046]
+style = "fenced"
+
+[MD049]
+style = "asterisk"
+
+[MD050]
+style = "asterisk"

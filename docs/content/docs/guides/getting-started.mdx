@@ -16,7 +16,8 @@ Because the command core is decoupled from presentation, commands do not inspect
 
 <Steps>
 <Step>
-### Add Dependencies
+
+## Add Dependencies
 
 Configure your package manager to include `clifacet` and `clap`:
 
@@ -51,6 +52,7 @@ Every feature is off by default, and each one is a dependency boundary:
 </Step>
 
 <Step>
+
 ### Write the Command Core
 
 A `Command` is a value that takes validated input and returns data or a failure:
@@ -79,6 +81,7 @@ assert_eq!(greeting, "hello, ada");
 </Step>
 
 <Step>
+
 ### Run the Command with App
 
 Everything around the command — parsing, asking for what flags left out, validation,
