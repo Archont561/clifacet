@@ -1,7 +1,7 @@
 ---
 id: CLI-63
 title: Scaffold Next.js Fumadocs static site and Bun workflow
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 10:21'
 labels: []
@@ -18,8 +18,8 @@ Setup the Next.js and Fumadocs application inside `docs/` adhering to the Archon
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 docs/package.json declares Fumadocs dependencies and locks cleanly with bun.lock
-- [ ] #2 docs/next.config.mjs configures static export (output: 'export') and basePath for production (/${repository})
-- [ ] #3 Fumadocs source loader (docs/src/lib/source.ts) and root docs layout/page render the documentation tree
-- [ ] #4 Pixi task docs-build executes bun run build in docs/ and produces verified static assets in docs/out
+- [x] #1 docs/package.json declares Fumadocs dependencies and locks cleanly with bun.lock
+- [x] #2 docs/next.config.mjs configures static export (output: 'export') and basePath for production (/${repository})
+- [x] #3 Fumadocs source loader (docs/src/lib/source.ts) and root docs layout/page render the documentation tree
+- [x] #4 Pixi task docs-build executes bun run build in docs/ and produces verified static assets in docs/out
 <!-- AC:END -->

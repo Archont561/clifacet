@@ -1,0 +1,128 @@
+---
+title: TUI Composition
+description: Compose terminal UI forms with Ratatui widgets, custom field renderers, and headless testing harnesses.
+---
+
+The `tui` feature adds a full-screen frontend, and the components it draws with are
+public. An application that wants a different screen builds its own out of the same
+pieces rather than replacing the loop — that way the keys, the refusals, and the
+submission stay the shared ones.
+
+| Item | What it is |
+| --- | --- |
+| `tui::FormState`, `tui::FieldState` | Form state: values, focus, and refusal messages without Ratatui coupling |
+| `tui::Key`, `tui::Outcome` | Keystroke events and submission outcomes |
+| `tui::Form`, `tui::Field` | Ratatui widgets rendering forms and fields |
+| `tui::CustomField` | Trait for application-drawn custom form field widgets |
+| `tui::app::run_with` | Headless or alternate-screen event loop (draw, read, submit) |
+| `tui::ratatui` | Re-exported Ratatui backend and terminal types |
+
+<Callout type="info">
+TUI submissions are converted into CLI argument vectors and parsed through Clap. Validation failures keep the form open and display identical diagnostics to noninteractive flag errors.
+</Callout>
+
+## Generating Forms from Commands
+
+Which arguments a screen asks for is a design decision, so it is declared explicitly:
+
+```rust
+use clap::Parser;
+use clifacet::tui::FormState;
+use clifacet::Facet;
+
+#[derive(Debug, Parser, Facet)]
+#[facet(input = Input, bridge = build_input)]
+struct Cli {
+    /// Who to greet.
+    #[arg(long, default_value = "world")]
+    name: String,
+    /// How many times to greet.
+    #[arg(long, default_value_t = 1)]
+    repeat: u8,
+}
+
+#[derive(Debug)]
+struct Input {
+    name: String,
+    repeat: u8,
+}
+
+fn build_input(cli: Cli) -> Result<Input, clifacet::Failure> {
+    Ok(Input { name: cli.name.clone(), repeat: cli.repeat })
+}
+
+let state = FormState::generated(&Cli::command(), &["name", "repeat"])
+    .expect("the command has both arguments");
+
+assert_eq!(state.fields().len(), 2);
+```
+
+## Form Customization and Escape Hatches
+
+<Tabs items={["Custom Field Widget", "Screen Escape Hatch"]}>
+  <Tab value="Custom Field Widget">
+    Implement `CustomField` to draw a field with custom styling, such as password masking:
+
+    ```rust
+    use clifacet::tui::ratatui::buffer::Buffer;
+    use clifacet::tui::ratatui::layout::Rect;
+    use clifacet::tui::ratatui::widgets::{Paragraph, Widget};
+    use clifacet::tui::{CustomField, FieldState};
+
+    /// One field, drawn by the application: the value is masked.
+    struct Masked;
+
+    impl CustomField for Masked {
+        fn draw(&self, field: &FieldState, focused: bool, area: Rect, buffer: &mut Buffer) {
+            let marker = if focused { "> " } else { "  " };
+            let hidden = "*".repeat(field.value().chars().count());
+            Paragraph::new(format!("{marker}{}: {hidden}", field.label())).render(area, buffer);
+        }
+    }
+
+    let _hatch = Masked;
+    ```
+  </Tab>
+  <Tab value="Screen Escape Hatch">
+    Use `tui::app::run_with` or `run_on_with` to customize the entire drawing surface while retaining standard keystroke navigation and Clap validation:
+
+    ```rust ignore
+    clifacet::tui::app::run_on_with(
+        terminal,
+        &mut state,
+        custom_draw_fn,
+        submit_fn,
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Headless Testing
+
+<Accordions>
+<Accordion title="Testing Forms with Ratatui TestBackend">
+
+`tui::app::run` takes a Ratatui terminal backend and an iterator of keystroke events. You can test form interaction headlessly without an active TTY:
+
+```rust
+use clifacet::tui::ratatui::backend::TestBackend;
+use clifacet::tui::ratatui::Terminal;
+use clifacet::tui::{FormState, Key};
+
+let state = FormState::new(vec![clifacet::tui::FieldState::new("name", "Who?", "world")]);
+let keys = [Key::Enter];
+
+let mut terminal = Terminal::new(TestBackend::new(60, 10)).expect("a test screen");
+let outcome = clifacet::tui::app::run_with(
+    &mut terminal,
+    &mut state.clone(),
+    keys,
+    clifacet::tui::draw_form,
+    |_state| Ok(vec![String::from("hello, world")]),
+);
+
+assert!(outcome.is_ok(), "the form submits the answer it was given");
+```
+
+</Accordion>
+</Accordions>

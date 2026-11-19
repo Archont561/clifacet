@@ -209,7 +209,8 @@ def test_a_finding_renders_the_page_the_line_and_the_problem():
 
 def test_every_section_is_a_directory_the_tree_actually_has():
     """The five sections are a promise about where a page goes; an empty one is a dead end."""
-    documented = ROOT / "docs"
+    content_dir = ROOT / "docs" / "content" / "docs"
+    documented = content_dir if content_dir.is_dir() else ROOT / "docs"
 
     assert {name for name in SECTIONS if (documented / name).is_dir()} == set(SECTIONS)
 

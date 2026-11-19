@@ -1,0 +1,101 @@
+---
+title: Repository Architecture
+description: Internal architecture of the Clifacet monorepo, crate boundaries, and environment orchestration.
+---
+
+This page explains the structure of the Clifacet repository: why there are multiple crates, Pixi environment manifests, documentation workspaces, and Python tooling.
+
+<Callout type="info">
+The library does not know the repository exists: no crate reads local files at runtime. Examples are external consumers, and documentation code blocks are compiled as integration tests.
+</Callout>
+
+## Monorepo Layout
+
+<Files>
+  <Folder name="crates" defaultOpen>
+    <Folder name="clifacet" defaultOpen>
+      <File name="Cargo.toml" />
+      <Folder name="src">
+        <File name="lib.rs" />
+        <File name="command.rs" />
+        <File name="policy.rs" />
+        <File name="tui.rs" />
+      </Folder>
+    </Folder>
+    <Folder name="clifacet-macros" defaultOpen>
+      <File name="Cargo.toml" />
+      <Folder name="src">
+        <File name="lib.rs" />
+      </Folder>
+    </Folder>
+  </Folder>
+  <Folder name="examples" defaultOpen>
+    <Folder name="simple">
+      <File name="Cargo.toml" />
+      <Folder name="src" />
+      <Folder name="tests">
+        <File name="documented_snippets.rs" />
+      </Folder>
+    </Folder>
+    <Folder name="backlog-lite" />
+    <Folder name="discovered" />
+  </Folder>
+  <Folder name="docs" defaultOpen>
+    <File name="package.json" />
+    <File name="next.config.mjs" />
+    <Folder name="content">
+      <Folder name="docs" defaultOpen>
+        <File name="index.mdx" />
+      </Folder>
+    </Folder>
+  </Folder>
+  <Folder name="tools">
+    <Folder name="_lib">
+      <File name="check_docs.py" />
+    </Folder>
+  </Folder>
+  <File name="pixi.toml" />
+  <File name="Cargo.toml" />
+</Files>
+
+## Language and Tooling Ecosystem
+
+| Component | Technology | Responsibility |
+| --- | --- | --- |
+| `crates/clifacet` | Rust | Command core, interaction policy, Inquire dialogs, and Ratatui TUI |
+| `crates/clifacet-macros` | Rust (proc-macro) | `#[clifacet::command]`, `#[clifacet(..)]`, and `Facet` derive |
+| `examples/` | Rust | End-to-end consumer crates ensuring public API stability |
+| `docs/` | Next.js / Fumadocs / Bun | Documentation site with MDX and static export |
+| `tools/` | Python / Tasknest | Repository linters, snippet extractors, and CI automation |
+| `pixi.toml` | Pixi / Conda | Hermetic reproducible environment across Linux, macOS, and Windows |
+
+## Generation Invariants
+
+Several files are rendered from authoritative sources and committed to Git to make drift visible in pull requests:
+
+| Committed Output | Authoritative Source | Generation Task |
+| --- | --- | --- |
+| `README.md` | `.readme/README.template.md` | `pixi run readme` |
+| `CHANGELOG.md` | Conventional commits | `pixi run changelog` |
+| `.vale.ini` | `vale.toml` | `pixi run prose-sync` |
+| `examples/simple/tests/documented_snippets.rs` | MDX code blocks | `pixi run docs-snippets` |
+
+## Navigation
+
+<Cards>
+  <Card
+    title="Getting Started"
+    href="/docs/guides/getting-started"
+    description="Build your first command with Clifacet."
+  />
+  <Card
+    title="Command Core Reference"
+    href="/docs/reference/command-core"
+    description="Understand the core types and execution seams."
+  />
+  <Card
+    title="Development Workflows"
+    href="/docs/development/development"
+    description="Set up Pixi, run test suites, and manage features."
+  />
+</Cards>

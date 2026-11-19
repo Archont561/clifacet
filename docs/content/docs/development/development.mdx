@@ -1,0 +1,104 @@
+---
+title: Development Environment and Tooling
+description: Bootstrapping Pixi, executing the Tasknest task graph, feature matrix verification, and MSRV.
+---
+
+The development environment is pinned and managed with Pixi, ensuring consistent toolchains across Linux, macOS, and Windows.
+
+<Callout type="info">
+Tasknest and Pixi provide hermetic offline execution: `pixi run check` and `pixi run test` run completely offline without hitting network registries.
+</Callout>
+
+## Bootstrapping a Development Environment
+
+<Steps>
+<Step>
+### Clone Repository and Restore Toolchain
+
+Restore Pixi environments, pre-commit hooks, and tools:
+
+```sh
+bash scripts/bootstrap.sh
+```
+</Step>
+
+<Step>
+### Run Offline Local Quality Gate
+
+Verify that formatting, linting, tests, and documentation checks pass:
+
+```sh
+pixi run --frozen --no-install tools run check
+```
+</Step>
+
+<Step>
+### Run Full Quality Suite
+
+Run network-dependent security audits and dependency deny checks:
+
+```sh
+pixi run --frozen quality
+```
+</Step>
+</Steps>
+
+## Task Graph Execution
+
+<Tabs items={["Pixi Task Shortcuts", "Tasknest Direct Commands"]}>
+  <Tab value="Pixi Task Shortcuts">
+    Common development tasks have dedicated Pixi aliases:
+
+    ```sh
+    pixi run test          # Run test suites with cargo-nextest
+    pixi run check-docs    # Verify snippet compilation and links
+    pixi run prose-check   # Validate spelling and terminology with Vale
+    pixi run docs-build    # Compile Fumadocs documentation static export
+    ```
+  </Tab>
+  <Tab value="Tasknest Direct Commands">
+    Tasknest discovers and orchestrates tasks under `tools/`:
+
+    ```sh
+    pixi run tools ls
+    pixi run tools run check
+    pixi run tools run docs.check --write
+    ```
+  </Tab>
+</Tabs>
+
+## Feature Matrix Verification
+
+<Accordions>
+<Accordion title="Supported Feature Combinations">
+
+Every feature is a dependency boundary verified by `tools/_lib/check_features.py`:
+
+| Row | Arguments | Purpose |
+| --- | --- | --- |
+| `no-default-features` | `--no-default-features -p clifacet` | Base crate with zero optional dependencies |
+| `default` | Default manifest features | Out-of-the-box consumer experience |
+| `interactive` | `--no-default-features --features interactive` | Standalone Inquire prompts |
+| `tui` | `--no-default-features --features tui` | Full-screen Ratatui terminal forms |
+| `serde` | `--no-default-features --features serde` | Failure and Secret JSON serialization |
+| `settings-toml` | `--no-default-features --features settings-toml` | TOML settings configuration parser |
+| `all-features` | `--all-features` (workspace) | All features combined |
+
+</Accordion>
+</Accordions>
+
+## Dependency advisory exception
+
+`basic-toml` is unmaintained. RustSec flags it under
+RUSTSEC-2026-0374, and it reaches
+this workspace through `rstest-bdd`, a test dependency. The maintainer keeps
+`rstest-bdd` and allows that one advisory in both `deny.toml` and `.cargo/audit.toml`;
+other warnings still fail the audit.
+
+The path, rendered from `Cargo.lock` by `tools/_lib/check_advisory_exception.py`:
+
+```text
+rstest-bdd 0.6.0 → i18n-embed 0.16.0 → i18n-embed-impl 0.8.4 → i18n-config 0.4.8 → basic-toml 0.1.10
+```
+
+Review outcome: the exception stays, and its expiry is now a check.

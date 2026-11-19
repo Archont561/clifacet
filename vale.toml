@@ -40,6 +40,11 @@ accept = [
   "clifacet-example",
   "alint",
   "tasknest",
+  "fumadocs",
+  "headlessly",
+  "noninteractively",
+  "inspectable",
+  "non_empty",
   # The tooling the repository is checked with.
   "clippy",
   "codecov",
@@ -112,6 +117,13 @@ based_on = ["Vale", "Microsoft", "write-good", "Clifacet"]
 # was noisy. Every entry is a decision, and docs/development.md repeats the ones a writer
 # would otherwise re-litigate.
 # ---------------------------------------------------------------------------------------
+
+[rules."Microsoft.Quotes"]
+level = "NO"
+reason = """
+MDX component properties (such as `<Tabs items={["a", "b"]}>` and `<TypeTable type={{...}}>`)
+and technical documentation place commas and punctuation outside quotes according to syntax rules.
+"""
 
 [rules."Microsoft.Dashes"]
 level = "NO"

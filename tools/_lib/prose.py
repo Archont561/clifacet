@@ -208,7 +208,10 @@ def render_ini(config: dict[str, Any]) -> str:
         "",
         f"Vocab = {config['vocab']}",
         "",
-        "[*.md]",
+        "[formats]",
+        "mdx = md",
+        "",
+        "[*.{md,mdx}]",
         "BasedOnStyles = " + ", ".join(config["based_on"]),
     ]
     overrides = {
@@ -275,7 +278,14 @@ def sources(config: dict[str, Any] | None = None) -> list[str]:
     for entry in config["sources"]:
         path = ROOT / entry
         if path.is_dir():
-            files.extend(sorted(str(p.relative_to(ROOT)) for p in path.rglob("*.md")))
+            files.extend(
+                sorted(
+                    str(p.relative_to(ROOT))
+                    for p in path.rglob("*")
+                    if p.suffix in (".md", ".mdx")
+                    and not any(part in ("node_modules", ".next", "out", ".source") for part in p.parts)
+                )
+            )
         elif path.is_file():
             files.append(entry)
         else:

@@ -36,6 +36,8 @@ README = ROOT / "README.md"
 DOCS = ROOT / "docs"
 SNIPPETS = ROOT / "examples" / "simple" / "tests" / "documented_snippets.rs"
 
+IGNORE_PARTS = {"node_modules", ".next", "out", ".source"}
+
 # The crates a guide may name. Anything else is not checked, so a guide may still
 # mention `std`, `ratatui` or `clap` without this script pretending to know them.
 CRATES = ("clifacet", "clifacet_example")
@@ -81,50 +83,74 @@ SECTIONS = ("guides", "concepts", "reference", "development", "architecture")
 
 
 def pages(root: Path = ROOT) -> list[Path]:
-    """Every page this script checks: the README, the docs index and the pages below it.
-
-    Recursion is deliberate. A flat glob checked `docs/*.md` and would have gone on
-    checking them happily while silently ignoring every page in a subdirectory, which is
-    the failure mode that makes a documentation check worthless.
-    """
+    """Every page this script checks: the README, the docs index and the pages below it."""
     readme = root / "README.md"
     index = root / "docs" / "README.md"
-    found = sorted((root / "docs").rglob("*.md"))
-    head = [path for path in (readme, index) if path.is_file()]
-    return head + [path for path in found if path != index]
+    content_index = root / "docs" / "content" / "docs" / "index.mdx"
+    head = [p for p in (readme, index, content_index) if p.is_file()]
+
+    docs_dir = root / "docs"
+    found = []
+    if docs_dir.is_dir():
+        for path in sorted(docs_dir.rglob("*")):
+            if path.suffix in (".md", ".mdx") and not any(part in IGNORE_PARTS for part in path.parts):
+                if path not in head:
+                    found.append(path)
+    return head + found
 
 
 def uncategorised(root: Path = ROOT) -> list[Finding]:
     """Pages that are not in one of the five sections, and pages filed nowhere useful."""
     findings = []
     index = root / "docs" / "README.md"
+    content_dir = root / "docs" / "content" / "docs"
+    content_index = content_dir / "index.mdx"
     for page in pages(root):
-        if page.parent == root or page == index:
+        if page.parent == root or page == index or page == content_index:
             continue
-        # `docs/README.md` is the index and the only page at the top level. Any other page
-        # there has no section to belong to, which is how a tree grows a seventh kind of
-        # page without anyone deciding to.
-        if page.parent == root / "docs":
-            findings.append(
-                Finding(
-                    "section",
-                    page,
-                    1,
-                    "is beside the index rather than in one of "
-                    f"{', '.join(SECTIONS)}; only docs/README.md lives at the top level",
+        if content_dir.is_dir() and page.is_relative_to(content_dir):
+            rel = page.relative_to(content_dir)
+            if len(rel.parts) == 1:
+                findings.append(
+                    Finding(
+                        "section",
+                        page,
+                        1,
+                        f"is beside the content index rather than in one of {', '.join(SECTIONS)}",
+                    )
                 )
-            )
+            elif rel.parts[0] not in SECTIONS:
+                findings.append(
+                    Finding(
+                        "section",
+                        page,
+                        1,
+                        f"is in docs/content/docs/{rel.parts[0]}, which is not one of {', '.join(SECTIONS)}",
+                    )
+                )
             continue
-        if page.relative_to(root / "docs").parts[0] not in SECTIONS:
-            findings.append(
-                Finding(
-                    "section",
-                    page,
-                    1,
-                    f"is in docs/{page.relative_to(root / 'docs').parts[0]}, which is not one "
-                    f"of {', '.join(SECTIONS)}",
+        if page.is_relative_to(root / "docs"):
+            if page.parent == root / "docs":
+                findings.append(
+                    Finding(
+                        "section",
+                        page,
+                        1,
+                        "is beside the index rather than in one of "
+                        f"{', '.join(SECTIONS)}; only docs/README.md lives at the top level",
+                    )
                 )
-            )
+                continue
+            section = page.relative_to(root / "docs").parts[0]
+            if section != "content" and section not in SECTIONS:
+                findings.append(
+                    Finding(
+                        "section",
+                        page,
+                        1,
+                        f"is in docs/{section}, which is not one of {', '.join(SECTIONS)}",
+                    )
+                )
     return findings
 
 
@@ -158,19 +184,90 @@ def links(text: str) -> list[tuple[int, str]]:
 def check_links(root: Path = ROOT) -> list[Finding]:
     """Every relative link resolves to a file, and any fragment to a heading in it."""
     findings = []
+    content_dir = root / "docs" / "content" / "docs"
     for page in pages(root):
         for line, target in links(page.read_text(encoding="utf-8")):
             path, _, fragment = target.partition("#")
-            destination = (page.parent / path).resolve() if path else page
-            if not destination.exists():
+            destination: Path | None = None
+            if path.startswith("/docs"):
+                subpath = path[len("/docs") :].lstrip("/")
+                if not subpath:
+                    cand = content_dir / "index.mdx"
+                    if cand.exists():
+                        destination = cand
+                else:
+                    candidates = [
+                        content_dir / f"{subpath}.mdx",
+                        content_dir / f"{subpath}.md",
+                        content_dir / subpath,
+                        content_dir / subpath / "index.mdx",
+                        content_dir / subpath / "index.md",
+                    ]
+                    for cand in candidates:
+                        if cand.exists():
+                            destination = cand
+                            break
+            elif path.startswith("docs/"):
+                rel = path[len("docs/") :].lstrip("/")
+                if not rel:
+                    cand = content_dir / "index.mdx"
+                    if cand.exists():
+                        destination = cand
+                else:
+                    candidates = [
+                        content_dir / rel,
+                        content_dir / f"{rel}.mdx",
+                        content_dir / f"{rel}.md",
+                        content_dir / rel / "index.mdx",
+                        content_dir / rel / "index.md",
+                    ]
+                    if rel.endswith(".md"):
+                        candidates.insert(1, content_dir / f"{rel[:-3]}.mdx")
+                    for cand in candidates:
+                        if cand.exists():
+                            destination = cand
+                            break
+                    if destination is None:
+                        direct = (root / path).resolve()
+                        if direct.exists():
+                            destination = direct
+                        elif path.endswith(".md") and (root / f"{path[:-3]}.mdx").resolve().exists():
+                            destination = (root / f"{path[:-3]}.mdx").resolve()
+            elif path:
+                dest = (page.parent / path).resolve()
+                if dest.exists():
+                    destination = dest
+                else:
+                    candidates = [
+                        (page.parent / f"{path}.mdx").resolve(),
+                        (page.parent / f"{path}.md").resolve(),
+                    ]
+                    if path.endswith(".md"):
+                        candidates.insert(0, (page.parent / f"{path[:-3]}.mdx").resolve())
+                    for cand in candidates:
+                        if cand.exists():
+                            destination = cand
+                            break
+            else:
+                destination = page
+
+            if destination is None or not destination.exists():
                 findings.append(Finding("link", page, line, f"{target} does not resolve"))
                 continue
-            if fragment and destination.suffix == ".md":
-                anchors = headings(destination.read_text(encoding="utf-8"))
-                if fragment not in anchors:
-                    findings.append(
-                        Finding("anchor", page, line, f"{target}: no heading anchors to '{fragment}'")
-                    )
+
+            if fragment:
+                check_target = destination
+                if check_target.is_dir():
+                    for cand_index in ("index.mdx", "index.md", "README.md"):
+                        if (check_target / cand_index).exists():
+                            check_target = check_target / cand_index
+                            break
+                if check_target.is_file() and check_target.suffix in (".md", ".mdx"):
+                    anchors = headings(check_target.read_text(encoding="utf-8"))
+                    if fragment not in anchors:
+                        findings.append(
+                            Finding("anchor", page, line, f"{target}: no heading anchors to '{fragment}'")
+                        )
     return findings
 
 
@@ -196,7 +293,7 @@ def rust_blocks(text: str) -> list[tuple[int, str]]:
             body.append(lines[index])
             index += 1
         index += 1
-        tags = [tag.strip() for tag in info.split(",")] if info else []
+        tags = [tag.strip() for tag in info.replace(",", " ").split()] if info else []
         if tags[:1] == ["rust"] and "ignore" not in tags:
             blocks.append((start, "\n".join(body)))
     return blocks

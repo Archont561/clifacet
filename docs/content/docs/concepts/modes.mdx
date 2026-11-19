@@ -1,0 +1,109 @@
+---
+title: Modes and the Interaction Policy
+description: Pure-function resolution across noninteractive, questionnaire, and TUI modes with capability detection.
+---
+
+A run has exactly one mode, decided before anything happens, by a pure function of
+three inputs:
+
+1. **What the user asked for**: `--interactive`, `--tui`, or default;
+2. **What the application allows and prefers**: its `Policy`;
+3. **What the environment can offer**: its `Capabilities`.
+
+```rust
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+
+let plan = Policy::up_to(Mode::Interactive)
+    .resolve(Request::mode(Mode::Interactive), Capabilities::terminal())
+    .expect("a terminal can host prompts");
+
+assert_eq!(plan.mode(), Mode::Interactive);
+
+// A request the application does not allow is refused, not silently downgraded.
+let refused = Policy::up_to(Mode::Interactive)
+    .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui());
+assert!(refused.is_err());
+```
+
+<Callout type="info">
+A policy is a ceiling, not a request. `Policy::up_to(Mode::Interactive)` means prompts are permitted and a TUI is forbidden. Interaction can only ever decrease; a terminal connection never grants implicit consent to prompt.
+</Callout>
+
+## Permission vs Intent
+
+`Policy::prefer` separates what an application *permits* from what it selects when unadorned:
+
+```rust
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+
+let policy = Policy::up_to(Mode::Tui).prefer(Mode::Interactive);
+
+let plan = policy
+    .resolve(Request::none(), Capabilities::terminal_with_tui())
+    .expect("prompts are permitted and possible");
+assert_eq!(plan.mode(), Mode::Interactive, "the preference, not the ceiling");
+
+let plan = policy
+    .resolve(Request::mode(Mode::Tui), Capabilities::terminal_with_tui())
+    .expect("a TUI is permitted here");
+assert_eq!(plan.mode(), Mode::Tui);
+
+let cautious = Policy::up_to(Mode::Tui).prefer(Mode::NonInteractive);
+let plan = cautious
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("a run that asks nothing always resolves");
+assert_eq!(plan.mode(), Mode::NonInteractive);
+```
+
+## The Four Modes
+
+<Tabs items={["Noninteractive", "Interactive Prompt", "Full-Screen TUI", "Refusal"]}>
+  <Tab value="Noninteractive">
+    Takes all inputs from CLI flags, environment variables, or configuration files. Output goes to stdout, diagnostics to stderr.
+  </Tab>
+  <Tab value="Interactive Prompt">
+    Asks conversational Inquire questions on stderr for missing arguments only. Provided flags are never re-asked.
+  </Tab>
+  <Tab value="Full-Screen TUI">
+    Presents a full-screen Ratatui form on the alternate screen buffer, validating on submit.
+  </Tab>
+  <Tab value="Refusal">
+    If the requested mode violates policy or lacks terminal capabilities, execution terminates immediately with code 2.
+  </Tab>
+</Tabs>
+
+## Stream Separation
+
+`stdout` carries only requested machine or human data. All interactive presentation and errors route to `stderr`:
+
+| Mode | `stdout` (Data) | `stderr` (Diagnostics / UI) |
+| --- | --- | --- |
+| Noninteractive | Result data | Failures / warnings |
+| Interactive | Result data | Questions, then failures |
+| Full-Screen TUI | Result data | Form screen, then failures |
+| Help / Version | Formatted text | None |
+| Usage Error | None | Clap usage message |
+
+## Standard Exit Codes
+
+`clifacet::contract::ExitPolicy` defines standard CLI exit codes:
+
+```rust
+use clifacet::contract::ExitPolicy;
+use clifacet::{Failure, FailureKind};
+
+let policy = ExitPolicy::standard();
+
+assert_eq!(policy.for_kind(FailureKind::Validation), policy.validation());
+assert_eq!(policy.for_failure(&Failure::cancelled("changed their mind")), policy.cancelled());
+assert_eq!(policy.success(), 0);
+assert_eq!(policy.cancelled(), 130);
+```
+
+| Outcome | Exit Code | Description |
+| --- | --- | --- |
+| Success | `0` | Command completed successfully |
+| Validation Failure | `2` | Input validation failed before execution |
+| Usage Error | `2` | Invalid CLI syntax or unknown flags |
+| Cancellation | `130` | Interactive session canceled by user (128 + SIGINT) |
+| Execution Failure | `1` | Command failed during execution |

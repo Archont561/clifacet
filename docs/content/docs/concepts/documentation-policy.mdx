@@ -1,0 +1,57 @@
+---
+title: Documentation Policy
+description: Standards, canonical sources, behavioral accuracy, and automated enforcement checks.
+---
+
+Documentation is part of the product. A feature that a person cannot find out how to use
+is not finished, and a page that describes behavior the code no longer has is a defect
+with a file name — not a chore for later.
+
+<Callout type="warn">
+An outdated page is treated as a product defect. If a code change modifies observable behavior, flags, defaults, or errors, the pull request must update the documentation in the same commit.
+</Callout>
+
+## Core Principles
+
+- **Treat documentation as part of the product**: A change is done when behavior can be found, understood, and reproduced.
+- **One canonical explanation per topic**: Every fact has one home. Guides own steps, concepts own reasons, reference owns promises.
+- **Document observable behavior**: Detail public APIs, terminal streams, exit codes, and contracts.
+- **Write for the reader**: Answer user questions in user order.
+- **Automated enforcement**: Snippets must compile and links must resolve.
+
+## Contributor Workflow
+
+<Steps>
+<Step>
+### Assess Impact
+
+Before opening a pull request, determine whether flags, default values, error responses, or APIs have changed.
+</Step>
+
+<Step>
+### Update Canonical Pages
+
+Edit existing authoritative pages under `docs/content/docs/` rather than creating duplicate sidecars.
+</Step>
+
+<Step>
+### Verify Code Snippets and Links
+
+Ensure all Rust code fences compile cleanly and relative links resolve to valid MDX routes.
+</Step>
+
+<Step>
+### Run Automated Quality Gates
+
+Run `pixi run test-local` or `pixi run check-docs` to execute repository linters, snippet compilation, and Vale prose validation.
+</Step>
+</Steps>
+
+## Automated Enforcement Tooling
+
+| Linter / Tool | Responsibility |
+| --- | --- |
+| `alint` | Verifies required documentation files, license files, and workspace manifests exist |
+| `markdownlint-cli2` | Validates Markdown structural soundness (heading hierarchies, code fences) |
+| `vale` | Enforces vocabulary, terminology, spelling, and readability standards |
+| `tools/_lib/check_docs.py` | Extracts and compiles Rust snippets, verifies links, and checks API symbol paths |

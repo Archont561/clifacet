@@ -49,8 +49,8 @@ LLVM_COV = "$CONDA_PREFIX/bin/llvm-cov"
 LLVM_PROFDATA = "$CONDA_PREFIX/bin/llvm-profdata"
 
 [tasks]
-bun-install = "bun install --frozen-lockfile"
-bun-install-offline = "bun install --frozen-lockfile --offline"
+bun-install = "bun install --frozen-lockfile && bun install --frozen-lockfile --cwd docs"
+bun-install-offline = "bun install --frozen-lockfile --offline && bun install --frozen-lockfile --offline --cwd docs"
 backlog = { cmd = "bun x --bun --no-install backlog", depends-on = ["bun-install"] }
 skills = { cmd = "bun x --bun --no-install skills", depends-on = ["bun-install"] }
 backlog-offline = { cmd = "bun x --bun --no-install backlog", depends-on = ["bun-install-offline"] }
@@ -98,6 +98,8 @@ test-doc = "cargo test --workspace --all-features --doc --locked"
 coverage = "python -B -m tasknest run coverage"
 test-scripts = "python -B -m tasknest run repo.test_scripts"
 docs-snippets = "python -B -m tasknest run docs.check --write"
+docs-dev = { cmd = "bun run dev", cwd = "docs" }
+docs-build = { cmd = "bun run build", cwd = "docs" }
 # The prose check. `prose-sync` renders `.vale.ini` and `.vale/styles/` from `vale.toml`;
 # `prose-check` proves the committed tree is current **and** that the pages pass. It is
 # offline-safe: the packages are committed after a sync, so a restored sandbox can lint

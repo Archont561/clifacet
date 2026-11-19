@@ -1,0 +1,72 @@
+---
+title: Welcome to Clifacet
+description: Build a Rust CLI in every terminal mode — noninteractive, questionnaires, or a full-screen TUI.
+---
+
+## Welcome to Clifacet
+
+Welcome to the **Clifacet** documentation site built with [Fumadocs](https://fumadocs.dev).
+
+Clifacet is a Rust CLI framework that decouples your command logic from terminal presentation. Define your command once with Clap, and execute it noninteractively, through interactive Inquire prompts, or in a full-screen Ratatui terminal UI.
+
+<Callout type="info">
+Clifacet runs commands in three terminal modes: noninteractive (flags in, output out), interactive (a questionnaire on a terminal), and TUI (a full-screen form). A run resolves to the lowest mode that can answer, unless the user or application requests otherwise.
+</Callout>
+
+## Terminal Execution Modes
+
+<Tabs items={["Noninteractive", "Interactive Dialog", "Full-Screen TUI"]}>
+  <Tab value="Noninteractive">
+    Provide arguments directly via flags. Standard output and error streams handle results and diagnostics.
+    ```sh
+    cargo run -p clifacet-example -- --name ada --repeat 2
+    ```
+  </Tab>
+  <Tab value="Interactive Dialog">
+    Missing arguments trigger conversational Inquire questionnaires with live validation.
+    ```sh
+    cargo run -p clifacet-example -- --interactive
+    ```
+  </Tab>
+  <Tab value="Full-Screen TUI">
+    Presents an automated or custom Ratatui form field widget on the alternate terminal screen.
+    ```sh
+    cargo run -p clifacet-example -- --tui
+    ```
+  </Tab>
+</Tabs>
+
+## Documentation Sections
+
+<Cards>
+  <Card
+    title="Getting Started"
+    href="/docs/guides/getting-started"
+    description="Add Clifacet to Cargo.toml, define a command, and run it across modes."
+  />
+  <Card
+    title="Execution Modes"
+    href="/docs/concepts/modes"
+    description="Understand the interaction policy, terminal capability detection, and degradation rules."
+  />
+  <Card
+    title="Companion Derive"
+    href="/docs/guides/derive"
+    description="Declarative attributes for command structs, function commands, and folder registries."
+  />
+  <Card
+    title="Command Reference"
+    href="/docs/reference/command-core"
+    description="Examine the core seams: Command, Plan, Report, Globals, Secret, and Provenance."
+  />
+  <Card
+    title="Repository Architecture"
+    href="/docs/architecture/repository"
+    description="Explore the workspace structure, crate boundaries, and design invariants."
+  />
+  <Card
+    title="Development & Contributing"
+    href="/docs/development/development"
+    description="Pixi environment workflows, feature matrix verification, and testing."
+  />
+</Cards>

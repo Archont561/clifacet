@@ -1,0 +1,242 @@
+---
+title: The Companion Derive
+description: Declarative attributes for connecting Clap parsers to validated input, command functions, and folder trees.
+---
+
+`clifacet::Facet` connects an *existing* `clap` command to validated typed input. It
+adds no parser and no second grammar: `clap` stays the authority, and the derive
+names the one function that turns a parsed struct into an input the command can run.
+
+```rust
+use clap::Parser;
+use clifacet::{Facet, Failure};
+
+/// The command as it already exists.
+#[derive(Debug, Parser, Facet)]
+#[facet(input = Count, bridge = build_count)]
+struct Cli {
+    /// How many times to repeat.
+    #[arg(long, default_value_t = 1)]
+    repeat: u8,
+}
+
+/// The validated input: every value of it is runnable.
+#[derive(Debug)]
+struct Count(u8);
+
+fn build_count(cli: Cli) -> Result<Count, Failure> {
+    if cli.repeat == 0 {
+        return Err(Failure::validation("--repeat must be at least 1"));
+    }
+    Ok(Count(cli.repeat))
+}
+
+let cli = Cli::try_parse_from(["app", "--repeat", "3"]).expect("clap parses it");
+let count = cli.validate().expect("the bridge accepts it");
+assert_eq!(count.0, 3);
+```
+
+## Wrap Both in One Attribute
+
+The derive and `clap`'s parser are two attributes that have to agree. `#[clifacet::command(...)]` emits the pair as one:
+
+```rust
+use clifacet::clap::Parser;
+use clifacet::Facet;
+
+#[clifacet::command(input = Greeting)]
+#[command(name = "greet", about = "Say hello")]
+struct Cli {
+    /// Who to greet.
+    #[arg(long, alias = "nickname")]
+    name: Option<String>,
+}
+
+/// The typed input, built field by field.
+#[derive(Debug, PartialEq)]
+struct Greeting {
+    name: Option<String>,
+}
+
+let cli = Cli::try_parse_from(["greet", "--nickname", "ada"]).expect("clap parses it");
+assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
+```
+
+<Callout type="info">
+`#[clifacet::command]` expands to the item preceded by `#[derive(clap::Parser, clifacet::Facet)]` and `#[facet(input = Type)]`. Clap remains a direct dependency and parses all grammar attributes natively.
+</Callout>
+
+## Authoring Styles
+
+<Tabs items={["Command as a Function", "Command as a Struct"]}>
+  <Tab value="Command as a Function">
+    Small commands can be authored directly as functions. The macro generates the Clap struct and input type automatically:
+
+    ```rust
+    use clifacet::Failure;
+
+    /// Add a task.
+    ///
+    /// The title is stored as given.
+    #[clifacet::command]
+    pub fn add_task(
+        #[clifacet(long, help = "The title to store")]
+        title: String,
+        #[clifacet(long, help = "Show what would happen")]
+        dry_run: bool,
+    ) -> Result<String, Failure> {
+        Ok(format!("{title} ({dry_run})"))
+    }
+    ```
+  </Tab>
+  <Tab value="Command as a Struct">
+    When commands require custom bridge transformations, manual prompt collection, or explicit planning state, author them as structs:
+
+    ```rust
+    use clifacet::Failure;
+
+    #[clifacet::command(input = AddTaskInput)]
+    #[command(name = "add-task", about = "Add a task.")]
+    struct AddTask {
+        #[clifacet(long, help = "The title to store")]
+        title: String,
+        #[clifacet(long, help = "Show what would happen")]
+        dry_run: bool,
+    }
+
+    struct AddTaskInput {
+        title: String,
+        dry_run: bool,
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Field Attribute Keys
+
+`#[clifacet(..)]` on a field defines the argument grammar, interactive questionnaire behavior, and input normalization rules in one place:
+
+```rust
+use clifacet::clap::Parser as _;
+use clifacet::policy::{Capabilities, Mode, Policy, Request};
+use clifacet::prompt::{Answer, Collect as _, Scripted, Session};
+use clifacet::Facet;
+
+#[clifacet::command(input = Greeting)]
+#[command(name = "greet", about = "Say hello")]
+struct Cli {
+    /// Who to greet.
+    #[clifacet(
+        long, short = 'n', alias = "nickname", value_name = "NAME",
+        ask = "Who should I greet?", fill = "world", trim, non_empty,
+    )]
+    name: Option<String>,
+
+    /// How times to greet, from 1 to 8.
+    #[clifacet(long, value_name = "COUNT", range = 1..=8, default_value_t = 1)]
+    repeat: u8,
+}
+
+struct Greeting {
+    name: String,
+    repeat: u8,
+}
+
+let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
+    .expect("the forwarded grammar parses");
+let input = cli.validate().expect("valid");
+assert_eq!((input.name.as_str(), input.repeat), ("ada", 3));
+assert!(<Cli as Facet>::command().render_help().to_string().contains("-n, --name <NAME>"));
+
+let plan = Policy::up_to(Mode::Interactive)
+    .resolve(Request::none(), Capabilities::terminal())
+    .expect("prompts are permitted");
+let mut session = Session::start(plan, || {
+    Box::new(Scripted::new([Answer::Text(String::from(" grace "))]))
+});
+let input = Cli::try_parse_from(["greet"])
+    .expect("parses")
+    .collect(&mut session)
+    .and_then(Facet::validate)
+    .expect("valid");
+assert_eq!(input.name, "grace");
+```
+
+| Classification | Keys | Destination |
+| --- | --- | --- |
+| Grammar (with value) | `alias`, `conflicts_with`, `default_value`, `group`, `help`, `hide`, `id`, `num_args`, `required`, `requires`, `value_name` | `#[arg(key = ...)]` forwarded directly to Clap |
+| Grammar (flags) | `long`, `short`, `action = ArgAction::...` | Clap flag representation |
+| Interactive Question | `ask = "prompt"`, `confirm = "prompt"`, `secret = "prompt"` | Inquire dialog prompt or TUI form field |
+| Normalization | `trim`, `non_empty`, `fill = fallback`, `range = min..=max` | Generated `TryFrom` input validation bridge |
+
+### Field Attributes Reference
+
+<TypeTable
+  type={{
+    ask: {
+      description: "Question prompt displayed during interactive questionnaire mode.",
+      type: "string",
+    },
+    confirm: {
+      description: "Confirmation prompt displayed before executing actions.",
+      type: "string",
+    },
+    secret: {
+      description: "Hides input during entry and redacts value in diagnostics and provenance.",
+      type: "boolean | string",
+      default: "false",
+    },
+    fill: {
+      description: "Fallback value used when the argument is omitted.",
+      type: "string",
+    },
+    trim: {
+      description: "Trims leading and trailing whitespace from input.",
+      type: "boolean",
+      default: "false",
+    },
+    non_empty: {
+      description: "Rejects blank or whitespace-only inputs with validation error.",
+      type: "boolean",
+      default: "false",
+    },
+  }}
+/>
+
+## Nested Command Trees and Registries
+
+### One line on the module: `#[clifacet::registry]`
+
+<Accordions>
+<Accordion title="Declarative Subcommands Enum (#[clifacet::subcommands])">
+
+Declare an enum representing command branches. Each variant wraps a command struct:
+
+```rust ignore
+#[clifacet::subcommands]
+enum Actions {
+    Add(AddTask),
+    List(ListTasks),
+    Done(DoneTask),
+}
+```
+
+The macro implements Clap subcommand parsing, automatic collection traversal, and handler dispatch.
+
+</Accordion>
+
+<Accordion title="Single-Line Folder Registration (clifacet::commands!)">
+
+When organizing commands one file per command under `src/commands/`, register the entire directory with a single macro invocation:
+
+```rust ignore
+clifacet::commands! {
+    context = crate::Context,
+    commands = [add, list, done, doctor]
+}
+```
+
+This registers modules, sets up command trees, and creates the runner entry point without repetitive boilerplate.
+
+</Accordion>
+</Accordions>

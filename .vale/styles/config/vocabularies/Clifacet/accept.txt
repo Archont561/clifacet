@@ -3,6 +3,11 @@ clifacet-macros
 clifacet-example
 alint
 tasknest
+fumadocs
+headlessly
+noninteractively
+inspectable
+non_empty
 clippy
 codecov
 doctest

@@ -1,0 +1,59 @@
+---
+title: Contributing Guide
+description: Contribution guidelines, Conventional Commits, pre-commit hooks, and pull request workflows.
+---
+
+This guide covers how to set up your environment, follow test-driven development conventions, and submit contributions.
+
+<Callout type="warn">
+Commit messages must adhere to Conventional Commits. Commits are automatically parsed by `tools/_lib/changelog.py` to generate `CHANGELOG.md`. Pull requests with invalid commit syntax or stale generated files fail CI.
+</Callout>
+
+## Contribution Workflow
+
+<Steps>
+<Step>
+### Bootstrap Workspace
+
+Initialize hooks and tools:
+
+```sh
+bash scripts/bootstrap.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+</Step>
+
+<Step>
+### Follow Test-Driven Development (TDD)
+
+Write failing unit, matrix, or BDD scenario tests before writing production implementation code.
+</Step>
+
+<Step>
+### Update Documentation and Code Snippets
+
+Update relevant pages under `docs/content/docs/`. If you modified Rust code fences, regenerate compiled snippets:
+
+```sh
+python tools/_lib/check_docs.py --write
+```
+</Step>
+
+<Step>
+### Run Local Pre-Commit Checks
+
+Run all repository quality checks locally:
+
+```sh
+pixi run --frozen --no-install test-local
+```
+</Step>
+</Steps>
+
+## Pre-Commit and Pre-Push Hooks
+
+| Hook | Executed Tasks |
+| --- | --- |
+| `pre-commit` | `alint`, `fmt`, `lint`, `check-features`, `actionlint`, `sandbox-check`, `skills-check` |
+| `pre-push` | `audit-offline`, `deny-offline`, `test`, `test-doc`, `test-scripts` |
+| `commit-msg` | `convco check --from-stdin --strip` |

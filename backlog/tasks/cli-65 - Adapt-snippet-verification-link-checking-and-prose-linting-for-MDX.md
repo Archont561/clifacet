@@ -1,7 +1,7 @@
 ---
 id: CLI-65
 title: 'Adapt snippet verification, link checking, and prose linting for MDX'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 10:22'
 labels: []
@@ -19,8 +19,8 @@ Update documentation validation tooling (`tools/_lib/check_docs.py`, `.alint.yml
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 tools/_lib/check_docs.py parses .mdx files across docs/content/docs/ and verifies headings, relative links, and API symbols
-- [ ] #2 Rust fences in .mdx files are extracted and compiled as tests in documented_snippets.rs
-- [ ] #3 Vale prose linter and Markdown/MDX linters pass on all .mdx documentation pages
-- [ ] #4 Repository checks (alint, check-docs, prose-check) pass cleanly in CI and local gates
+- [x] #1 tools/_lib/check_docs.py parses .mdx files across docs/content/docs/ and verifies headings, relative links, and API symbols
+- [x] #2 Rust fences in .mdx files are extracted and compiled as tests in documented_snippets.rs
+- [x] #3 Vale prose linter and Markdown/MDX linters pass on all .mdx documentation pages
+- [x] #4 Repository checks (alint, check-docs, prose-check) pass cleanly in CI and local gates
 <!-- AC:END -->

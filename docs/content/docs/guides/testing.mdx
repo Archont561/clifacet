@@ -1,0 +1,86 @@
+---
+title: Testing the Command Core
+description: Test strategy across unit matrices, BDD scenarios, property-based invariants, and cross-mode parity.
+---
+
+The suite has four kinds of test because they answer different questions:
+
+| Question | Tool | Command | Location |
+| --- | --- | --- | --- |
+| Which value does each layer produce for this argv? | `rstest` cases | `pixi run test` | `examples/simple/tests/validation_matrix.rs` |
+| Does the user-facing promise hold end to end? | `rstest-bdd` | `pixi run test` | `crates/clifacet/features/`, `tests/*_bdd.rs` |
+| Does it hold for inputs no table would enumerate? | `proptest` | `pixi run test` | `examples/simple/tests/properties.rs` |
+| Does a folder really register itself? | `clifacet::build` integration | `pixi run test` | `examples/discovered/tests/` |
+| Is a mistake in the derive macro explained? | `trybuild` | `pixi run test` | `crates/clifacet/tests/ui/` |
+
+<Callout type="info">
+Cross-mode parity is a published API via `clifacet::harness`: it measures an execution run, captures input received by the command, and verifies that flags, interactive prompts, and full-screen TUI forms produce identical data.
+</Callout>
+
+## Headless Execution Harness
+
+<Steps>
+<Step>
+### Provide Headless Capabilities
+
+Supply `Capabilities::headless()` to eliminate active TTY requirements:
+
+```rust ignore
+let capabilities = clifacet::policy::Capabilities::headless();
+```
+</Step>
+
+<Step>
+### Inject Scripted Prompter Answers
+
+Simulate interactive questionnaires without blocking for stdin using `clifacet::prompt::Scripted`:
+
+```rust ignore
+let prompter = || Box::new(Scripted::new([Answer::Text("ada".to_string())]));
+```
+</Step>
+
+<Step>
+### Capture Output and Diagnostic Buffers
+
+Capture stdout and stderr into in-memory byte vectors:
+
+```rust ignore
+let (mut out, mut err) = (Vec::new(), Vec::new());
+let code = app.run_with(args, capabilities, prompter, &mut out, &mut err);
+assert_eq!(code, 0);
+```
+</Step>
+</Steps>
+
+## Testing Modalities
+
+<Tabs items={["Layer Validation Matrix", "Property Invariants", "BDD Gherkin Scenarios"]}>
+  <Tab value="Layer Validation Matrix">
+    `validation_matrix.rs` separates promises into distinct stages:
+    - **Draft**: Unvalidated state parsed by Clap.
+    - **Input**: Validated and normalized data ready for execution.
+    - **Validation**: Refusal messages displayed to the user.
+  </Tab>
+  <Tab value="Property Invariants">
+    `properties.rs` enforces four formal invariants across arbitrary inputs:
+    1. Canonical input survives round-trip serialization through argv.
+    2. Identical argv invocations produce deterministic results.
+    3. Every argv exits with a documented exit code without panics.
+    4. Accepted values are trimmed and non-empty.
+  </Tab>
+  <Tab value="BDD Gherkin Scenarios">
+    Scenarios in `features/` specify high-level user expectations using `rstest-bdd`, verifying terminal degradation and confirmation cascades.
+  </Tab>
+</Tabs>
+
+## Toolchain Matrix
+
+| Component | Version | Role |
+| --- | --- | --- |
+| `clap` | `4.6.7` | Grammar authority |
+| `rstest` | `0.28.0` | Fixture and table tests |
+| `rstest-bdd` | `0.6.0` | Scenario bindings |
+| `proptest` | `1.12.0` | Generative property invariants |
+| `trybuild` | `1.0.122` | Macro compilation error diagnostics |
+| `cargo-nextest` | `0.9.150` | Fast parallel test runner |

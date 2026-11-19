@@ -1,7 +1,7 @@
 ---
 id: CLI-66
 title: Add GitHub Pages deployment workflow with preflight enablement check
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 10:22'
 labels: []
@@ -19,8 +19,8 @@ Create `.github/workflows/pages.yml` adhering to the Archont561 standard. Implem
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 .github/workflows/pages.yml triggers on push to main (for docs/** and pages.yml) and manual workflow_dispatch
-- [ ] #2 Preflight job queries GitHub Pages API (/repos/${GITHUB_REPOSITORY}/pages) and cleanly reports enablement status in GITHUB_STEP_SUMMARY
-- [ ] #3 Build job installs dependencies via Bun, runs bun run build in docs/, and uploads docs/out via actions/upload-pages-artifact
-- [ ] #4 Deploy job targets github-pages environment and deploys via actions/deploy-pages
+- [x] #1 .github/workflows/pages.yml triggers on push to main (for docs/** and pages.yml) and manual workflow_dispatch
+- [x] #2 Preflight job queries GitHub Pages API (/repos/${GITHUB_REPOSITORY}/pages) and cleanly reports enablement status in GITHUB_STEP_SUMMARY
+- [x] #3 Build job installs dependencies via Bun, runs bun run build in docs/, and uploads docs/out via actions/upload-pages-artifact
+- [x] #4 Deploy job targets github-pages environment and deploys via actions/deploy-pages
 <!-- AC:END -->
