@@ -53,6 +53,17 @@ enum Kind {
     Choice(Vec<String>),
     /// A flag: the value is `"true"` or `"false"`, and the bare flag sets `sets`.
     Toggle { sets: bool },
+    /// Multiple values, collected as a list.
+    List { choices: Vec<String> },
+}
+
+/// How an argument is passed on the command line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Placement {
+    /// A named option with an explicit or default flag.
+    Flag(Option<String>),
+    /// A positional argument with no flag.
+    Positional,
 }
 
 /// One question in the form.
@@ -71,9 +82,8 @@ pub struct FieldState {
     /// the user typed. Typing replaces a default; backspace edits it like any other
     /// text, because deleting a character from a default is an edit, not an answer.
     untouched: bool,
-    /// The flag the value is submitted under, when it is not `--{name}`: a generated
-    /// field takes it from clap, because an id (`dry_run`) is not a flag (`--dry-run`).
-    flag: Option<String>,
+    /// How the value is passed when submitted.
+    placement: Placement,
 }
 
 impl FieldState {
@@ -93,7 +103,7 @@ impl FieldState {
             kind: Kind::Text,
             required: false,
             secret: false,
-            flag: None,
+            placement: Placement::Flag(None),
         }
     }
 
@@ -109,6 +119,22 @@ impl FieldState {
         field
     }
 
+    /// Builds a multi-value list field directly.
+    #[must_use]
+    pub fn list(
+        name: impl Into<String>,
+        label: impl Into<String>,
+        values: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        let entries: Vec<String> = values.into_iter().map(Into::into).collect();
+        let value = entries.join(", ");
+        let mut field = Self::new(name, label, value);
+        field.kind = Kind::List {
+            choices: Vec::new(),
+        };
+        field
+    }
+
     /// Makes this field a choice between `options`, keeping its value as the one chosen.
     ///
     /// Space moves to the next option and a letter jumps to the next option starting
@@ -116,7 +142,12 @@ impl FieldState {
     /// submits nothing.
     #[must_use]
     pub fn with_choices(mut self, options: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.kind = Kind::Choice(options.into_iter().map(Into::into).collect());
+        let choices: Vec<String> = options.into_iter().map(Into::into).collect();
+        if self.is_list() {
+            self.kind = Kind::List { choices };
+        } else {
+            self.kind = Kind::Choice(choices);
+        }
         self
     }
 
@@ -124,9 +155,32 @@ impl FieldState {
     #[must_use]
     pub fn choices(&self) -> &[String] {
         match &self.kind {
-            Kind::Choice(options) => options,
+            Kind::Choice(options) | Kind::List { choices: options } => options,
             Kind::Text | Kind::Toggle { .. } => &[],
         }
+    }
+
+    /// Whether this field is a list collecting multiple values.
+    #[must_use]
+    pub const fn is_list(&self) -> bool {
+        matches!(self.kind, Kind::List { .. })
+    }
+
+    /// Whether this field answers for a positional argument.
+    #[must_use]
+    pub const fn is_positional(&self) -> bool {
+        matches!(self.placement, Placement::Positional)
+    }
+
+    /// Marks whether this field is a positional argument.
+    #[must_use]
+    pub fn mark_positional(mut self, positional: bool) -> Self {
+        self.placement = if positional {
+            Placement::Positional
+        } else {
+            Placement::Flag(None)
+        };
+        self
     }
 
     /// Whether this field is a toggle.
@@ -141,9 +195,41 @@ impl FieldState {
         self.is_toggle() && self.value == "true"
     }
 
+    /// The values of a field as a list of entries.
+    ///
+    /// For a list field, this splits by comma and trims whitespace; for a text or choice
+    /// field, it returns the single value if present; for a toggle, it returns the value
+    /// if on.
+    #[must_use]
+    pub fn values(&self) -> Vec<String> {
+        match &self.kind {
+            Kind::List { .. } => self
+                .value
+                .split(',')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(ToOwned::to_owned)
+                .collect(),
+            Kind::Text | Kind::Choice(_) => {
+                if self.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![self.value.clone()]
+                }
+            }
+            Kind::Toggle { sets } => {
+                if self.value == sets.to_string() {
+                    vec![self.value.clone()]
+                } else {
+                    Vec::new()
+                }
+            }
+        }
+    }
+
     /// The arguments this field submits: none, the bare flag, or the flag and a value.
     fn arguments(&self) -> Vec<String> {
-        match self.kind {
+        match &self.kind {
             // Only a toggle that differs from what absence means is given: the bare flag
             // is the only spelling clap accepts, and an untouched one says nothing.
             Kind::Toggle { sets } => {
@@ -156,15 +242,30 @@ impl FieldState {
             // An empty optional value is omitted rather than passed as an empty string,
             // so a field left untouched behaves exactly as if the flag had not been typed.
             Kind::Text | Kind::Choice(_) if self.is_empty() && !self.required => Vec::new(),
+            Kind::Text | Kind::Choice(_) if self.is_positional() => vec![self.value.clone()],
             Kind::Text | Kind::Choice(_) => vec![self.flag(), self.value.clone()],
+            Kind::List { .. } => {
+                let items = self.values();
+                if items.is_empty() && !self.required {
+                    Vec::new()
+                } else if self.is_positional() {
+                    items
+                } else {
+                    items
+                        .into_iter()
+                        .flat_map(|val| [self.flag(), val])
+                        .collect()
+                }
+            }
         }
     }
 
     /// The flag this field's value is submitted under.
     fn flag(&self) -> String {
-        self.flag
-            .clone()
-            .unwrap_or_else(|| format!("--{}", self.name))
+        match &self.placement {
+            Placement::Flag(Some(flag)) => flag.clone(),
+            Placement::Flag(None) | Placement::Positional => format!("--{}", self.name),
+        }
     }
 
     /// Marks this field as required, which the form uses when it builds arguments.
@@ -228,7 +329,7 @@ impl FieldState {
     /// choice jumps to the next option starting with it.
     fn push(&mut self, character: char) {
         match &self.kind {
-            Kind::Text => {
+            Kind::Text | Kind::List { .. } => {
                 if self.untouched {
                     self.value.clear();
                     self.untouched = false;
@@ -251,7 +352,7 @@ impl FieldState {
     /// Erases: the last character of text, or the choice of an optional choice.
     fn pop(&mut self) {
         match self.kind {
-            Kind::Text => {
+            Kind::Text | Kind::List { .. } => {
                 self.untouched = false;
                 self.value.pop();
             }
@@ -351,25 +452,34 @@ impl FormState {
                 .get_help()
                 .map_or_else(|| (*name).to_owned(), ToString::to_string);
             let kind = kind_of(argument)?;
-            let value = argument.get_default_values().first().map_or_else(
-                || match kind {
+            let default_values = argument.get_default_values();
+            let value = if default_values.is_empty() {
+                match kind {
                     // clap fills a flag's default in when it builds the command, which a
                     // command fresh from the derive has not done yet.
                     Kind::Toggle { sets } => (!sets).to_string(),
-                    Kind::Text | Kind::Choice(_) => String::new(),
-                },
-                |value| value.to_string_lossy().into_owned(),
-            );
+                    Kind::Text | Kind::Choice(_) | Kind::List { .. } => String::new(),
+                }
+            } else {
+                default_values
+                    .iter()
+                    .map(|v| v.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
 
             let mut field =
                 FieldState::new(*name, label, value).mark_required(argument.is_required_set());
             field.kind = kind;
-            // The spelling clap parses, so the submission is the invocation a user would
-            // type. A positional keeps `--{name}`, as before: it has no flag to borrow.
-            field.flag = argument
-                .get_long()
-                .map(|long| format!("--{long}"))
-                .or_else(|| argument.get_short().map(|short| format!("-{short}")));
+            if argument.is_positional() {
+                field.placement = Placement::Positional;
+            } else {
+                let flag = argument
+                    .get_long()
+                    .map(|long| format!("--{long}"))
+                    .or_else(|| argument.get_short().map(|short| format!("-{short}")));
+                field.placement = Placement::Flag(flag);
+            }
             fields.push(field);
         }
 
@@ -490,34 +600,28 @@ impl FormState {
 /// What kind of field an argument becomes, read from its grammar.
 ///
 /// A flag is a toggle and an argument with possible values is a choice, so the form
-/// offers what the parser accepts instead of a text box that rejects the rest. A list —
-/// a repeatable or counted flag, or more than one value — is refused: a field submits
-/// one value, and cutting a list to its first item would be a silent lie.
+/// offers what the parser accepts instead of a text box that rejects the rest.
+/// Repeatable arguments and lists collect multiple values.
 fn kind_of(argument: &Arg) -> Result<Kind, Failure> {
     let many = argument
         .get_num_args()
         .is_some_and(|range| range.max_values() > 1);
+    let options: Vec<String> = argument
+        .get_possible_values()
+        .iter()
+        .filter(|value| !value.is_hide_set())
+        .map(|value| value.get_name().to_owned())
+        .collect();
+
     match argument.get_action() {
         ArgAction::SetTrue => Ok(Kind::Toggle { sets: true }),
         ArgAction::SetFalse => Ok(Kind::Toggle { sets: false }),
-        ArgAction::Set if !many => {
-            let options: Vec<String> = argument
-                .get_possible_values()
-                .iter()
-                .filter(|value| !value.is_hide_set())
-                .map(|value| value.get_name().to_owned())
-                .collect();
-            Ok(if options.is_empty() {
-                Kind::Text
-            } else {
-                Kind::Choice(options)
-            })
-        }
-        ArgAction::Set | ArgAction::Append | ArgAction::Count => Err(Failure::execution(format!(
-            "{} takes more than one value, and a form field submits one: collect a \
-                 list with `Session::collect_values` instead",
-            spelling(argument)
-        ))),
+        ArgAction::Set if !many => Ok(if options.is_empty() {
+            Kind::Text
+        } else {
+            Kind::Choice(options)
+        }),
+        ArgAction::Set | ArgAction::Append => Ok(Kind::List { choices: options }),
         _ => Err(Failure::execution(format!(
             "{} is an action, not a value, so a form cannot ask for it",
             spelling(argument)

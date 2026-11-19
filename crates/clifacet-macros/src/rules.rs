@@ -157,15 +157,6 @@ pub(crate) fn parse(field: &Field) -> syn::Result<Rules> {
              answer as that flag's value; a positional argument cannot be a form field",
         ));
     }
-    if let Some(form) = rules.form
-        && is_list(&field.ty)
-    {
-        return Err(syn::Error::new(
-            form,
-            "`form` on a list would cut it to one value, because a form field submits one \
-             answer: collect a list with `Session::collect_values` instead",
-        ));
-    }
     if let (Some(_), Some((key, span))) = (rules.skip, &rules.normalization) {
         return Err(syn::Error::new(
             *span,
@@ -283,32 +274,6 @@ pub(crate) fn is_option(ty: &syn::Type) -> bool {
         .segments
         .last()
         .is_some_and(|last| last.ident == "Option")
-}
-
-/// Whether the field holds a list: a `Vec<_>`, or an `Option<Vec<_>>`.
-///
-/// Read from the type as written, as clap's derive reads it: a type alias hides the
-/// list from both, and clap then parses it as one value anyway.
-fn is_list(ty: &syn::Type) -> bool {
-    let syn::Type::Path(path) = ty else {
-        return false;
-    };
-    let Some(last) = path.path.segments.last() else {
-        return false;
-    };
-    if last.ident == "Vec" {
-        return true;
-    }
-    if last.ident != "Option" {
-        return false;
-    }
-    let syn::PathArguments::AngleBracketed(arguments) = &last.arguments else {
-        return false;
-    };
-    arguments
-        .args
-        .iter()
-        .any(|argument| matches!(argument, syn::GenericArgument::Type(inner) if is_list(inner)))
 }
 
 /// Every entry of the field's `#[arg(..)]` attributes, in order.

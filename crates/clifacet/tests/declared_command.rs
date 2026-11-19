@@ -186,6 +186,7 @@ struct LoginCli {
     token: Option<clifacet::secret::Secret<String>>,
 }
 
+#[allow(dead_code)]
 struct Login {
     user: Option<String>,
     token: Option<clifacet::secret::Secret<String>>,
@@ -284,4 +285,37 @@ fn a_form_built_from_the_declarations_is_the_generated_form_otherwise() {
         FormState::of::<Cli>().expect("declared"),
         FormState::generated(&<Cli as Facet>::command(), Cli::form_fields()).expect("declared")
     );
+}
+
+/// A command with a declared repeatable list field on the form.
+#[cfg(feature = "tui")]
+#[clifacet::command(input = Tagged)]
+struct TaggedCli {
+    #[clifacet(long, form)]
+    tag: Vec<String>,
+}
+
+#[cfg(feature = "tui")]
+struct Tagged {
+    tag: Vec<String>,
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_form_built_from_the_declarations_supports_repeatable_list_fields() {
+    use clifacet::tui::{FormState, Key};
+
+    let mut form = FormState::of::<TaggedCli>().expect("the declared fields are the command's");
+    for c in "alpha, beta".chars() {
+        form.handle(Key::Char(c));
+    }
+
+    assert_eq!(form.arguments(), ["--tag", "alpha", "--tag", "beta"]);
+    let tagged = TaggedCli::try_parse_from(
+        std::iter::once("tagged").chain(form.arguments().iter().map(String::as_str)),
+    )
+    .expect("what the form submits, clap parses")
+    .validate()
+    .expect("valid");
+    assert_eq!(tagged.tag, ["alpha", "beta"]);
 }

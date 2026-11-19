@@ -58,7 +58,7 @@ impl<'a> Field<'a> {
             String::from(if self.field.is_on() { "[x]" } else { "[ ]" })
         } else if self.field.is_secret() && !self.field.is_empty() {
             String::from(crate::secret::REDACTED)
-        } else if !self.field.choices().is_empty() {
+        } else if !self.field.choices().is_empty() && !self.field.is_list() {
             let chosen = if self.field.is_empty() {
                 "(none)"
             } else {
