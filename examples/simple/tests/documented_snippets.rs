@@ -211,7 +211,7 @@ fn derive_snippet_3() {
     assert_eq!(input.name, "grace");
 }
 
-/// `getting-started.mdx`, line 58.
+/// `getting-started.mdx`, line 60.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {
@@ -229,7 +229,7 @@ fn getting_started_snippet_1() {
     assert_eq!(greeting, "hello, ada");
 }
 
-/// `getting-started.mdx`, line 87.
+/// `getting-started.mdx`, line 90.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_2() {
@@ -275,7 +275,7 @@ fn getting_started_snippet_2() {
     assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
 }
 
-/// `getting-started.mdx`, line 172.
+/// `getting-started.mdx`, line 175.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_3() {

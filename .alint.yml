@@ -184,15 +184,15 @@ rules:
     level: error
     message: "The contributing guide is missing."
 
-  - id: require-markdownlint-config
+  - id: require-rumdl-config
     kind: file_exists
-    paths: ".markdownlint-cli2.yaml"
+    paths: ".rumdl.toml"
     level: error
-    message: "The page-structure check's configuration is missing; the check would lint defaults."
+    message: "The rumdl Markdown linter configuration is missing."
 
   - id: require-readme-template
     kind: file_exists
-    paths: ".readme/README.template.md"
+    paths: "templates/README.template.md"
     level: error
     message: "The README template is missing; `pixi run readme` would have nothing to render."
 

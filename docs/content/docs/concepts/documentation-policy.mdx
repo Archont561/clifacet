@@ -23,24 +23,28 @@ An outdated page is treated as a product defect. If a code change modifies obser
 
 <Steps>
 <Step>
+
 ### Assess Impact
 
 Before opening a pull request, determine whether flags, default values, error responses, or APIs have changed.
 </Step>
 
 <Step>
+
 ### Update Canonical Pages
 
 Edit existing authoritative pages under `docs/content/docs/` rather than creating duplicate sidecars.
 </Step>
 
 <Step>
+
 ### Verify Code Snippets and Links
 
 Ensure all Rust code fences compile cleanly and relative links resolve to valid MDX routes.
 </Step>
 
 <Step>
+
 ### Run Automated Quality Gates
 
 Run `pixi run test-local` or `pixi run check-docs` to execute repository linters, snippet compilation, and Vale prose validation.
@@ -52,6 +56,6 @@ Run `pixi run test-local` or `pixi run check-docs` to execute repository linters
 | Linter / Tool | Responsibility |
 | --- | --- |
 | `alint` | Verifies required documentation files, license files, and workspace manifests exist |
-| `markdownlint-cli2` | Validates Markdown structural soundness (heading hierarchies, code fences) |
+| `rumdl` | Validates Markdown and MDX structural soundness and formatting |
 | `vale` | Enforces vocabulary, terminology, spelling, and readability standards |
 | `tools/_lib/check_docs.py` | Extracts and compiles Rust snippets, verifies links, and checks API symbol paths |

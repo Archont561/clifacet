@@ -21,6 +21,7 @@ Cross-mode parity is a published API via `clifacet::harness`: it measures an exe
 
 <Steps>
 <Step>
+
 ### Provide Headless Capabilities
 
 Supply `Capabilities::headless()` to eliminate active TTY requirements:
@@ -31,6 +32,7 @@ let capabilities = clifacet::policy::Capabilities::headless();
 </Step>
 
 <Step>
+
 ### Inject Scripted Prompter Answers
 
 Simulate interactive questionnaires without blocking for stdin using `clifacet::prompt::Scripted`:
@@ -41,6 +43,7 @@ let prompter = || Box::new(Scripted::new([Answer::Text("ada".to_string())]));
 </Step>
 
 <Step>
+
 ### Capture Output and Diagnostic Buffers
 
 Capture stdout and stderr into in-memory byte vectors:

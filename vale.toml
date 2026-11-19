@@ -40,6 +40,7 @@ accept = [
   "clifacet-example",
   "alint",
   "tasknest",
+  "rumdl",
   "fumadocs",
   "headlessly",
   "noninteractively",

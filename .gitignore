@@ -11,8 +11,8 @@ docs/.next/
 docs/out/
 docs/.source/
 
-# The sidecar `agents-md` writes when it cannot place its markers; the curated AGENTS.md is the file
-AGENTS.generated.md
+# Rumdl linter cache
+.rumdl_cache/
 
 # Python bytecode and pytest caches from the repository script tests
 __pycache__/

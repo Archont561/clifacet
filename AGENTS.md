@@ -3,14 +3,7 @@
 > Guidance for AI coding agents working in this repo. Read this first.
 > **Before building, changing, or debugging anything: verify live state** (read the actual
 > code, config, and deployed branch). Do not act on stale assumptions.
->
-> **Generated and maintained by
-> [@eugeniughelbur/agents-md](https://www.npmjs.com/package/@eugeniughelbur/agents-md).**
-> The regions between `agents-md:begin` and `agents-md:end` are refreshed by
-> `pixi run agents`; everything outside them — including `## Notes` — is hand-written and
-> preserved. Keep a durable rule outside the markers; keep a *detected* fact inside them.
 
-<!-- agents-md:begin id=overview -->
 ## Overview
 
 Clifacet is a Rust library for command-line applications whose commands are **functions**:
@@ -29,9 +22,7 @@ The tools detect the stack as Rust (workspace, edition 2024, MSRV 1.88), Python 
 (automation) and Node tooling from `package.json`. The detected "node" classification above
 is an artifact of that file existing; the product is Rust. Why all four exist is in
 [docs/architecture/repository.md](docs/architecture/repository.md).
-<!-- agents-md:end id=overview -->
 
-<!-- agents-md:begin id=commands -->
 ## Commands
 
 Everything runs through Pixi. `--frozen --no-install` reuses the restored environment
@@ -54,15 +45,12 @@ own (`pixi run --frozen python tools/_lib/check_docs.py`).
 | `tools run check` | everything a change must pass, offline, in CI's order |
 | `tools run docs.check` | links, anchors, compiled snippets, real API names |
 | `tools run docs.prose` | the rendering is current, then Vale |
-| `tools run docs.md` | the structure of every page |
+| `tools run docs.md` | Markdown and MDX linting and formatting via rumdl |
 | `tools run test` | nextest, doctests and the Python suite |
 | `tools run coverage` | LCOV plus the 90% source-line floor |
 | `tools run rust.fmt` / `rust.lint` | rewrite / check the Rust |
 | `tools run docs.readme` / `docs.readme --check` | render README.md / fail when it drifted |
-| `tools run repo.agents` | refresh the marked regions of this file |
-<!-- agents-md:end id=commands -->
 
-<!-- agents-md:begin id=testing -->
 ## Testing
 
 `tools run check` is the gate; `tools run test` is the suites inside it.
@@ -80,9 +68,7 @@ feature work: see *New feature work*.
 
 Never make a red test green by weakening it. A property test that was narrowed, an
 assertion that was loosened, or a case that was deleted all need a reason in the commit.
-<!-- agents-md:end id=testing -->
 
-<!-- agents-md:begin id=structure -->
 ## Project structure
 
 ```text
@@ -97,15 +83,13 @@ scripts/                  restore launcher and bootstrap script
 tools/                    canonical Tasknest automation tasks, tools/_lib/ implementations, tools/tests/ suite
 docs/                     the knowledge layer — guides/ concepts/ reference/ architecture/ development/
 backlog/                  decisions, milestones, tasks (planning, not documentation)
-.readme/                  the README template; README.md is rendered from it
+templates/                the README template; README.md is rendered from it
 ```
 
 `examples/` are workspace members with their own manifests on purpose: an example inside
 the library could use `pub(crate)` items and keep compiling after a change that breaks
 every external caller.
-<!-- agents-md:end id=structure -->
 
-<!-- agents-md:begin id=conventions -->
 ## Code style & conventions
 
 - **Formatter and linter are the tools'**: `cargo fmt` and `cargo clippy -D warnings` over
@@ -115,16 +99,14 @@ every external caller.
 - **One declaration per fact.** A parameter's flags, prompt, form field and rules go in the
   `#[clifacet(..)]` beside it — never a second list that can drift.
 - **Prose is American English**, present tense, second person. Vale owns the words, alint
-  owns the files, markdownlint owns the structure, `check_docs.py` owns the links and the
+  owns the files, rumdl owns Markdown structure and formatting, `check_docs.py` owns the links and the
   snippets: a finding belongs to exactly one of them.
 - **A doc comment is documentation**: `# Errors` and `# Panics` sections where they apply.
 - **Python automation never runs at import time**; every module keeps `main` and an
   `if __name__ == "__main__"` guard so it stays runnable on its own.
 - **Comments explain why.** A comment that restates the code is noise; a comment that
   records a decision is the only copy of that decision.
-<!-- agents-md:end id=conventions -->
 
-<!-- agents-md:begin id=git -->
 ## Git & PR workflow
 
 Default branch `main`; remote `https://github.com/Archont561/clifacet`.
@@ -142,27 +124,19 @@ Default branch `main`; remote `https://github.com/Archont561/clifacet`.
 - **Versions live in three manifests** and `pixi run bump-version --check` proves they
   agree. Bump with `bump-version X.Y.Z --relock`, then `pixi run readme` so the rendered
   README names the new version.
-<!-- agents-md:end id=git -->
 
-<!-- agents-md:begin id=gotchas -->
 ## Gotchas & hard-won lessons
 
 Each of these cost a CI run at least once. Where a check was possible, there is one.
 
 - **`pixi run <task>` after a restore needs `bun-install`** before anything that reads
-  `node_modules`: markdownlint, the README renderer, the backlog board, this file's tool.
-- **The README generator prompts before overwriting `README.md`** and has no flag to skip
-  it, so `tools/_lib/readme.py` renders in a scratch directory and copies the result in.
-- **`agents-md` rewrites its marked regions from detection on every run**, and it detects
-  this repo as `node`, so a refresh reintroduces stubs in those sections. Fill them again
-  and review the diff; keep durable rules outside the markers.
+  `node_modules` (backlog board, skills).
+- **The README is rendered by `tools/_lib/readme.py`** from `templates/README.template.md`.
 - **trybuild rewrites path-like text** in compile-fail output. Keep paths out of messages.
 - **A shallow clone breaks `changelog`**: `git fetch --unshallow origin` first.
 - **CI job logs are unreadable from this sandbox** (`EOF`). Use `gh run view --json` step
   lists and `gh api .../check-runs/<id>/annotations` instead.
-<!-- agents-md:end id=gotchas -->
 
-<!-- agents-md:begin id=security -->
 ## Security & secrets
 
 - **No secrets in the repository.** crates.io publishing uses OIDC trusted publishing: the
@@ -178,9 +152,7 @@ Each of these cost a CI run at least once. Where a check was possible, there is 
 - **A pre-commit hook cannot see a CI-only failure.** The hooks cover the offline gate; the
   npm, RustSec and cross-platform checks are CI's, and claiming they passed locally is a
   false report.
-<!-- agents-md:end id=security -->
 
-<!-- agents-md:begin id=boundaries -->
 ## Boundaries
 
 - ✅ **Always**: run `pixi run --frozen --no-install tools run check` before proposing a
@@ -195,7 +167,6 @@ Each of these cost a CI run at least once. Where a check was possible, there is 
   `README.md`, `.vale.ini`, `.vale/styles/`, `scripts/restore.sh`, the two generated
   workflows, `documented_snippets.rs`); force-push `main`; publish, tag or dispatch a
   release without explicit maintainer authorization; weaken a test to make it pass.
-<!-- agents-md:end id=boundaries -->
 
 ## Session start: check for Pixi
 
@@ -333,9 +304,8 @@ The policy is
 before changing behavior. In short: a fact has one canonical home and every other page
 links to it; a change that makes a page wrong fixes the page or the review records why not;
 an obsolete instruction is removed rather than annotated; and every command in the prose
-was run. `README.md` is generated from `.readme/README.template.md` by
-[readme-md-generator](https://www.npmjs.com/package/readme-md-generator), so a README
-change edits the template and runs `pixi run readme`.
+was run. `README.md` is generated from `templates/README.template.md` by
+`tools/_lib/readme.py`, so a README change edits the template and runs `pixi run readme`.
 
 ## Prose: two tools, two questions
 
@@ -346,7 +316,7 @@ The repository has four linters, and a finding belongs to exactly one of them
 | --- | --- | --- | --- |
 | alint | what the repository *is*: required files, workspace membership, pinned workflows, generated sandbox files | `.alint.yml` | `pixi run --frozen alint` |
 | Vale | how the guides *read*: spelling, terminology, editorial style | `vale.toml` (which renders `.vale.ini` and `.vale/styles/`) | `pixi run --frozen prose-check` |
-| markdownlint-cli2 | the *shape* of a page: heading levels, lists, fences, stray blank lines | `.markdownlint-cli2.yaml` | `pixi run --frozen markdownlint` |
+| rumdl | the *shape* and formatting of Markdown and MDX pages | `.rumdl.toml` | `pixi run --frozen rumdl` |
 | `check_docs.py` | whether a link resolves, a fence compiles, a documented path exists | the pages themselves | `pixi run --frozen check-docs` |
 
 After changing `README.md`, `AGENTS.md` or anything in `docs/`, run `prose-check`. After
@@ -431,15 +401,5 @@ description — never from a blank description:
 
 ## Notes
 
-<!-- Human-owned. Anything here is never touched by re-runs of agents-md. -->
-
-The sections above the `## Session start` heading are generated or refreshed; everything
-from there down is hand-written and untouched by the tool. A durable rule belongs here; a
-fact the tool can detect from the repository belongs in a marked region, where a refresh
-keeps it true.
-
----
-
-<!-- Generated and maintained by agents-md (https://github.com/eugeniughelbur/agents-md).
-     Content INSIDE agents-md:begin/end markers is regenerated on re-run.
-     Everything OUTSIDE the markers (including ## Notes) is yours and is preserved. -->
+Durable rules, conventions, and architectural invariants belong in this document. Always
+verify live code and manifests when updating repository documentation.
