@@ -13,7 +13,7 @@ copy has drifted. Edit the commit messages, not the file.
 ### Added
 
 * **docs:** adopt Fumadocs static documentation and GitHub Pages publishing
-([d68c1bd](https://github.com/Archont561/clifacet/commit/d68c1bde9116c84d0d42f9a76459af0215399866))
+([92794b4](https://github.com/Archont561/clifacet/commit/92794b4b367b332b6f1cfefd3f4b4a9c829707f7))
 
 ## [0.7.0] - 2026-11-19
 
