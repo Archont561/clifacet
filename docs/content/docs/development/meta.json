@@ -1,5 +1,6 @@
 {
   "title": "Development",
+  "icon": "Wrench",
   "pages": [
     "development",
     "contributing",
