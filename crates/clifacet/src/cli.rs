@@ -345,7 +345,7 @@ mod tests {
         let s_ref = "str error";
         assert_eq!(s_ref.into_failure().to_string(), "str error");
 
-        let io_err = io::Error::new(io::ErrorKind::Other, "io error");
+        let io_err = io::Error::other("io error");
         assert_eq!(io_err.into_failure().to_string(), "io error");
 
         let boxed_sync: Box<dyn std::error::Error + Send + Sync> = "box send sync".into();

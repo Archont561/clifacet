@@ -1861,23 +1861,32 @@ fn a_registry_that_finds_no_folder_for_its_report_says_which_ones_there_are() {
 
 #[test]
 fn app_macro_unit_expansion() {
-    let attr: proc_macro2::TokenStream = syn::parse_str("name = \"demo\", version = \"1.0.0\", about = \"test app\", commands").unwrap();
+    let attr: proc_macro2::TokenStream =
+        syn::parse_str("name = \"demo\", version = \"1.0.0\", about = \"test app\", commands")
+            .unwrap();
     let item: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         struct DemoCli {
             #[clifacet(long)]
             verbose: bool,
             #[clifacet(context)]
             cx: MyContext,
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
 
     let res = crate::app::expand(attr, item).expect("app expands");
     let tokens = res.to_string();
-    assert!(tokens.contains("impl :: clifacet :: Cli for DemoCli"), "{tokens}");
+    assert!(
+        tokens.contains("impl :: clifacet :: Cli for DemoCli"),
+        "{tokens}"
+    );
     assert!(tokens.contains("type Context = MyContext"), "{tokens}");
-    assert!(tokens.contains("pub command : Option < DemoCliCommands >"), "{tokens}");
+    assert!(
+        tokens.contains("pub command : Option < DemoCliCommands >"),
+        "{tokens}"
+    );
 }
 
 #[test]
@@ -1886,20 +1895,24 @@ fn app_macro_custom_factory_and_hooks() {
         "name = \"demo\", before_run = my_before, after_success = my_success, after_failure = my_failure",
     ).unwrap();
     let item: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         struct DemoCli {
             #[clifacet(context = build_ctx)]
             cx: MyContext,
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
 
     let res = crate::app::expand(attr, item).expect("app expands");
     let tokens = res.to_string();
     assert!(tokens.contains("build_ctx (self)"), "{tokens}");
     assert!(tokens.contains("my_before (self , cmd , cx)"), "{tokens}");
     assert!(tokens.contains("my_success (self , cmd , cx)"), "{tokens}");
-    assert!(tokens.contains("my_failure (self , cmd , err , cx)"), "{tokens}");
+    assert!(
+        tokens.contains("my_failure (self , cmd , err , cx)"),
+        "{tokens}"
+    );
 }
 
 #[test]
@@ -1908,7 +1921,11 @@ fn app_macro_rejections() {
     let attr: proc_macro2::TokenStream = syn::parse_str("name = \"demo\"").unwrap();
     let item: proc_macro2::TokenStream = syn::parse_str("enum DemoEnum {}").unwrap();
     let err = crate::app::expand(attr, item).unwrap_err();
-    assert!(err.to_string().contains("can only be applied to a struct with named fields"), "{err}");
+    assert!(
+        err.to_string()
+            .contains("can only be applied to a struct with named fields"),
+        "{err}"
+    );
 
     // Unknown key
     let attr_bad: proc_macro2::TokenStream = syn::parse_str("unknown_key = 123").unwrap();
@@ -1919,24 +1936,30 @@ fn app_macro_rejections() {
     // Multiple contexts
     let attr_ok: proc_macro2::TokenStream = syn::parse_str("name = \"demo\"").unwrap();
     let item_multi_cx: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         struct DemoCli {
             #[clifacet(context)]
             c1: Ctx1,
             #[clifacet(context)]
             c2: Ctx2,
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
     let err_cx = crate::app::expand(attr_ok, item_multi_cx).unwrap_err();
-    assert!(err_cx.to_string().contains("only one field can be marked with"), "{err_cx}");
+    assert!(
+        err_cx
+            .to_string()
+            .contains("only one field can be marked with"),
+        "{err_cx}"
+    );
 }
 
 #[test]
 fn commands_macro_unit_expansion() {
     let attr: proc_macro2::TokenStream = syn::parse_str("").unwrap();
     let item: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         impl DemoCli {
             /// Run a job.
             pub fn run(&self, name: String, #[clifacet(long)] count: u32) -> Result<String, Failure> {
@@ -1951,7 +1974,7 @@ fn commands_macro_unit_expansion() {
             #[clifacet(skip)]
             fn helper(&self) {}
         }
-        "#,
+        ",
     ).unwrap();
 
     let res = crate::commands_impl::expand(attr, item).expect("commands expands");
@@ -1968,19 +1991,23 @@ fn commands_macro_unit_expansion() {
 fn commands_macro_group_and_rejections() {
     let attr: proc_macro2::TokenStream = syn::parse_str("group").unwrap();
     let item: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         impl SubGroup {
             pub fn action(&self) -> Result<(), Failure> {
                 Ok(())
             }
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
 
     let res = crate::commands_impl::expand(attr, item).expect("commands group expands");
     let tokens = res.to_string();
     assert!(tokens.contains("pub fn execute (& self)"), "{tokens}");
-    assert!(!tokens.contains("impl :: clifacet :: Handler"), "group should not implement Handler: {tokens}");
+    assert!(
+        !tokens.contains("impl :: clifacet :: Handler"),
+        "group should not implement Handler: {tokens}"
+    );
 
     // Non-impl rejection
     let attr2: proc_macro2::TokenStream = syn::parse_str("").unwrap();
@@ -1993,26 +2020,37 @@ fn commands_macro_group_and_rejections() {
 fn group_macro_unit_expansion() {
     let attr: proc_macro2::TokenStream = syn::parse_str("commands").unwrap();
     let item: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         struct MyGroup {
             #[clifacet(extract)]
             db: DbPool,
             #[clifacet(subcommand)]
             nested: Option<NestedGroup>,
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
 
     let res = crate::group::expand(attr.clone(), item).expect("group expands");
     let tokens = res.to_string();
-    assert!(tokens.contains(":: clifacet :: ContextCell < DbPool >"), "{tokens}");
+    assert!(
+        tokens.contains(":: clifacet :: ContextCell < DbPool >"),
+        "{tokens}"
+    );
     assert!(tokens.contains("pub fn init_from_parent < P >"), "{tokens}");
-    assert!(tokens.contains("nested : Option < NestedGroup >"), "{tokens}");
+    assert!(
+        tokens.contains("nested : Option < NestedGroup >"),
+        "{tokens}"
+    );
 
     // Enum rejection
     let item_enum: proc_macro2::TokenStream = syn::parse_str("enum GroupEnum {}").unwrap();
     let err = crate::group::expand(attr, item_enum).unwrap_err();
-    assert!(err.to_string().contains("can only be applied to a struct with named fields"), "{err}");
+    assert!(
+        err.to_string()
+            .contains("can only be applied to a struct with named fields"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -2031,22 +2069,33 @@ fn app_macro_more_options_and_errors() {
         input = CustomInput,
         commands = AppCommands
         "#,
-    ).unwrap();
+    )
+    .unwrap();
     let item: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         struct DemoApp {
             #[clifacet(subcommand)]
             command: AppCommands,
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
     let res = crate::app::expand(attr, item).expect("app with all options expands");
     let tokens = res.to_string();
     assert!(tokens.contains("name = \"demo_app\""), "{tokens}");
     assert!(tokens.contains("version = \"1.2.3\""), "{tokens}");
-    assert!(tokens.contains("about = \"A demo cli application\""), "{tokens}");
-    assert!(tokens.contains("long_about = \"Longer description\""), "{tokens}");
-    assert!(tokens.contains("author = \"Developer <dev@example.com>\""), "{tokens}");
+    assert!(
+        tokens.contains("about = \"A demo cli application\""),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("long_about = \"Longer description\""),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("author = \"Developer <dev@example.com>\""),
+        "{tokens}"
+    );
     assert!(tokens.contains("init_hook"), "{tokens}");
     assert!(tokens.contains("success_hook"), "{tokens}");
     assert!(tokens.contains("failure_hook"), "{tokens}");
@@ -2054,31 +2103,58 @@ fn app_macro_more_options_and_errors() {
     // duplicates
     let duplicates = [
         ("name = \"a\", name = \"b\"", "`name` is declared twice"),
-        ("version = \"a\", version = \"b\"", "`version` is declared twice"),
+        (
+            "version = \"a\", version = \"b\"",
+            "`version` is declared twice",
+        ),
         ("about = \"a\", about = \"b\"", "`about` is declared twice"),
-        ("long_about = \"a\", long_about = \"b\"", "`long_about` is declared twice"),
-        ("author = \"a\", author = \"b\"", "`author` is declared twice"),
-        ("before_run = a, before_run = b", "`before_run` is declared twice"),
-        ("after_success = a, after_success = b", "`after_success` is declared twice"),
-        ("after_failure = a, after_failure = b", "`after_failure` is declared twice"),
+        (
+            "long_about = \"a\", long_about = \"b\"",
+            "`long_about` is declared twice",
+        ),
+        (
+            "author = \"a\", author = \"b\"",
+            "`author` is declared twice",
+        ),
+        (
+            "before_run = a, before_run = b",
+            "`before_run` is declared twice",
+        ),
+        (
+            "after_success = a, after_success = b",
+            "`after_success` is declared twice",
+        ),
+        (
+            "after_failure = a, after_failure = b",
+            "`after_failure` is declared twice",
+        ),
         ("input = A, input = B", "`input` is declared twice"),
     ];
     let dummy_struct: proc_macro2::TokenStream = syn::parse_str("struct Dummy {}").unwrap();
     for (attr_str, expected_err) in duplicates {
         let a: proc_macro2::TokenStream = syn::parse_str(attr_str).unwrap();
         let err = crate::app::expand(a, dummy_struct.clone()).unwrap_err();
-        assert!(err.to_string().contains(expected_err), "for {attr_str}: {err}");
+        assert!(
+            err.to_string().contains(expected_err),
+            "for {attr_str}: {err}"
+        );
     }
 
     // path syntax error
     let attr_not_ident: proc_macro2::TokenStream = syn::parse_str("foo::bar = 1").unwrap();
     let err_path = crate::app::expand(attr_not_ident, dummy_struct.clone()).unwrap_err();
-    assert!(err_path.to_string().contains("plain identifiers"), "{err_path}");
+    assert!(
+        err_path.to_string().contains("plain identifiers"),
+        "{err_path}"
+    );
 
     // invalid lit str
     let attr_not_str: proc_macro2::TokenStream = syn::parse_str("name = 123").unwrap();
     let err_str = crate::app::expand(attr_not_str, dummy_struct.clone()).unwrap_err();
-    assert!(err_str.to_string().contains("expected a string literal"), "{err_str}");
+    assert!(
+        err_str.to_string().contains("expected a string literal"),
+        "{err_str}"
+    );
 
     // invalid path
     let attr_bad_path: proc_macro2::TokenStream = syn::parse_str("before_run = 123").unwrap();
@@ -2088,27 +2164,35 @@ fn app_macro_more_options_and_errors() {
     // invalid version form
     let attr_bad_ver: proc_macro2::TokenStream = syn::parse_str("version(1)").unwrap();
     let err_ver = crate::app::expand(attr_bad_ver, dummy_struct.clone()).unwrap_err();
-    assert!(err_ver.to_string().contains("`version` must be a flag"), "{err_ver}");
+    assert!(
+        err_ver.to_string().contains("`version` must be a flag"),
+        "{err_ver}"
+    );
 
     // invalid commands form
     let attr_bad_cmd: proc_macro2::TokenStream = syn::parse_str("commands(1)").unwrap();
     let err_cmd = crate::app::expand(attr_bad_cmd, dummy_struct.clone()).unwrap_err();
-    assert!(err_cmd.to_string().contains("`commands` must be a flag"), "{err_cmd}");
+    assert!(
+        err_cmd.to_string().contains("`commands` must be a flag"),
+        "{err_cmd}"
+    );
 }
 
 #[test]
 fn commands_impl_more_options_and_errors() {
     // custom enum and field
-    let attr: proc_macro2::TokenStream = syn::parse_str("name = CustomCmds, field = custom_field").unwrap();
+    let attr: proc_macro2::TokenStream =
+        syn::parse_str("name = CustomCmds, field = custom_field").unwrap();
     let item: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         impl DemoCli {
             pub fn run(&self) -> Result<(), Failure> {
                 Ok(())
             }
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
     let res = crate::commands_impl::expand(attr, item).expect("custom enum/field expands");
     let tokens = res.to_string();
     assert!(tokens.contains("pub enum CustomCmds"), "{tokens}");
@@ -2117,71 +2201,98 @@ fn commands_impl_more_options_and_errors() {
     // positional name
     let attr_pos: proc_macro2::TokenStream = syn::parse_str("PositionalCmds").unwrap();
     let item_pos: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         impl DemoCli {
             pub fn run(&self) -> Result<(), Failure> {
                 Ok(())
             }
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
     let res_pos = crate::commands_impl::expand(attr_pos, item_pos).expect("positional expands");
     assert!(res_pos.to_string().contains("pub enum PositionalCmds"));
 
     // Non-path impl rejection
     let attr_empty: proc_macro2::TokenStream = syn::parse_str("").unwrap();
-    let item_tuple_impl: proc_macro2::TokenStream = syn::parse_str("impl (DemoCli, u32) {}").unwrap();
+    let item_tuple_impl: proc_macro2::TokenStream =
+        syn::parse_str("impl (DemoCli, u32) {}").unwrap();
     let err_trait = crate::commands_impl::expand(attr_empty.clone(), item_tuple_impl).unwrap_err();
-    assert!(err_trait.to_string().contains("can only be applied to an impl block for a struct"), "{err_trait}");
+    assert!(
+        err_trait
+            .to_string()
+            .contains("can only be applied to an impl block for a struct"),
+        "{err_trait}"
+    );
 
     // Method without &self
     let item_no_self: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         impl DemoCli {
             pub fn run() -> Result<(), Failure> {
                 Ok(())
             }
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
     let err_no_self = crate::commands_impl::expand(attr_empty.clone(), item_no_self).unwrap_err();
-    assert!(err_no_self.to_string().contains("must have `&self` receiver"), "{err_no_self}");
+    assert!(
+        err_no_self
+            .to_string()
+            .contains("must have `&self` receiver"),
+        "{err_no_self}"
+    );
 
     // Parameter pattern not ident
     let item_bad_pat: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         impl DemoCli {
             pub fn run(&self, (a, b): (u32, u32)) -> Result<(), Failure> {
                 Ok(())
             }
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
     let err_bad_pat = crate::commands_impl::expand(attr_empty.clone(), item_bad_pat).unwrap_err();
-    assert!(err_bad_pat.to_string().contains("expected identifier pattern"), "{err_bad_pat}");
+    assert!(
+        err_bad_pat
+            .to_string()
+            .contains("expected identifier pattern"),
+        "{err_bad_pat}"
+    );
 }
 
 #[test]
 fn group_macro_more_options_and_errors() {
     // Unnamed fields struct rejection
     let attr: proc_macro2::TokenStream = syn::parse_str("").unwrap();
-    let item_tuple: proc_macro2::TokenStream = syn::parse_str("struct TupleGroup(i32, u32);").unwrap();
+    let item_tuple: proc_macro2::TokenStream =
+        syn::parse_str("struct TupleGroup(i32, u32);").unwrap();
     let err = crate::group::expand(attr.clone(), item_tuple).unwrap_err();
-    assert!(err.to_string().contains("can only be applied to a struct with named fields"), "{err}");
+    assert!(
+        err.to_string()
+            .contains("can only be applied to a struct with named fields"),
+        "{err}"
+    );
 
     // Normal group with context and extract
     let item_ctx: proc_macro2::TokenStream = syn::parse_str(
-        r#"
+        r"
         struct CtxGroup {
             #[clifacet(context)]
             ctx: MyContext,
             #[clifacet(extract)]
             val: String,
         }
-        "#,
-    ).unwrap();
+        ",
+    )
+    .unwrap();
     let res = crate::group::expand(attr, item_ctx).expect("group with context expands");
     let tokens = res.to_string();
-    assert!(tokens.contains(":: clifacet :: ContextCell < MyContext >"), "{tokens}");
+    assert!(
+        tokens.contains(":: clifacet :: ContextCell < MyContext >"),
+        "{tokens}"
+    );
 }
-
