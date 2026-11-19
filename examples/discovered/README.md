@@ -1,9 +1,9 @@
 # Discovered commands example
 
-Demonstrates automatic command discovery in `clifacet`.
+Demonstrates build.rs-free declarative command tree registration in `clifacet` (decision-25).
 
 ## How it works
 
-1. `build.rs` invokes `clifacet::build::commands()`, scanning `src/commands/*.rs`.
-2. `src/lib.rs` invokes `clifacet::commands!()` without explicit arguments, reading the discovered command registry.
-3. `src/main.rs` dispatches the discovered application.
+1. `src/commands/mod.rs` registers commands and subcommands declaratively with pure Rust macros.
+2. `src/lib.rs` exports the command tree root and entry points without `build.rs` or filesystem scanning.
+3. `src/main.rs` dispatches the application.

@@ -1,7 +1,7 @@
 ---
 id: CLI-68
 title: Implement clifacet app macro and context auto-wiring
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:00'
 labels: []
@@ -19,8 +19,8 @@ Implement the `#[clifacet::app]` procedural macro attribute (decision-24). The m
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 #[clifacet::app] parses struct fields into CLI options, subcommands, and context markers
-- [ ] #2 Macro synthesizes the underlying argument parser and derives clifacet::Cli with auto-wired init_context
-- [ ] #3 Macro emits descriptive compile errors when context annotations are invalid or missing required trait bounds
-- [ ] #4 Trybuild tests verify expansion correctness and compiler diagnostic quality for invalid configurations
+- [x] #1 #[clifacet::app] parses struct fields into CLI options, subcommands, and context markers
+- [x] #2 Macro synthesizes the underlying argument parser and derives clifacet::Cli with auto-wired init_context
+- [x] #3 Macro emits descriptive compile errors when context annotations are invalid or missing required trait bounds
+- [x] #4 Trybuild tests verify expansion correctness and compiler diagnostic quality for invalid configurations
 <!-- AC:END -->

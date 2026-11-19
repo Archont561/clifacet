@@ -89,7 +89,7 @@ here is a global or a framework: an `App` is a value, so a test builds a differe
 | `App::settings` | a config file under the flags and the environment | composed |
 | `App::exit` | what each outcome costs | composed |
 | `run_with` | the capability, the frontend and the two streams | a test |
-| `#[clifacet::registry]` | a whole folder of commands, from `build.rs` | on the module |
+| `#[clifacet::app]` / `#[clifacet::commands]` | declarative controller and commands in pure Rust | on struct / impl |
 
 The seams themselves — streams, exit codes, ownership — are the
 [command core](docs/reference/command-core.md); what each attribute accepts is
@@ -102,7 +102,7 @@ The seams themselves — streams, exit codes, ownership — are the
 | add the crate and write a first command | [Getting started](docs/guides/getting-started.md) |
 | copy a working command | [`examples/simple`](examples/simple/README.md) |
 | read every `#[clifacet(..)]` declaration | [The companion derive](docs/guides/derive.md) |
-| add a command by dropping a file in a folder | [One line on the module](docs/guides/derive.md#one-line-on-the-module-clifacetregistry) |
+| declare controller commands and subcommands | [Nested command trees and controllers](docs/guides/derive.md) |
 | layer flags, environment and a config file | [Settings from a file, under the flags](docs/guides/getting-started.md#settings-from-a-file-under-the-flags) |
 | decide which mode runs, and what it costs | [Modes and the interaction policy](docs/concepts/modes.md) |
 | draw your own field or screen | [TUI composition](docs/guides/tui-composition.md) |
@@ -116,7 +116,7 @@ Each is a consumer of the published API, not a part of the library:
 | Example | Shows |
 | --- | --- |
 | [`examples/simple`](examples/simple/README.md) | the reference application: one command, every seam, its own suite |
-| `examples/discovered` | a folder that registers itself from `build.rs` |
+| `examples/discovered` | declarative command tree registration without build scripts |
 | [`examples/backlog-lite`](examples/backlog-lite/README.md) | a wrapper around somebody else's CLI — the acceptance case |
 
 ## Install

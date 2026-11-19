@@ -1,7 +1,7 @@
 ---
 id: CLI-71
 title: Retire build api and directory scanning
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:30'
 labels: []
@@ -22,8 +22,8 @@ Retire the `clifacet::build` module, `clifacet::build::commands()`, and the `bui
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 clifacet::build module and build Cargo feature are deprecated and removed
-- [ ] #2 CLIFACET_COMMANDS environment variable protocol is eliminated from macro crate
-- [ ] #3 Documentation and example crates are updated to demonstrate build.rs-free declarative authoring
-- [ ] #4 Regression tests verify clean compilation and execution of applications without build scripts
+- [x] #1 clifacet::build module and build Cargo feature are deprecated and removed
+- [x] #2 CLIFACET_COMMANDS environment variable protocol is eliminated from macro crate
+- [x] #3 Documentation and example crates are updated to demonstrate build.rs-free declarative authoring
+- [x] #4 Regression tests verify clean compilation and execution of applications without build scripts
 <!-- AC:END -->

@@ -1,35 +1,8 @@
-//! An application whose commands are discovered from its folder (CLI-50).
+//! An application whose commands are organized one file per command (CLI-50, CLI-71).
 //!
-//! `#[clifacet::registry]` on the module below is the whole registration, and `build.rs` scans
-//! the folder. Dropping a file into `src/commands/` is the whole of adding a command — no list
-//! to edit, no `mod` line to write, no variant to add.
-//!
-//! The example is deliberately small: it is a proof of the discovery mechanism and of its
-//! error messages, not another full application. `examples/simple` is the application.
+//! Declarative controller and command trees compose without build scripts (decision-25).
 
-/// The commands of this application, discovered from this folder (CLI-50).
-///
-/// This line is the whole registration. `build.rs` scanned `src/commands/`; this attribute
-/// writes the `mod` lines, the `Commands` tree, the `Request`, the `Input` and the `Cli` root
-/// from that report, and pulls the folder's `mod.rs` in beside them, so the folder holds
-/// everything that is not registration — its helper, its re-exports — and no `commands!(..)`
-/// call at all. Dropping a file into `src/commands/` remains the whole of adding a command.
-///
-/// The folder's file is included, which is what makes this work and what it costs: a file
-/// pulled in that way may not begin with `//!`, so the folder documents itself with `//`.
-///
-/// `mod commands {}` rather than `mod commands;`: an *outlined* module in an attribute's
-/// input is unstable below Rust 1.99, and this crate's floor is lower than that, so the
-/// braces are what make the declaration legal on every supported compiler. The body stays
-/// empty — `include!` fills it from the folder — and writing items here would replace the
-/// folder instead of adding to it.
-#[clifacet::registry(
-    output = crate::Said,
-    request = Request,
-    name = "discovered",
-    about = "A proof that a folder registers itself"
-)]
-pub mod commands {}
+pub mod commands;
 
 pub use commands::{Cli, Commands, Input, Request};
 

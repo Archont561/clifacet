@@ -1,14 +1,28 @@
-// `_task` is the helper `show`, `start` and `done` share: a task ID and moving it. Its `mod`
-// line is the registry's — it declares the folder's helpers beside its leaves — so it is not
-// written here, and this file only re-exports what it makes reachable.
+clifacet::__commands!(
+    doctor,
+    done,
+    list,
+    new,
+    search,
+    show,
+    start,
+    root = { "json": bool },
+    request = Action,
+    name = "bl",
+    about = "A friendlier front door to the Backlog.md CLI",
+    long_about = "A friendlier front door to the Backlog.md CLI.\n\n\
+                  Everything is forwarded to `backlog`; nothing is reimplemented. \
+                  What this adds is the three things everyone retypes: a status \
+                  shortcut, one --json for the whole run, and --dry-run."
+);
 
+mod _task;
+
+pub use _task::{TaskRef, confirm_status, task_id};
 pub use doctor::Checkup;
 pub use list::Filter;
 pub use new::{NewTask, collect_new};
 pub use search::Query;
-// `_task`'s items are already in this module — the registry declared it here, and the leaves
-// reach it as `super::_task` — so the re-export is what makes them the folder's public surface.
-pub use _task::{TaskRef, confirm_status, task_id};
 
 /// A validated instruction: everything the wrapper decided, and nothing it did.
 ///

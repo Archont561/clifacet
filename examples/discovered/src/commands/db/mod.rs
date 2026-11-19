@@ -21,11 +21,11 @@ pub struct Chosen {
     pub command: Request,
 }
 
-// This folder's own registration, also discovered: the build script scanned it because it
-// is a group of the folder above.
+// This folder's own registration:
 // `planned`: the group's subcommands describe themselves, so the tree previews as well as
 // runs — which is what makes `db migrate --dry-run` reach `migrate`'s own plan.
 clifacet::__commands!(
+    migrate,
     output = crate::Said,
     planned
 );
