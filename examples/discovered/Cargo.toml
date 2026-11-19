@@ -6,19 +6,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Discovery, proven from a real build script: dropping a file into src/commands adds a command"
+description = "Declarative commands, proven without build scripts: subcommands and modules in pure Rust"
 publish = false
-
-# The build script is the point of this example: it is the only caller of
-# `clifacet::build::commands()`, which is why the library's `build` feature exists.
-build = "build.rs"
 
 [dependencies]
 clap = { workspace = true, features = ["color", "suggestions"] }
-clifacet = { path = "../../crates/clifacet", features = ["build"] }
-
-[build-dependencies]
-clifacet = { path = "../../crates/clifacet", features = ["build"] }
+clifacet = { path = "../../crates/clifacet" }
 
 # The golden compile-fail case in `tests/ui/`: a helper has to be unreachable from
 # outside its folder, and the message saying so is part of the promise (CLI-50, AC#4).

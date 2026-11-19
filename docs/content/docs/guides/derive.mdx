@@ -203,9 +203,9 @@ assert_eq!(input.name, "grace");
   }}
 />
 
-## Nested Command Trees and Registries
+## Nested Command Trees and Controllers
 
-### One line on the module: `#[clifacet::registry]`
+### Declarative Command Trees and Controllers
 
 <Accordions>
 <Accordion title="Declarative Subcommands Enum (#[clifacet::subcommands])">
@@ -225,18 +225,27 @@ The macro implements Clap subcommand parsing, automatic collection traversal, an
 
 </Accordion>
 
-<Accordion title="Single-Line Folder Registration (clifacet::commands!)">
+<Accordion title="Controller Struct and Impl Blocks (#[clifacet::app] and #[clifacet::commands])">
 
-When organizing commands one file per command under `src/commands/`, register the entire directory with a single macro invocation:
+Declare root controllers and command handlers declaratively in pure Rust without `build.rs` scripts (decision-25):
 
 ```rust ignore
-clifacet::commands! {
-    context = crate::Context,
-    commands = [add, list, done, doctor]
+#[clifacet::app(name = "mycli", version = "1.0.0", about = "Controller app", commands)]
+struct MyCli {
+    #[clifacet(long)]
+    verbose: bool,
+    #[clifacet(context)]
+    cx: MyContext,
+}
+
+#[clifacet::commands]
+impl MyCli {
+    /// Deploy service.
+    pub fn deploy(&self, service: String) -> Result<(), Failure> {
+        Ok(())
+    }
 }
 ```
-
-This registers modules, sets up command trees, and creates the runner entry point without repetitive boilerplate.
 
 </Accordion>
 </Accordions>

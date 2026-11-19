@@ -87,11 +87,11 @@ assertion that was loosened, or a case that was deleted all need a reason in the
 
 ```text
 crates/clifacet/          the library: command, facet, policy, prompt, tui, contract, report,
-                          harness, secret, provenance, settings, build, app
-crates/clifacet-macros/   the Facet derive, #[clifacet::command], #[clifacet::registry], version!
+                          harness, secret, provenance, settings, app
+crates/clifacet-macros/   the Facet derive, #[clifacet::command], #[clifacet::app], #[clifacet::commands], version!
 examples/                 consumers of the published API — never a private path
   simple/                 the reference application; its own README and suite
-  discovered/             src/commands/ registered from build.rs
+  discovered/             src/commands/ registered without build scripts
   backlog-lite/           a wrapper around somebody else's CLI: the acceptance case
 scripts/                  restore launcher and bootstrap script
 tools/                    canonical Tasknest automation tasks, tools/_lib/ implementations, tools/tests/ suite

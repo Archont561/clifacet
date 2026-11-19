@@ -28,10 +28,6 @@ settings-toml = ["dep:toml_edit"]
 # `clifacet::settings::figment`, the Figment-backed layered settings loader (CLI-59).
 # Off by default: an application opting into Figment enables it.
 settings-figment = ["dep:figment", "serde", "dep:toml_edit"]
-# `clifacet::build::commands()`, for an application's `build.rs`: it scans
-# `src/commands/` and reports it, and `clifacet::commands!()` with no list reads
-# that report (CLI-50). Off by default, because a build script is the only caller.
-build = []
 
 [dependencies]
 clifacet-macros.workspace = true

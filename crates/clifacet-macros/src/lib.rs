@@ -261,27 +261,10 @@ pub fn __commands(input: TokenStream) -> TokenStream {
     commands::expand(tokens, call_site).into()
 }
 
-/// Registers a folder of commands, on the module that holds it (CLI-58).
+/// Registers a folder of commands, on the module that holds it (retired in decision-25, CLI-71).
 ///
-/// ```ignore
-/// // src/lib.rs: the whole registration
-/// #[clifacet::registry]
-/// mod commands {}
-///
-/// // src/commands/mod.rs: everything else about the folder, and no `commands!(..)` call
-/// pub struct Request { .. }
-/// ```
-///
-/// The braces are what make the declaration legal on every supported compiler: an *outlined*
-/// module (`mod commands;`) in an attribute's input is unstable below Rust 1.99. An empty
-/// body is filled from the folder's `mod.rs`; a body written here is the folder itself.
-///
-/// Expands to the folder's module — its own `mod.rs`, pulled in so its `mod` lines resolve
-/// against its own directory — and beside it the same registration `clifacet::commands!(..)`
-/// writes: `Commands`, `Request`, `Input`, `Cli` and the leaf re-exports. The module list
-/// comes from the folder's build report, so this needs `clifacet::build::commands()` in the
-/// application's `build.rs` and clifacet's `build` feature, exactly as `commands!()` with no
-/// list does.
+/// Legacy `build.rs` directory scanning and `#[clifacet::registry]` have been retired.
+/// Use `#[clifacet::app]` and `#[clifacet::commands]` for declarative controller authoring.
 ///
 /// What the folder's types gain is that they are written in the folder's own scope and
 /// re-exported into the registered module, so a `Request`, a helper, or an `impl` naming a

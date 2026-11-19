@@ -1,4 +1,4 @@
-//! A call with no modules and no build script is discovery that cannot run.
+//! A call with no modules is rejected and points to explicit modules or #[clifacet::app].
 
 mod commands {
     clifacet::__commands!(name = "app");

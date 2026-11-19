@@ -10,7 +10,7 @@ The suite has four kinds of test because they answer different questions:
 | Which value does each layer produce for this argv? | `rstest` cases | `pixi run test` | `examples/simple/tests/validation_matrix.rs` |
 | Does the user-facing promise hold end to end? | `rstest-bdd` | `pixi run test` | `crates/clifacet/features/`, `tests/*_bdd.rs` |
 | Does it hold for inputs no table would enumerate? | `proptest` | `pixi run test` | `examples/simple/tests/properties.rs` |
-| Does a folder really register itself? | `clifacet::build` integration | `pixi run test` | `examples/discovered/tests/` |
+| Are commands registered without build scripts? | Declarative command trees | `pixi run test` | `examples/discovered/tests/` |
 | Is a mistake in the derive macro explained? | `trybuild` | `pixi run test` | `crates/clifacet/tests/ui/` |
 
 <Callout type="info">
