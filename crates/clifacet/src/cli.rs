@@ -312,3 +312,89 @@ impl<T: OutcomePayload, E: IntoFailure> IntoOutcome for Result<T, E> {
             .map_err(IntoFailure::into_failure)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    #[test]
+    fn context_cell_operations() {
+        let empty: ContextCell<i32> = ContextCell::new();
+        assert!(!empty.is_initialized());
+        assert_eq!(empty.get(), None);
+        assert_eq!(format!("{empty:?}"), "ContextCell(\"<uninitialized>\")");
+
+        let cell = ContextCell::from(42);
+        assert!(cell.is_initialized());
+        assert_eq!(cell.get(), Some(&42));
+        assert_eq!(*cell, 42);
+        assert_eq!(cell.as_ref(), &42);
+        assert_eq!(format!("{cell:?}"), "ContextCell(42)");
+    }
+
+    #[test]
+    fn into_failure_conversions() {
+        let f = Failure::execution("err");
+        let converted = f.clone().into_failure();
+        assert_eq!(converted.to_string(), "err");
+
+        let s = "string error".to_string();
+        assert_eq!(s.into_failure().to_string(), "string error");
+
+        let s_ref = "str error";
+        assert_eq!(s_ref.into_failure().to_string(), "str error");
+
+        let io_err = io::Error::new(io::ErrorKind::Other, "io error");
+        assert_eq!(io_err.into_failure().to_string(), "io error");
+
+        let boxed_sync: Box<dyn std::error::Error + Send + Sync> = "box send sync".into();
+        assert_eq!(boxed_sync.into_failure().to_string(), "box send sync");
+
+        let boxed: Box<dyn std::error::Error> = "box err".into();
+        assert_eq!(boxed.into_failure().to_string(), "box err");
+    }
+
+    #[test]
+    fn outcome_payload_and_conversions() {
+        let static_str = "hello";
+        assert_eq!(OutcomePayload::into_displayed(static_str), "hello");
+        assert_eq!(IntoOutcome::into_outcome(static_str).unwrap(), "hello");
+
+        let res_ok: Result<&'static str, &'static str> = Ok("ok");
+        assert_eq!(res_ok.into_outcome().unwrap(), "ok");
+
+        let res_err: Result<&'static str, &'static str> = Err("err");
+        assert!(res_err.into_outcome().is_err());
+
+        let unit_outcome: Result<String, Failure> = ().into_outcome();
+        assert_eq!(unit_outcome.unwrap(), "");
+
+        let string_outcome: Result<String, Failure> = "str".to_string().into_outcome();
+        assert_eq!(string_outcome.unwrap(), "str");
+    }
+
+    #[test]
+    fn extract_helpers() {
+        use crate::cli::extract::{ExtractAsRef, ExtractFrom, ExtractWrap};
+
+        struct Parent(String);
+        impl AsRef<String> for Parent {
+            fn as_ref(&self) -> &String {
+                &self.0
+            }
+        }
+        impl<'a> From<&'a Parent> for usize {
+            fn from(p: &'a Parent) -> Self {
+                p.0.len()
+            }
+        }
+
+        let wrap: ExtractWrap<String> = ExtractWrap(std::marker::PhantomData);
+        let p = Parent("hello".into());
+        assert_eq!(ExtractAsRef::extract(&wrap, &p), "hello".to_string());
+
+        let wrap_ref = ExtractWrap::<usize>(std::marker::PhantomData);
+        assert_eq!(ExtractFrom::extract(&&wrap_ref, &p), 5);
+    }
+}
