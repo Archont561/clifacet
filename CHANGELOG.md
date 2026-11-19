@@ -12,8 +12,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **cli:** retire build api and directory scanning (CLI-71)
+([c159234](https://github.com/Archont561/clifacet/commit/c159234e19f5d787f69967fb2fff31af3afe48a6))
 * **cli:** implement commands and group macros with context extractors (CLI-69, CLI-70)
-([3f49664](https://github.com/Archont561/clifacet/commit/3f4966437cadecf7a9063145ae94836d678d6eb6))
+([18f60c1](https://github.com/Archont561/clifacet/commit/18f60c1fff37dd5d84c89bc780036aada39ce4e8))
 * **docs:** adopt Fumadocs static documentation and GitHub Pages publishing
 ([92794b4](https://github.com/Archont561/clifacet/commit/92794b4b367b332b6f1cfefd3f4b4a9c829707f7))
 
