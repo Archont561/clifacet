@@ -1,17 +1,11 @@
 {
   "title": "Documentation",
   "pages": [
-    "---Getting Started---",
     "index",
-    "---Guides---",
     "guides",
-    "---Concepts---",
     "concepts",
-    "---Reference---",
     "reference",
-    "---Architecture---",
     "architecture",
-    "---Development---",
     "development"
   ]
 }

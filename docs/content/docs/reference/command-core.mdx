@@ -6,7 +6,7 @@ description: Seams, contracts, layers, stream separation, secret redaction, and 
 The core model connects Clap parsing, typed validation, UI-free command execution, and stream routing.
 
 <Callout type="info">
-`Command` is the only seam between validation and presentation. Commands never read stdin or write directly to stdout/stderr, guaranteeing reachability across all terminal frontends.
+`Command` is the core execution trait underlying UI-free commands. While declarative controllers (`#[clifacet::app]` and `#[clifacet::commands]`) serve as Clifacet's canonical authoring style, `Command` and `Planned` define the core seams and execution contracts across all frontends. Commands never read stdin or write directly to stdout/stderr, guaranteeing reachability across all terminal modes.
 </Callout>
 
 ## The Four Layers
