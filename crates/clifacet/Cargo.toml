@@ -26,6 +26,8 @@ schema = ["serde"]
 skill = ["schema"]
 # Built-in MiniJinja skill renderer for agent documentation (decision-25, CLI-75).
 skill-minijinja = ["skill", "dep:minijinja"]
+# Model Context Protocol stdio tool server (decision-25, CLI-77).
+mcp = ["schema"]
 # `clifacet::settings::toml`, the settings loader for the format most applications
 # already have (CLI-51). Off by default: a program that never reads a settings file pays
 # nothing for the parser.

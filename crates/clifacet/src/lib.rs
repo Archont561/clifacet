@@ -208,6 +208,13 @@ pub use skill::{DEFAULT_SKILL_TEMPLATE, MiniJinjaSkillRenderer};
 #[cfg(feature = "skill")]
 pub use skill::{SkillProvider, SkillRenderer, WriteSkillOptions, execute_write_skill};
 
+#[cfg(feature = "mcp")]
+pub mod mcp;
+#[cfg(feature = "mcp")]
+pub use mcp::{
+    McpServer, arguments_to_argv, generate_tools_list, run_server_streams, run_stdio_server,
+};
+
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///
 /// A caller that parses with a derived command needs `clap::Parser` in scope, so the
