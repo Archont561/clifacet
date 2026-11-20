@@ -12,8 +12,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **skill:** implement MiniJinja skill renderer and embedded template (CLI-75)
+([8287230](https://github.com/Archont561/clifacet/commit/8287230a4d323638b1a84bf17efda0d96ec43678))
 * **skill:** define pluggable SkillRenderer trait and feature boundary (CLI-74)
-([1f5fe8c](https://github.com/Archont561/clifacet/commit/1f5fe8c58111a7c14fbb39577291f0fadc4387f0))
+([fb023ea](https://github.com/Archont561/clifacet/commit/fb023ea9c55942a991b50e7afd81903d380237b9))
 * **schema:** implement machine-readable CLI schema introspection (CLI-73)
 ([cfc3584](https://github.com/Archont561/clifacet/commit/cfc3584a84e7ae142ec6fc07b1a49488b91023c6))
 * **cli:** structured JSON execution mode and standardized failure schema (CLI-72)
