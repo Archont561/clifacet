@@ -431,7 +431,11 @@ fn test_minijinja_render_with_template_and_file_overrides() {
         "# Fleet Skill Mini: {{ name }}\n\nCommands: {{ subcommands | length }}\n";
     let output =
         FleetApp::render_skill_with_template(custom_template).expect("rendered with template");
-    assert_eq!(output, "# Fleet Skill Mini: fleet\n\nCommands: 4\n");
+    let count = if cfg!(feature = "mcp") { 5 } else { 4 };
+    assert_eq!(
+        output,
+        format!("# Fleet Skill Mini: fleet\n\nCommands: {count}\n")
+    );
 
     // Render using a template file
     let fixture_path =
