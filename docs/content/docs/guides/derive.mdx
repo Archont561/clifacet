@@ -1,6 +1,6 @@
 ---
 title: The Companion Derive
-description: Declarative attributes for connecting Clap parsers to validated input, command functions, and folder trees.
+description: Declarative attributes for connecting Clap parsers to validated input, controllers, and command trees.
 ---
 
 `clifacet::Facet` connects an *existing* `clap` command to validated typed input. It
@@ -68,24 +68,30 @@ assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
 
 ## Authoring Styles
 
-<Tabs items={["Command as a Function", "Command as a Struct"]}>
-  <Tab value="Command as a Function">
-    Small commands can be authored directly as functions. The macro generates the Clap struct and input type automatically:
+<Tabs items={["Declarative Controller", "Command as a Struct"]}>
+  <Tab value="Declarative Controller">
+    Commands can be authored declaratively as methods on a controller struct using `#[clifacet::app]` and `#[clifacet::commands]`:
 
     ```rust
     use clifacet::Failure;
 
-    /// Add a task.
-    ///
-    /// The title is stored as given.
-    #[clifacet::command]
-    pub fn add_task(
-        #[clifacet(long, help = "The title to store")]
-        title: String,
-        #[clifacet(long, help = "Show what would happen")]
-        dry_run: bool,
-    ) -> Result<String, Failure> {
-        Ok(format!("{title} ({dry_run})"))
+    #[clifacet::app(name = "task-app", commands)]
+    struct TaskApp {}
+
+    #[clifacet::commands]
+    impl TaskApp {
+        /// Add a task.
+        ///
+        /// The title is stored as given.
+        pub fn add_task(
+            &self,
+            #[clifacet(long, help = "The title to store")]
+            title: String,
+            #[clifacet(long, help = "Show what would happen")]
+            dry_run: bool,
+        ) -> Result<String, Failure> {
+            Ok(format!("{title} ({dry_run})"))
+        }
     }
     ```
   </Tab>

@@ -12,40 +12,45 @@
 
 **One command. Three terminal modes. Every presentation composed from the same declaration.**
 
-A command is a function; an application is a value built from it. The same command runs
+A command is declared on a controller; an application is a value built from it. The same command runs
 **noninteractive** — flags in, plain text for a person or structured output for a machine —
 **interactive**, as a questionnaire on a terminal, or as a **TUI** full-screen interface.
 Which one runs is decided once per run, from the flags, the application's policy and what
 the terminal can offer.
 
 ```rust
-use clifacet::Failure;
 use clifacet::contract::ExitPolicy;
 use clifacet::policy::{Capabilities, Mode, Policy};
+use clifacet::{Facet, Failure};
 
-/// The whole command: the parameters are the arguments, and each attribute beside one
-/// is that argument's declaration — the `clap` surface, the prompt, the form field.
-#[clifacet::command]
-#[command(name = "greet", about = "Say hello")]
-fn greet(
-    #[clifacet(long, short = 'n', help = "Who to greet", fill = "world", trim, non_empty, form)]
-    name: String,
-    #[clifacet(long, help = "How many times", default_value_t = 1)]
-    repeat: u8,
-) -> Result<String, Failure> {
-    Ok(format!("hello, {name} x{repeat}"))
+/// An application controller declares its global surface, context, and commands.
+#[clifacet::app(name = "greet", about = "Say hello", commands)]
+struct GreetApp {}
+
+#[clifacet::commands]
+impl GreetApp {
+    /// The greeting command: parameters are arguments and flags.
+    pub fn hello(
+        &self,
+        #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+        name: String,
+        #[clifacet(long, help = "How many times", default_value_t = 1)]
+        repeat: u8,
+    ) -> Result<String, Failure> {
+        Ok(format!("hello, {name} x{repeat}"))
+    }
 }
 
 /// An application is a value built from parts that each own one decision.
-fn app() -> clifacet::App<'static, Greet, Greet> {
-    clifacet::App::<Greet>::new()
+fn app() -> clifacet::App<'static, GreetApp> {
+    clifacet::App::<GreetApp>::for_cli()
         .policy(Policy::up_to(Mode::Interactive))
         .exit(ExitPolicy::standard())
 }
 
 /// `main` is the same value, run.
 fn main_line() -> std::process::ExitCode {
-    clifacet::App::<Greet>::new().run()
+    clifacet::run_cli::<GreetApp>()
 }
 
 /// And a test is the same value with the process taken out of it.
@@ -53,7 +58,7 @@ fn scripted() -> i32 {
     let mut out = Vec::new();
     let mut err = Vec::new();
     app().run_with(
-        ["greet", "--name", "ada"],
+        ["greet", "hello", "--name", "ada"],
         Capabilities::headless(),
         || Box::new(clifacet::prompt::Terminal::new(std::io::empty(), std::io::sink())),
         &mut out,
@@ -77,14 +82,14 @@ here is a global or a framework: an `App` is a value, so a test builds a differe
 
 | Part | Owns | Where |
 | --- | --- | --- |
-| `#[clifacet(..)]` | one argument's flags, prompt, form field and rules | on the parameter |
-| `#[clifacet::command]` | the command, the typed input and the `clap` surface | on the function |
+| `#[clifacet(..)]` | one argument's flags, prompt, form field and rules | on parameter or field |
+| `#[clifacet::app]` / `#[clifacet::commands]` | declarative controller and commands in pure Rust | on struct / impl |
+| `#[clifacet::command]` | command struct and typed input bridge | on the struct |
 | `App` | the pipeline: parse, ask, validate, run, render, exit | `.run()` |
 | `App::policy` / `mode_from` | which of the three modes a run may use, and which it prefers | composed |
 | `App::settings` | a config file under the flags and the environment | composed |
 | `App::exit` | what each outcome costs | composed |
 | `run_with` | the capability, the frontend and the two streams | a test |
-| `#[clifacet::app]` / `#[clifacet::commands]` | declarative controller and commands in pure Rust | on struct / impl |
 
 The seams themselves — streams, exit codes, ownership — are the
 [command core](docs/reference/command-core.md); what each attribute accepts is

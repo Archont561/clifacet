@@ -339,6 +339,7 @@ def generated_snippets(root: Path = ROOT) -> str:
         "    clippy::no_effect_underscore_binding,\n"
         "    clippy::too_many_lines,\n"
         "    clippy::unnecessary_wraps,\n"
+        "    clippy::unused_self,\n"
         "    reason = \"a snippet is a verbatim copy of a published guide, so its shape is \\\n"
         "              documentation; what this file proves is that the code compiles and runs\"\n"
         ")]\n\n"

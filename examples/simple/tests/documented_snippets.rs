@@ -11,6 +11,7 @@
     clippy::no_effect_underscore_binding,
     clippy::too_many_lines,
     clippy::unnecessary_wraps,
+    clippy::unused_self,
     reason = "a snippet is a verbatim copy of a published guide, so its shape is \
               documentation; what this file proves is that the code compiles and runs"
 )]
@@ -22,37 +23,41 @@
 #[test]
 fn readme_snippet_1() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::Failure;
     use clifacet::contract::ExitPolicy;
     use clifacet::policy::{Capabilities, Mode, Policy};
-    /// The whole command: the parameters are the arguments, and each attribute beside one
-    /// is that argument's declaration — the `clap` surface, the prompt, the form field.
-    #[clifacet::command]
-    #[command(name = "greet", about = "Say hello")]
-    fn greet(
-        #[clifacet(long, short = 'n', help = "Who to greet", fill = "world", trim, non_empty, form)]
-        name: String,
-        #[clifacet(long, help = "How many times", default_value_t = 1)]
-        repeat: u8,
-    ) -> Result<String, Failure> {
-        Ok(format!("hello, {name} x{repeat}"))
+    use clifacet::{Facet, Failure};
+    /// An application controller declares its global surface, context, and commands.
+    #[clifacet::app(name = "greet", about = "Say hello", commands)]
+    struct GreetApp {}
+    #[clifacet::commands]
+    impl GreetApp {
+        /// The greeting command: parameters are arguments and flags.
+        pub fn hello(
+            &self,
+            #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+            name: String,
+            #[clifacet(long, help = "How many times", default_value_t = 1)]
+            repeat: u8,
+        ) -> Result<String, Failure> {
+            Ok(format!("hello, {name} x{repeat}"))
+        }
     }
     /// An application is a value built from parts that each own one decision.
-    fn app() -> clifacet::App<'static, Greet, Greet> {
-        clifacet::App::<Greet>::new()
+    fn app() -> clifacet::App<'static, GreetApp> {
+        clifacet::App::<GreetApp>::for_cli()
             .policy(Policy::up_to(Mode::Interactive))
             .exit(ExitPolicy::standard())
     }
     /// `main` is the same value, run.
     fn main_line() -> std::process::ExitCode {
-        clifacet::App::<Greet>::new().run()
+        clifacet::run_cli::<GreetApp>()
     }
     /// And a test is the same value with the process taken out of it.
     fn scripted() -> i32 {
         let mut out = Vec::new();
         let mut err = Vec::new();
         app().run_with(
-            ["greet", "--name", "ada"],
+            ["greet", "hello", "--name", "ada"],
             Capabilities::headless(),
             || Box::new(clifacet::prompt::Terminal::new(std::io::empty(), std::io::sink())),
             &mut out,
@@ -166,7 +171,7 @@ fn derive_snippet_2() {
     assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
 }
 
-/// `derive.mdx`, line 119.
+/// `derive.mdx`, line 125.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_3() {
