@@ -201,6 +201,11 @@ pub mod schema;
 #[cfg(feature = "schema")]
 pub use schema::{ArgumentMetadata, CliMetadata};
 
+#[cfg(feature = "skill")]
+pub mod skill;
+#[cfg(feature = "skill")]
+pub use skill::{SkillProvider, SkillRenderer};
+
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///
 /// A caller that parses with a derived command needs `clap::Parser` in scope, so the

@@ -26,6 +26,7 @@ struct AppArgs {
     input: Option<Type>,
     commands: Option<Option<Ident>>,
     schema: Option<bool>,
+    skill: Option<Option<Path>>,
 }
 
 struct ContextFieldInfo {
@@ -333,6 +334,70 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
+    let skill_inherent_impl = if let Some(skill_arg) = &app_args.skill {
+        let (renderer_methods, provider_impl) = if let Some(renderer_path) = skill_arg {
+            let methods = quote! {
+                /// Renders the CLI skill documentation using the configured [`#renderer_path`] renderer.
+                pub fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                    let renderer = <#renderer_path as ::core::default::Default>::default();
+                    Self::render_skill_with(&renderer)
+                }
+
+                /// Returns a new instance of the configured skill renderer.
+                pub fn skill_renderer() -> #renderer_path {
+                    <#renderer_path as ::core::default::Default>::default()
+                }
+            };
+            let provider = quote! {
+                #[cfg(feature = "skill")]
+                impl #impl_generics ::clifacet::skill::SkillProvider for #name #type_generics #where_clause {
+                    type Renderer = #renderer_path;
+
+                    fn skill_renderer() -> Self::Renderer {
+                        <#renderer_path as ::core::default::Default>::default()
+                    }
+
+                    fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::render_skill()
+                    }
+                }
+            };
+            (methods, provider)
+        } else {
+            (quote!(), quote!())
+        };
+
+        quote! {
+            #[cfg(feature = "skill")]
+            impl #impl_generics #name #type_generics #where_clause {
+                #renderer_methods
+
+                /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
+                pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
+                    renderer: &R,
+                ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                    let meta = Self::cli_metadata();
+                    renderer.render(&meta)
+                }
+            }
+
+            #provider_impl
+        }
+    } else {
+        quote! {
+            #[cfg(feature = "skill")]
+            impl #impl_generics #name #type_generics #where_clause {
+                /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
+                pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
+                    renderer: &R,
+                ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                    let meta = Self::cli_metadata();
+                    renderer.render(&meta)
+                }
+            }
+        }
+    };
+
     parsed.attrs.insert(
         0,
         syn::parse_quote!(#[derive(::clap::Parser, ::std::clone::Clone)]),
@@ -349,6 +414,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         #collect_impl
         #json_inherent_impl
         #schema_inherent_impl
+        #skill_inherent_impl
     })
 }
 
@@ -526,13 +592,32 @@ fn parse_app_args(attribute: TokenStream) -> syn::Result<AppArgs> {
                     ));
                 }
             },
+            "skill" => match entry {
+                Meta::Path(_) => args.skill = Some(None),
+                Meta::NameValue(nv) => {
+                    if let syn::Expr::Path(ep) = nv.value {
+                        args.skill = Some(Some(ep.path));
+                    } else {
+                        return Err(syn::Error::new_spanned(
+                            nv,
+                            "`skill` must be a flag or `skill = RendererPath`",
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        entry,
+                        "`skill` must be a flag or `skill = RendererPath`",
+                    ));
+                }
+            },
             _ => {
                 return Err(syn::Error::new_spanned(
                     ident,
                     format!(
                         "unknown key `{key}` in #[clifacet::app]: supported keys are `name`, \
                          `version`, `about`, `long_about`, `author`, `before_run`, \
-                         `after_success`, `after_failure`, `input`, `commands`, `schema`"
+                         `after_success`, `after_failure`, `input`, `commands`, `schema`, `skill`"
                     ),
                 ));
             }
