@@ -278,71 +278,72 @@ fn derive_snippet_3() {
     assert_eq!(input.name, "grace");
 }
 
-/// `getting-started.mdx`, line 66.
+/// `getting-started.mdx`, line 67.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::{Command, Failure};
-    struct Greet;
-    impl Command for Greet {
-        type Input = String;
-        type Output = String;
-        fn execute(&self, input: Self::Input) -> Result<Self::Output, Failure> {
-            Ok(format!("hello, {input}"))
+    use clifacet::Failure;
+    /// An application controller declares its global surface and commands.
+    #[clifacet::app(name = "greet", about = "Say hello", commands)]
+    struct GreetApp {}
+    #[clifacet::commands]
+    impl GreetApp {
+        /// The greeting command: parameters are arguments and flags.
+        pub fn hello(
+            &self,
+            #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+            name: String,
+            #[clifacet(long, help = "How many times", default_value_t = 1)]
+            repeat: u8,
+        ) -> Result<String, Failure> {
+            Ok(format!("hello, {name} x{repeat}"))
         }
     }
-    let greeting = Greet.execute("ada".to_owned()).expect("a greeting");
-    assert_eq!(greeting, "hello, ada");
 }
 
-/// `getting-started.mdx`, line 96.
+/// `getting-started.mdx`, line 99.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_2() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::policy::Capabilities;
-    use clifacet::prompt::{Prompter, Scripted};
-    use clifacet::{App, Command, Failure, Globals};
-    #[clifacet::command(input = Greeting)]
-    #[derive(Clone)]
-    #[command(name = "greet", about = "Say hello")]
-    struct Greet {
-        /// Who to greet.
-        #[clifacet(long, ask = "Who should I greet?", fill = "world")]
-        name: Option<String>,
-        /// `--yes` and `--dry-run`, which every application gets.
-        #[command(flatten)]
-        #[clifacet(skip)]
-        globals: Globals,
-    }
-    struct Greeting {
-        name: String,
-    }
-    impl Command for Greet {
-        type Input = Greeting;
-        type Output = String;
-        fn execute(&self, input: Greeting) -> Result<String, Failure> {
-            Ok(format!("hello, {}", input.name))
+    use clifacet::contract::ExitPolicy;
+    use clifacet::policy::{Capabilities, Mode, Policy};
+    use clifacet::Failure;
+    #[clifacet::app(name = "greet", about = "Say hello", commands)]
+    struct GreetApp {}
+    #[clifacet::commands]
+    impl GreetApp {
+        pub fn hello(
+            &self,
+            #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+            name: String,
+            #[clifacet(long, help = "How many times", default_value_t = 1)]
+            repeat: u8,
+        ) -> Result<String, Failure> {
+            Ok(format!("hello, {name} x{repeat}"))
         }
     }
     // The binary's whole `main`:
     fn main() -> std::process::ExitCode {
-        clifacet::run::<Greet>()
+        clifacet::run_cli::<GreetApp>()
     }
-    // `run_with` runs without a process terminal:
+    // In tests or headless pipelines, run without a process terminal:
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let code = App::<Greet>::new().run_with(
-        ["greet", "--name", "ada"],
-        Capabilities::headless(),
-        || -> Box<dyn Prompter> { Box::new(Scripted::default()) },
-        &mut out,
-        &mut err,
-    );
-    assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
+    let code = clifacet::App::<GreetApp>::for_cli()
+        .policy(Policy::up_to(Mode::Interactive))
+        .exit(ExitPolicy::standard())
+        .run_with(
+            ["greet", "hello", "--name", "ada"],
+            Capabilities::headless(),
+            || Box::new(clifacet::prompt::Terminal::new(std::io::empty(), std::io::sink())),
+            &mut out,
+            &mut err,
+        );
+    assert_eq!((code, out.as_slice()), (0, b"hello, ada x1\n".as_slice()));
 }
 
-/// `getting-started.mdx`, line 181.
+/// `getting-started.mdx`, line 180.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_3() {

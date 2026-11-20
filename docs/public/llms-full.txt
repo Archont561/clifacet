@@ -5,7 +5,7 @@ Clifacet is a Rust CLI framework providing:
 - **Three execution modes**: Noninteractive (flags and arguments), Interactive (conversational prompts on stderr), and Full-Screen TUI (Ratatui forms on alternate buffer).
 - **Deterministic resolution**: A pure function of user intent, application policy, and terminal capabilities selects the lowest mode that can answer.
 - **Strict stream separation**: Result data goes to `stdout`; questions, forms, warnings, and errors go to `stderr`.
-- **Zero-cost dependency boundaries**: 13 optional Cargo features (`interactive`, `tui`, `serde`, `schema`, `skill`, `skill-minijinja`, `mcp`, `completions`, `async`, `settings-toml`, `settings-figment`).
+- **Zero-cost dependency boundaries**: 12 optional Cargo features (`interactive`, `tui`, `serde`, `schema`, `skill`, `skill-minijinja`, `mcp`, `completions`, `async`, `settings-toml`, `settings-figment`).
 
 ## Quickstart
 
@@ -16,19 +16,27 @@ clap = "4.6.7"
 ```
 
 ```rust
-#[clifacet::app]
-#[derive(clap::Parser)]
+use clifacet::Failure;
+
+/// An application controller declares its global surface and commands.
+#[clifacet::app(name = "greet", about = "Say hello", commands)]
 struct GreetApp {}
 
 #[clifacet::commands]
 impl GreetApp {
     /// Greet the person by name.
-    fn greet(&self, #[arg(long, default_value = "world")] name: String) {
-        println!("Hello, {name}!");
+    pub fn hello(
+        &self,
+        #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+        name: String,
+        #[clifacet(long, help = "How many times", default_value_t = 1)]
+        repeat: u8,
+    ) -> Result<String, Failure> {
+        Ok(format!("hello, {name} x{repeat}"))
     }
 }
 
-fn main() -> clifacet::ExitCode {
+fn main() -> std::process::ExitCode {
     clifacet::run_cli::<GreetApp>()
 }
 ```

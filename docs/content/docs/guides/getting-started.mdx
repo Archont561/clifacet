@@ -21,7 +21,7 @@ Because the command core is decoupled from presentation, commands do not inspect
 
 Configure your package manager to include `clifacet` and `clap`:
 
-<Tabs items={["Cargo.toml", "Pixi"]}>
+<Tabs items={["Cargo.toml", "cargo add"]}>
   <Tab value="Cargo.toml">
     ```toml
     [dependencies]
@@ -29,9 +29,10 @@ Configure your package manager to include `clifacet` and `clap`:
     clap = "4.6.7"
     ```
   </Tab>
-  <Tab value="Pixi">
+  <Tab value="cargo add">
     ```sh
-    pixi add clifacet --channel conda-forge
+    cargo add clifacet --features tui,interactive
+    cargo add clap --features derive
     ```
   </Tab>
 </Tabs>
@@ -59,30 +60,33 @@ Every optional feature is off by default, and each one is a dependency boundary:
 
 <Step>
 
-### Write the Command Core
+### Declare the Controller and Commands
 
-A `Command` is a value that takes validated input and returns data or a failure:
+Clifacet's canonical authoring style uses declarative macros. An application controller declares CLI metadata with `#[clifacet::app]`, and commands are methods on the controller annotated with `#[clifacet::commands]`:
 
 ```rust
-use clifacet::{Command, Failure};
+use clifacet::Failure;
 
-struct Greet;
+/// An application controller declares its global surface and commands.
+#[clifacet::app(name = "greet", about = "Say hello", commands)]
+struct GreetApp {}
 
-impl Command for Greet {
-    type Input = String;
-    type Output = String;
-
-    fn execute(&self, input: Self::Input) -> Result<Self::Output, Failure> {
-        Ok(format!("hello, {input}"))
+#[clifacet::commands]
+impl GreetApp {
+    /// The greeting command: parameters are arguments and flags.
+    pub fn hello(
+        &self,
+        #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+        name: String,
+        #[clifacet(long, help = "How many times", default_value_t = 1)]
+        repeat: u8,
+    ) -> Result<String, Failure> {
+        Ok(format!("hello, {name} x{repeat}"))
     }
 }
-
-let greeting = Greet.execute("ada".to_owned()).expect("a greeting");
-assert_eq!(greeting, "hello, ada");
 ```
 
-`Input` is built *after* validation, so `execute` has nothing left to reject, and
-`Output` is data rather than a message.
+Method parameters become arguments and options with automatic help generation and type validation. Commands return structured data (`Result<T, Failure>`) rather than formatting or printing directly to terminal streams.
 
 </Step>
 
@@ -90,57 +94,52 @@ assert_eq!(greeting, "hello, ada");
 
 ### Run the Command with App
 
-Everything around the command — parsing, asking for what flags left out, validation,
-and exit codes — is coordinated by the runner:
+The runner coordinates argument parsing, conversational prompts for missing values, command execution, and exit codes:
 
 ```rust
-use clifacet::policy::Capabilities;
-use clifacet::prompt::{Prompter, Scripted};
-use clifacet::{App, Command, Failure, Globals};
+use clifacet::contract::ExitPolicy;
+use clifacet::policy::{Capabilities, Mode, Policy};
+use clifacet::Failure;
 
-#[clifacet::command(input = Greeting)]
-#[derive(Clone)]
-#[command(name = "greet", about = "Say hello")]
-struct Greet {
-    /// Who to greet.
-    #[clifacet(long, ask = "Who should I greet?", fill = "world")]
-    name: Option<String>,
+#[clifacet::app(name = "greet", about = "Say hello", commands)]
+struct GreetApp {}
 
-    /// `--yes` and `--dry-run`, which every application gets.
-    #[command(flatten)]
-    #[clifacet(skip)]
-    globals: Globals,
-}
-
-struct Greeting {
-    name: String,
-}
-
-impl Command for Greet {
-    type Input = Greeting;
-    type Output = String;
-
-    fn execute(&self, input: Greeting) -> Result<String, Failure> {
-        Ok(format!("hello, {}", input.name))
+#[clifacet::commands]
+impl GreetApp {
+    pub fn hello(
+        &self,
+        #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+        name: String,
+        #[clifacet(long, help = "How many times", default_value_t = 1)]
+        repeat: u8,
+    ) -> Result<String, Failure> {
+        Ok(format!("hello, {name} x{repeat}"))
     }
 }
 
 // The binary's whole `main`:
 fn main() -> std::process::ExitCode {
-    clifacet::run::<Greet>()
+    clifacet::run_cli::<GreetApp>()
 }
 
-// `run_with` runs without a process terminal:
+// In tests or headless pipelines, run without a process terminal:
 let (mut out, mut err) = (Vec::new(), Vec::new());
-let code = App::<Greet>::new().run_with(
-    ["greet", "--name", "ada"],
-    Capabilities::headless(),
-    || -> Box<dyn Prompter> { Box::new(Scripted::default()) },
-    &mut out,
-    &mut err,
-);
-assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
+let code = clifacet::App::<GreetApp>::for_cli()
+    .policy(Policy::up_to(Mode::Interactive))
+    .exit(ExitPolicy::standard())
+    .run_with(
+        ["greet", "hello", "--name", "ada"],
+        Capabilities::headless(),
+        || Box::new(clifacet::prompt::Terminal::new(std::io::empty(), std::io::sink())),
+        &mut out,
+        &mut err,
+    );
+assert_eq!((code, out.as_slice()), (0, b"hello, ada x1\n".as_slice()));
 ```
+
+<Callout type="info">
+Declarative controllers are the canonical authoring style in Clifacet. For specialized needs such as planned dry runs or custom bridge conversions, Clifacet also supports struct-based commands implementing the `Command` or `Planned` trait. See [The Companion Derive](derive.md) and [Command Core](../reference/command-core.md).
+</Callout>
 
 </Step>
 </Steps>
