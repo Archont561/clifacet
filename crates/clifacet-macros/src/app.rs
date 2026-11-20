@@ -826,6 +826,18 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
+    let completions_inherent_impl = quote! {
+        #[cfg(feature = "completions")]
+        impl #impl_generics #name #type_generics #where_clause {
+            /// Generates the shell completion script for this application for `shell`.
+            #[must_use]
+            pub fn completion_script(shell: ::clifacet::completions::Shell) -> ::std::string::String {
+                let cmd = <Self as ::clifacet::Facet>::command();
+                ::clifacet::completions::generate_completion_script(shell, &cmd)
+            }
+        }
+    };
+
     parsed.attrs.insert(
         0,
         syn::parse_quote!(#[derive(::clap::Parser, ::std::clone::Clone)]),
@@ -844,6 +856,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         #schema_inherent_impl
         #skill_inherent_impl
         #mcp_inherent_impl
+        #completions_inherent_impl
     })
 }
 

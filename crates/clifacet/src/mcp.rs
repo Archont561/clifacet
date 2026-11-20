@@ -278,7 +278,10 @@ fn collect_tools(cmd: &CliMetadata, prefix: &[String], tools: &mut Vec<serde_jso
 }
 
 fn is_internal_command(name: &str) -> bool {
-    matches!(name, "mcp" | "help" | "schema" | "write-skill")
+    matches!(
+        name,
+        "mcp" | "help" | "schema" | "write-skill" | "completions"
+    )
 }
 
 fn command_arguments_to_input_schema(args: &[ArgumentMetadata]) -> serde_json::Value {

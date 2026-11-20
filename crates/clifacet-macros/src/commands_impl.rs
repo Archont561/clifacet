@@ -32,6 +32,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
 
     let mut variants = Vec::new();
     let mut dispatch_arms = Vec::new();
+    let mut complete_providers = Vec::new();
 
     for impl_item in &mut item_impl.items {
         let syn::ImplItem::Fn(method) = impl_item else {
@@ -117,6 +118,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
             let ty = &param.ty;
             let mut field_attrs = Vec::new();
             let mut is_subcmd = false;
+            let mut complete_fn = None;
 
             for attr in &param.attrs {
                 if attr.path().is_ident("subcommand") {
@@ -130,6 +132,12 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                             || entry.path().is_ident("subcommands")
                         {
                             is_subcmd = true;
+                        } else if entry.path().is_ident("complete") {
+                            if let Meta::NameValue(nv) = entry {
+                                if let syn::Expr::Path(ep) = nv.value {
+                                    complete_fn = Some(ep.path);
+                                }
+                            }
                         } else {
                             other_metas.push(entry);
                         }
@@ -142,6 +150,10 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 } else if attr.path().is_ident("arg") {
                     field_attrs.push(attr.clone());
                 }
+            }
+
+            if let Some(cb) = complete_fn {
+                complete_providers.push((cmd_name.clone(), pat_ident.to_string(), cb));
             }
 
             if is_subcmd {
@@ -315,6 +327,55 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         });
     }
 
+    let has_user_completions = item_impl.items.iter().any(|item| {
+        if let syn::ImplItem::Fn(m) = item {
+            m.sig.ident == "completions"
+        } else {
+            false
+        }
+    });
+
+    if !is_group && !has_user_completions {
+        variants.push(quote! {
+            #[cfg(feature = "completions")]
+            #[command(name = "completions", about = "Generate shell completion scripts")]
+            Completions {
+                /// Internal dynamic completion evaluation flag
+                #[arg(long, hide = true)]
+                complete: bool,
+
+                /// Target shell: bash, zsh, fish, or PowerShell
+                #[arg(value_name = "SHELL", trailing_var_arg = true, allow_hyphen_values = true)]
+                args: Vec<String>,
+            },
+        });
+        dispatch_arms.push(quote! {
+            #[cfg(feature = "completions")]
+            ::core::option::Option::Some(#enum_ident::Completions { complete, args }) => {
+                if *complete {
+                    let cx = <Self as ::clifacet::Cli>::init_context(self)?;
+                    let cmd = <Self as ::clifacet::Facet>::command();
+                    let meta = ::clifacet::schema::CliMetadata::from_command(&cmd);
+                    let candidates = ::clifacet::completions::resolve_completions(
+                        &meta,
+                        args,
+                        |subcmd, arg, current| {
+                            Self::complete_argument(&cx, subcmd, arg, current)
+                        },
+                    );
+                    ::core::result::Result::Ok(candidates.join("\n"))
+                } else if let ::core::option::Option::Some(first) = args.first() {
+                    let target_shell: ::clifacet::completions::Shell = first.parse()?;
+                    let cmd = <Self as ::clifacet::Facet>::command();
+                    let script = ::clifacet::completions::generate_completion_script(target_shell, &cmd);
+                    ::core::result::Result::Ok(script)
+                } else {
+                    ::core::result::Result::Err(::clifacet::Failure::validation("missing shell argument: specify bash, zsh, fish, or PowerShell"))
+                }
+            }
+        });
+    }
+
     let enum_def = quote! {
         #[derive(::clap::Subcommand, ::std::clone::Clone, ::std::fmt::Debug)]
         pub enum #enum_ident {
@@ -381,10 +442,47 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
+    let mut complete_arms = Vec::new();
+    for (c_name, a_name, cb) in &complete_providers {
+        let a_kebab = a_name.to_kebab_case();
+        let flag = format!("--{a_kebab}");
+        complete_arms.push(quote! {
+            (#c_name, #a_name) | (#c_name, #a_kebab) | (#c_name, #flag) => {
+                let items = #cb(cx, current);
+                ::core::option::Option::Some(
+                    items.into_iter().map(|item| item.to_string()).collect()
+                )
+            }
+        });
+    }
+
+    let complete_impl = if is_group {
+        quote! {}
+    } else {
+        quote! {
+            #[cfg(feature = "completions")]
+            impl #impl_generics #struct_ident #type_generics #where_clause {
+                /// Dispatches dynamic argument completion queries against this controller's context.
+                pub fn complete_argument(
+                    cx: &<#struct_ident as ::clifacet::Cli>::Context,
+                    cmd: &str,
+                    arg: &str,
+                    current: &str,
+                ) -> ::core::option::Option<::std::vec::Vec<::std::string::String>> {
+                    match (cmd, arg) {
+                        #(#complete_arms)*
+                        _ => ::core::option::Option::None,
+                    }
+                }
+            }
+        }
+    };
+
     Ok(quote! {
         #item_impl
         #enum_def
         #handler_impl
+        #complete_impl
     })
 }
 

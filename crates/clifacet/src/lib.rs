@@ -215,6 +215,11 @@ pub use mcp::{
     McpServer, arguments_to_argv, generate_tools_list, run_server_streams, run_stdio_server,
 };
 
+#[cfg(feature = "completions")]
+pub mod completions;
+#[cfg(feature = "completions")]
+pub use completions::Shell;
+
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///
 /// A caller that parses with a derived command needs `clap::Parser` in scope, so the
