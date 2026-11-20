@@ -1,7 +1,7 @@
 ---
 id: CLI-76
 title: Implement write-skill command with drift check
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:30'
 labels: []
@@ -20,8 +20,8 @@ Implement the built-in `write-skill` CLI command (decision-25). Support writing 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 mycli write-skill supports --stdout, -o/--output, and default .agents/skills/ location
-- [ ] #2 mycli write-skill --check compares on-disk file with current rendering and reports drift
-- [ ] #3 Integration tests verify file creation, stdout streaming, and --check exit codes on match and drift
-- [ ] #4 CI integration guide explains adding write-skill --check to repository quality gates
+- [x] #1 mycli write-skill supports --stdout, -o/--output, and default .agents/skills/ location
+- [x] #2 mycli write-skill --check compares on-disk file with current rendering and reports drift
+- [x] #3 Integration tests verify file creation, stdout streaming, and --check exit codes on match and drift
+- [x] #4 CI integration guide explains adding write-skill --check to repository quality gates
 <!-- AC:END -->

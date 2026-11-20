@@ -206,7 +206,7 @@ pub mod skill;
 #[cfg(feature = "skill-minijinja")]
 pub use skill::{DEFAULT_SKILL_TEMPLATE, MiniJinjaSkillRenderer};
 #[cfg(feature = "skill")]
-pub use skill::{SkillProvider, SkillRenderer};
+pub use skill::{SkillProvider, SkillRenderer, WriteSkillOptions, execute_write_skill};
 
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///

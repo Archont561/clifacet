@@ -358,6 +358,15 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                         <#renderer_path as ::core::default::Default>::default()
                     }
 
+                    /// Writes or checks the agent skill documentation according to the given options.
+                    pub fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let rendered = Self::render_skill()?;
+                        let meta = Self::cli_metadata();
+                        ::clifacet::skill::execute_write_skill(&meta.name, &rendered, options)
+                    }
+
                     #[cfg(feature = "skill-minijinja")]
                     /// Renders the CLI skill documentation using a custom template string.
                     pub fn render_skill_with_template(
@@ -396,6 +405,12 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
                         <#name #type_generics>::render_skill()
                     }
+
+                    fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::write_skill(options)
+                    }
                 }
             }
         }
@@ -414,6 +429,16 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     /// Returns a new instance of the configured skill renderer.
                     pub fn skill_renderer() -> ::clifacet::skill::MiniJinjaSkillRenderer {
                         ::clifacet::skill::MiniJinjaSkillRenderer::with_template(#tmpl_lit)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Writes or checks the agent skill documentation according to the given options.
+                    pub fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let rendered = Self::render_skill()?;
+                        let meta = Self::cli_metadata();
+                        ::clifacet::skill::execute_write_skill(&meta.name, &rendered, options)
                     }
 
                     #[cfg(feature = "skill-minijinja")]
@@ -453,6 +478,12 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
 
                     fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
                         <#name #type_generics>::render_skill()
+                    }
+
+                    fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::write_skill(options)
                     }
                 }
             }
@@ -475,6 +506,16 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     }
 
                     #[cfg(feature = "skill-minijinja")]
+                    /// Writes or checks the agent skill documentation according to the given options.
+                    pub fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let rendered = Self::render_skill()?;
+                        let meta = Self::cli_metadata();
+                        ::clifacet::skill::execute_write_skill(&meta.name, &rendered, options)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
                     /// Renders the CLI skill documentation using a custom template string.
                     pub fn render_skill_with_template(
                         template: &str,
@@ -512,6 +553,12 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
                         <#name #type_generics>::render_skill()
                     }
+
+                    fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::write_skill(options)
+                    }
                 }
             }
         }
@@ -530,6 +577,16 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     /// Returns a new instance of the default skill renderer.
                     pub fn skill_renderer() -> ::clifacet::skill::MiniJinjaSkillRenderer {
                         ::clifacet::skill::MiniJinjaSkillRenderer::new()
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Writes or checks the agent skill documentation according to the given options.
+                    pub fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let rendered = Self::render_skill()?;
+                        let meta = Self::cli_metadata();
+                        ::clifacet::skill::execute_write_skill(&meta.name, &rendered, options)
                     }
 
                     #[cfg(feature = "skill-minijinja")]
@@ -570,6 +627,12 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
                         <#name #type_generics>::render_skill()
                     }
+
+                    fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::write_skill(options)
+                    }
                 }
             }
         }
@@ -577,6 +640,40 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
             quote! {
                 #[cfg(feature = "skill")]
                 impl #impl_generics #name #type_generics #where_clause {
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using the default MiniJinja template.
+                    pub fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::new();
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Returns a new instance of the default skill renderer.
+                    pub fn skill_renderer() -> ::clifacet::skill::MiniJinjaSkillRenderer {
+                        ::clifacet::skill::MiniJinjaSkillRenderer::new()
+                    }
+
+                    /// Writes or checks the agent skill documentation according to the given options.
+                    pub fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        #[cfg(feature = "skill-minijinja")]
+                        {
+                            use ::clifacet::skill::SkillRenderer as _;
+                            let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::new();
+                            let meta = Self::cli_metadata();
+                            let rendered = renderer.render(&meta)?;
+                            ::clifacet::skill::execute_write_skill(&meta.name, &rendered, options)
+                        }
+                        #[cfg(not(feature = "skill-minijinja"))]
+                        {
+                            let _ = options;
+                            ::core::result::Result::Err(::clifacet::Failure::execution(
+                                "no skill renderer configured (enable `skill-minijinja` or configure `skill = Renderer`)",
+                            ))
+                        }
+                    }
+
                     #[cfg(feature = "skill-minijinja")]
                     /// Renders the CLI skill documentation using a custom template string.
                     pub fn render_skill_with_template(
@@ -601,6 +698,25 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
                         let meta = Self::cli_metadata();
                         renderer.render(&meta)
+                    }
+                }
+
+                #[cfg(all(feature = "skill", feature = "skill-minijinja"))]
+                impl #impl_generics ::clifacet::skill::SkillProvider for #name #type_generics #where_clause {
+                    type Renderer = ::clifacet::skill::MiniJinjaSkillRenderer;
+
+                    fn skill_renderer() -> Self::Renderer {
+                        ::clifacet::skill::MiniJinjaSkillRenderer::new()
+                    }
+
+                    fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::render_skill()
+                    }
+
+                    fn write_skill(
+                        options: &::clifacet::skill::WriteSkillOptions,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::write_skill(options)
                     }
                 }
             }

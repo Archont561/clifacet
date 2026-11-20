@@ -166,4 +166,86 @@ pub trait SkillProvider {
     ///
     /// Returns a [`Failure`] if rendering fails.
     fn render_skill() -> Result<String, Failure>;
+
+    /// Writes or checks the agent skill documentation according to the given options.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if writing fails or drift is detected.
+    fn write_skill(options: &WriteSkillOptions) -> Result<String, Failure>;
+}
+
+/// Options for writing or checking agent skill documentation (CLI-76, decision-25).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WriteSkillOptions {
+    /// Write to standard output instead of a file.
+    pub stdout: bool,
+
+    /// Explicit output file path. Defaults to `.agents/skills/<name>/SKILL.md`.
+    pub output: Option<std::path::PathBuf>,
+
+    /// Compare on-disk file with current rendering and fail on drift without writing.
+    pub check: bool,
+}
+
+/// Executes the `write-skill` action for a CLI given its name, rendered markdown, and options.
+///
+/// # Errors
+///
+/// Returns a [`Failure`] if reading/writing fails or if drift is detected when `check` is enabled.
+pub fn execute_write_skill(
+    cli_name: &str,
+    rendered: &str,
+    options: &WriteSkillOptions,
+) -> Result<String, Failure> {
+    let path = options
+        .output
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from(format!(".agents/skills/{cli_name}/SKILL.md")));
+
+    if options.check {
+        if !path.exists() {
+            return Err(Failure::execution(format!(
+                "skill document `{}` does not exist (drift detected)",
+                path.display()
+            )));
+        }
+        let existing = std::fs::read_to_string(&path).map_err(|e| {
+            Failure::execution(format!(
+                "cannot read skill document `{}`: {e}",
+                path.display()
+            ))
+        })?;
+        let existing_norm = existing.replace("\r\n", "\n");
+        let rendered_norm = rendered.replace("\r\n", "\n");
+        if existing_norm != rendered_norm {
+            return Err(Failure::execution(format!(
+                "skill document `{}` has drifted from current CLI definition",
+                path.display()
+            )));
+        }
+        return Ok(format!("skill document `{}` is up to date", path.display()));
+    }
+
+    if options.stdout {
+        return Ok(rendered.to_string());
+    }
+
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            Failure::execution(format!(
+                "cannot create directory `{}`: {e}",
+                parent.display()
+            ))
+        })?;
+    }
+
+    std::fs::write(&path, rendered).map_err(|e| {
+        Failure::execution(format!(
+            "cannot write skill document `{}`: {e}",
+            path.display()
+        ))
+    })?;
+
+    Ok(format!("wrote skill document to `{}`", path.display()))
 }
