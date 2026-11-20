@@ -12,6 +12,13 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **async:** define core async traits, cancellation, and progress contexts (CLI-79)
+([33485ca](https://github.com/Archont561/clifacet/commit/33485ca10df89154cd4dc75bece746e5dade1fd6))
+
+## [0.8.0] - 2026-11-20
+
+### Added
+
 * **completions:** implement context-aware dynamic shell completions (CLI-78)
 ([20b762e](https://github.com/Archont561/clifacet/commit/20b762eb3576260ca47c917e4423295c382b6c81))
 * **mcp:** implement Model Context Protocol stdio tool server (CLI-77)
@@ -293,7 +300,8 @@ depend on serde_json in the application.
 * **example:** move the reference application into its own crate
 ([3178b1d](https://github.com/Archont561/clifacet/commit/3178b1d44db717a4b242b1235cacf798e9d6e2f0))
 
-[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Archont561/clifacet/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Archont561/clifacet/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Archont561/clifacet/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/Archont561/clifacet/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Archont561/clifacet/compare/v0.4.0...v0.5.0
