@@ -12,8 +12,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **mcp:** implement Model Context Protocol stdio tool server (CLI-77)
+([a379213](https://github.com/Archont561/clifacet/commit/a3792130aac65f03c01e13f41b4d1b51b6e40dca))
 * **skill:** implement write-skill command with drift check (CLI-76)
-([7bc936a](https://github.com/Archont561/clifacet/commit/7bc936a4afc507d83b431b4d370ced5088c58d65))
+([6c9cde7](https://github.com/Archont561/clifacet/commit/6c9cde781a15311cb9fe53739e3209bea878a0ed))
 * **skill:** implement MiniJinja skill renderer and embedded template (CLI-75)
 ([9df5115](https://github.com/Archont561/clifacet/commit/9df511577596a8476a4517d4ce0893f9238e9b14))
 * **skill:** define pluggable SkillRenderer trait and feature boundary (CLI-74)
