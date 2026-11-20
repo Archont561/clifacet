@@ -1,0 +1,91 @@
+---
+title: Structured Output and Schema
+description: Execute commands in machine-readable JSON mode and introspect CLI schemas for programmatic consumers.
+---
+
+When building CLI tools intended for script automation, CI pipelines, or AI agents, human-oriented terminal text is difficult to parse reliably. Clifacet provides structured execution via `--json` and full CLI schema introspection through the `serde` and `schema` features (decision-25).
+
+<Callout type="info">
+Enable `features = ["serde", "schema"]` in your `clifacet` dependency to unlock machine-readable JSON execution and schema introspection.
+</Callout>
+
+## Structured JSON Mode (`--json`)
+
+Adding `--json` to any command invocation switches Clifacet into structured reporting mode:
+
+- **`stdout`** emits valid, machine-readable JSON.
+- **`stderr`** receives only fatal diagnostics and unformatted logging (or NDJSON progress events).
+- Inquirer prompts and Ratatui TUI forms are disabled. If a mandatory argument is missing, Clifacet emits a structured validation failure rather than prompting interactively.
+
+### Success Output
+
+When execution succeeds, Clifacet outputs a structured JSON envelope containing the command result:
+
+```json
+{
+  "status": "ok",
+  "data": {
+    "name": "world",
+    "greeting": "Hello, world!"
+  }
+}
+```
+
+### Failure Output and Schema
+
+If input validation fails, or if a command returns an error or cancellation, Clifacet formats the error according to its standard failure contract:
+
+```json
+{
+  "status": "error",
+  "kind": "validation",
+  "message": "argument '--repeat <COUNT>' requires an integer between 1 and 100"
+}
+```
+
+The `kind` field reflects the `clifacet::FailureKind` classification:
+
+- `"validation"`: Invalid input or missing mandatory arguments (exit code `2`).
+- `"execution"`: An error encountered during command execution (exit code `1`).
+- `"cancelled"`: Operation canceled by the user or upstream signal (exit code `130`).
+
+## CLI Schema Introspection
+
+The `schema` feature enables programmatic introspection of your entire CLI hierarchy, argument types, and descriptions.
+
+```rust features=serde+schema
+use clifacet::schema::{ArgumentMetadata, CliMetadata};
+
+let metadata = CliMetadata {
+    name: "fleet".to_string(),
+    about: Some("Manage fleet services".to_string()),
+    long_about: None,
+    version: Some("0.8.0".to_string()),
+    author: None,
+    arguments: vec![
+        ArgumentMetadata {
+            id: "verbose".to_string(),
+            long: Some("verbose".to_string()),
+            short: Some('v'),
+            help: Some("Enable verbose diagnostic logs".to_string()),
+            long_help: None,
+            required: false,
+            positional: false,
+            is_flag: true,
+            multiple: false,
+            value_name: None,
+            default_values: vec![],
+            possible_values: vec![],
+            env: None,
+            global: false,
+            value_type: Some("boolean".to_string()),
+        },
+    ],
+    subcommands: vec![],
+};
+
+assert_eq!(metadata.name, "fleet");
+assert_eq!(metadata.arguments.len(), 1);
+```
+
+When building tools for developer platforms or LLM tool-calling engines, the schema can be converted to JSON Schema or printed directly with the built-in `schema` subcommand.

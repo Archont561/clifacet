@@ -1,0 +1,34 @@
+---
+title: Feature Flags
+description: Complete authoritative reference of all optional Clifacet Cargo features and dependency boundaries.
+---
+
+Clifacet follows a zero-cost principle: every optional capability is behind a Cargo feature boundary. Applications only pull in and compile dependencies for the terminal modes, protocols, or formats they use.
+
+## Feature Matrix
+
+All optional features are disabled by default.
+
+| Feature | Description | Dependencies & Implied Features |
+| --- | --- | --- |
+| `(default)` | Command core, companion derive, interaction policy, secrets, provenance | `clap`, `thiserror`, `clifacet-macros` |
+| `interactive` | Conversational terminal dialogs powered by `inquire`. | `inquire` |
+| `tui` | Full-screen terminal forms and widgets powered by `ratatui` and `crossterm`. | `ratatui`, `crossterm` |
+| `serde` | Serialization for `Failure`, `FailureKind`, `Secret`, and structured JSON output mode `--json` (decision-25). | `serde`, `serde_json` |
+| `schema` | Machine-readable CLI schema introspection (decision-25, CLI-73). | `serde` |
+| `skill` | Pluggable skill rendering for agent documentation (decision-25, CLI-74). | `schema` |
+| `skill-minijinja` | Built-in MiniJinja skill renderer for agent documentation (decision-25, CLI-75). | `skill`, `minijinja` |
+| `mcp` | Model Context Protocol stdio tool server (decision-25, CLI-77). | `schema` |
+| `completions` | Context-aware dynamic shell completions (decision-25, CLI-78). | `schema` |
+| `async` | Native async command execution traits, cancellation, and progress (decision-26, CLI-79). | *(none)* |
+| `settings-toml` | `clifacet::settings::toml`, the settings loader for the format most applications already have (CLI-51). Off by default: a program that never reads a settings file pays nothing for the parser. | `toml_edit` |
+| `settings-figment` | `clifacet::settings::figment`, the Figment-backed layered settings loader (CLI-59). Off by default: an application opting into Figment enables it. | `figment`, `serde`, `toml_edit` |
+
+## Feature Activation Example
+
+To enable specific features in your `Cargo.toml`:
+
+```toml
+[dependencies]
+clifacet = { version = "0.8.0", features = ["interactive", "tui", "schema", "completions"] }
+```

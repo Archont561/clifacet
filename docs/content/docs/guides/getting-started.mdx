@@ -25,7 +25,7 @@ Configure your package manager to include `clifacet` and `clap`:
   <Tab value="Cargo.toml">
     ```toml
     [dependencies]
-    clifacet = { version = "0.7.0", features = ["tui", "interactive"] }
+    clifacet = { version = "0.8.0", features = ["tui", "interactive"] }
     clap = "4.6.7"
     ```
   </Tab>
@@ -38,16 +38,22 @@ Configure your package manager to include `clifacet` and `clap`:
 
 ### Features
 
-Every feature is off by default, and each one is a dependency boundary:
+Every optional feature is off by default, and each one is a dependency boundary:
 
 | Feature | Description | Dependencies |
 | --- | --- | --- |
 | *(default)* | Commands, companion derive, interaction policy, secrets, provenance | `clap`, `thiserror`, `clifacet-macros` |
-| `interactive` | Terminal dialogs powered by `inquire` | `inquire`, `crossterm` |
+| `interactive` | Terminal dialogs powered by `inquire` | `inquire` |
 | `tui` | Full-screen terminal forms powered by `ratatui` | `ratatui`, `crossterm` |
-| `serde` | Serializes `Failure`, `FailureKind`, and `Secret` | `serde` |
-| `settings-figment` | Hierarchical configuration powered by Figment | `figment` |
+| `serde` | Serializes `Failure`, `FailureKind`, `Secret`, and `--json` mode | `serde`, `serde_json` |
+| `schema` | Machine-readable CLI schema introspection | `serde`, `serde_json` |
+| `skill` | Pluggable skill rendering for agent documentation | `serde`, `serde_json` |
+| `skill-minijinja` | Built-in MiniJinja skill renderer for agent documentation | `minijinja`, `serde`, `serde_json` |
+| `mcp` | Model Context Protocol stdio tool server | `serde`, `serde_json` |
+| `completions` | Context-aware dynamic shell completions | `serde`, `serde_json` |
+| `async` | Native async command execution, cancellation, and progress | *(none — std futures)* |
 | `settings-toml` | Flat TOML configuration parser | `toml_edit` |
+| `settings-figment` | Hierarchical configuration powered by Figment | `figment`, `serde`, `serde_json`, `toml_edit` |
 
 </Step>
 

@@ -1,0 +1,25 @@
+# Clifacet
+
+> Build one CLI command core; execute it noninteractive, as a questionnaire, or as a full-screen Ratatui TUI.
+
+Clifacet is a Rust CLI framework that decouples your command logic from terminal presentation. Define your command once with Clap, and execute it noninteractively, through interactive Inquire prompts, or in a full-screen Ratatui terminal UI. Input validation happens before execution, and output is structured data.
+
+## Documentation
+
+- [Getting Started](https://archont561.github.io/clifacet/docs/guides/getting-started): Add Clifacet to Cargo.toml, define a command, and run it across modes.
+- [Derive and Macros Guide](https://archont561.github.io/clifacet/docs/guides/derive): Declarative controllers (#[clifacet::app], #[clifacet::commands]) and struct commands.
+- [Execution Modes](https://archont561.github.io/clifacet/docs/concepts/modes): Pure-function resolution across noninteractive, questionnaire, and TUI modes with capability detection.
+- [Structured Output (--json)](https://archont561.github.io/clifacet/docs/guides/structured-output): Machine-readable execution and failure envelope.
+- [Shell Completions and Settings](https://archont561.github.io/clifacet/docs/guides/completions-and-settings): Dynamic shell completions and layered settings.
+- [Async Commands](https://archont561.github.io/clifacet/docs/guides/async-commands): Native async execution, cooperative cancellation, and progress streaming.
+- [Full-Screen TUI Forms](https://archont561.github.io/clifacet/docs/guides/tui-composition): Full-screen Ratatui terminal UI forms.
+- [Headless Testing](https://archont561.github.io/clifacet/docs/guides/testing): Headless cross-mode parity test harness.
+- [Model Context Protocol (MCP)](https://archont561.github.io/clifacet/docs/guides/mcp-server): Run CLI as an MCP stdio tool server.
+- [Agent Skills](https://archont561.github.io/clifacet/docs/guides/agent-skills): Pluggable skill documentation generation for AI agents.
+
+## Reference
+
+- [Command Core Reference](https://archont561.github.io/clifacet/docs/reference/command-core): The Command trait, Handler, and execution contracts.
+- [Feature Flags Reference](https://archont561.github.io/clifacet/docs/reference/features): All 13 Cargo feature flags and dependency boundaries.
+- [Exit Codes and Failures](https://archont561.github.io/clifacet/docs/reference/exit-codes): Exit codes (0, 1, 2, 130) and FailureKind contract.
+- [Architecture Decisions (ADRs)](https://archont561.github.io/clifacet/docs/reference/decisions): 26 Architecture Decision Records.

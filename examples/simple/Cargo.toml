@@ -18,12 +18,43 @@ publish = false
 # The workspace leaves colour and suggestions off; an application turns them on.
 clap = { workspace = true, features = ["color", "suggestions"] }
 clifacet = { path = "../../crates/clifacet", features = ["interactive", "tui"] }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[features]
+default = []
+interactive = ["clifacet/interactive"]
+tui = ["clifacet/tui"]
+serde = ["clifacet/serde", "dep:serde", "dep:serde_json"]
+schema = ["clifacet/schema", "serde"]
+skill = ["clifacet/skill", "schema"]
+skill-minijinja = ["clifacet/skill-minijinja", "skill"]
+mcp = ["clifacet/mcp", "schema"]
+completions = ["clifacet/completions", "schema"]
+async = ["clifacet/async"]
+settings-toml = ["clifacet/settings-toml"]
+settings-figment = ["clifacet/settings-figment", "serde"]
 
 [dev-dependencies]
 proptest.workspace = true
 rstest.workspace = true
 rstest-bdd.workspace = true
 rstest-bdd-macros.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clifacet = { path = "../../crates/clifacet", features = [
+  "interactive",
+  "tui",
+  "serde",
+  "schema",
+  "skill",
+  "skill-minijinja",
+  "mcp",
+  "completions",
+  "async",
+  "settings-toml",
+  "settings-figment",
+] }
 
 [lints]
 workspace = true

@@ -29,6 +29,7 @@ pub const MAX_REPEAT: u8 = 8;
 /// instead of a text box. An unknown level never reaches validation: `clap` rejects it
 /// while parsing, which is the whole point of a value parser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Level {
     /// One greeting. The default.
     #[default]
