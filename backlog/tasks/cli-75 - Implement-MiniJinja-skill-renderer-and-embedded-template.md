@@ -1,7 +1,7 @@
 ---
 id: CLI-75
 title: Implement MiniJinja skill renderer and embedded template
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:30'
 labels: []
@@ -19,8 +19,8 @@ Implement the built-in MiniJinja skill renderer behind the `skill-minijinja` Car
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 skill-minijinja feature compiles minijinja and embeds default templates/skill.md.j2
-- [ ] #2 Rendered output strictly conforms to markdownlint and Vale formatting rules without stray whitespace
-- [ ] #3 Custom .j2 template overrides are supported via app attribute or command flag
-- [ ] #4 Integration tests verify generated skill markdown across varied command shapes and options
+- [x] #1 skill-minijinja feature compiles minijinja and embeds default templates/skill.md.j2
+- [x] #2 Rendered output strictly conforms to markdownlint and Vale formatting rules without stray whitespace
+- [x] #3 Custom .j2 template overrides are supported via app attribute or command flag
+- [x] #4 Integration tests verify generated skill markdown across varied command shapes and options
 <!-- AC:END -->

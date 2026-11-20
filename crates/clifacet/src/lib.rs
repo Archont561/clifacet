@@ -203,6 +203,8 @@ pub use schema::{ArgumentMetadata, CliMetadata};
 
 #[cfg(feature = "skill")]
 pub mod skill;
+#[cfg(feature = "skill-minijinja")]
+pub use skill::{DEFAULT_SKILL_TEMPLATE, MiniJinjaSkillRenderer};
 #[cfg(feature = "skill")]
 pub use skill::{SkillProvider, SkillRenderer};
 
