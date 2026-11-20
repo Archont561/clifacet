@@ -10,8 +10,6 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-11-20
-
 ### Added
 
 * **async:** define core async traits, cancellation, and progress contexts (CLI-79)
