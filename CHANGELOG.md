@@ -12,6 +12,8 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **cli:** structured JSON execution mode and standardized failure schema (CLI-72)
+([282a3bb](https://github.com/Archont561/clifacet/commit/282a3bb14aa9730ce7f34f69a141f165428faa99))
 * **cli:** retire build api and directory scanning (CLI-71)
 ([fca061c](https://github.com/Archont561/clifacet/commit/fca061cb0243bddf7f5f1bd06f6d69b3e099f6df))
 * **cli:** implement commands and group macros with context extractors (CLI-69, CLI-70)
