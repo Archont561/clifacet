@@ -25,6 +25,7 @@ struct AppArgs {
     after_failure: Option<Path>,
     input: Option<Type>,
     commands: Option<Option<Ident>>,
+    schema: Option<bool>,
 }
 
 struct ContextFieldInfo {
@@ -311,6 +312,27 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
+    let schema_inherent_impl = if app_args.schema == Some(false) {
+        quote!()
+    } else {
+        quote! {
+            #[cfg(feature = "schema")]
+            impl #impl_generics #name #type_generics #where_clause {
+                /// Returns machine-readable metadata describing this CLI command hierarchy.
+                pub fn cli_metadata() -> ::clifacet::schema::CliMetadata {
+                    ::clifacet::schema::CliMetadata::from_command(&<Self as ::clap::CommandFactory>::command())
+                }
+
+                /// Emits the JSON Schema for this CLI hierarchy as a formatted string.
+                pub fn cli_schema_json() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                    let meta = Self::cli_metadata();
+                    ::clifacet::schema::to_json_schema_pretty(&meta)
+                        .map_err(|e| ::clifacet::Failure::execution(format!("cannot generate schema: {e}")))
+                }
+            }
+        }
+    };
+
     parsed.attrs.insert(
         0,
         syn::parse_quote!(#[derive(::clap::Parser, ::std::clone::Clone)]),
@@ -326,6 +348,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         #facet_impl
         #collect_impl
         #json_inherent_impl
+        #schema_inherent_impl
     })
 }
 
@@ -480,13 +503,36 @@ fn parse_app_args(attribute: TokenStream) -> syn::Result<AppArgs> {
                     ));
                 }
             },
+            "schema" => match entry {
+                Meta::Path(_) => args.schema = Some(true),
+                Meta::NameValue(nv) => {
+                    if let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Bool(b),
+                        ..
+                    }) = nv.value
+                    {
+                        args.schema = Some(b.value());
+                    } else {
+                        return Err(syn::Error::new_spanned(
+                            nv,
+                            "`schema` must be a flag or `schema = bool`",
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        entry,
+                        "`schema` must be a flag or `schema = bool`",
+                    ));
+                }
+            },
             _ => {
                 return Err(syn::Error::new_spanned(
                     ident,
                     format!(
                         "unknown key `{key}` in #[clifacet::app]: supported keys are `name`, \
                          `version`, `about`, `long_about`, `author`, `before_run`, \
-                         `after_success`, `after_failure`, `input`, `commands`"
+                         `after_success`, `after_failure`, `input`, `commands`, `schema`"
                     ),
                 ));
             }

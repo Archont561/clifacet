@@ -111,6 +111,11 @@ pub struct Globals {
     #[arg(long, global = true)]
     pub json: bool,
 
+    /// Output the machine-readable CLI JSON schema.
+    #[cfg(feature = "schema")]
+    #[arg(long, global = true)]
+    pub schema: bool,
+
     /// Read settings from this file instead of the default location.
     ///
     /// Recognised because [`App::settings`] reads it before the parse; declared here so
@@ -133,6 +138,8 @@ impl Globals {
             yes: on("yes"),
             dry_run: on("dry_run"),
             json: on("json"),
+            #[cfg(feature = "schema")]
+            schema: on("schema"),
             config: matches
                 .try_get_one::<std::path::PathBuf>("config")
                 .ok()
@@ -624,6 +631,21 @@ where
             }
         }
 
+        #[cfg(feature = "schema")]
+        if asks_for_schema(&argv) {
+            let cmd = <Cli as Facet>::command();
+            let meta = crate::schema::CliMetadata::from_command(&cmd);
+            match crate::schema::to_json_schema_pretty(&meta) {
+                Ok(json) => {
+                    let _ = writeln!(out, "{json}");
+                    return self.exit.success();
+                }
+                Err(failure) => {
+                    return report::render(&program::<Cli>(), &failure, &self.exit, out, err);
+                }
+            }
+        }
+
         match self.parse_with_settings(&argv) {
             Ok((cli, globals)) => {
                 self.run_parsed(cli, globals, capabilities, build_frontend, out, err)
@@ -771,7 +793,7 @@ where
     }
 
     /// Validates, then runs or previews, then renders: everything after the questions.
-    #[allow(clippy::collapsible_if)]
+    #[allow(clippy::collapsible_if, clippy::too_many_lines)]
     fn settle(
         &self,
         cli: Cli,
@@ -779,6 +801,16 @@ where
         context: &Lazy<Cx>,
         out: &mut dyn Write,
     ) -> Result<(), Failure> {
+        #[cfg(feature = "schema")]
+        if globals.schema {
+            let cmd = <Cli as Facet>::command();
+            let meta = crate::schema::CliMetadata::from_command(&cmd);
+            let json = crate::schema::to_json_schema_pretty(&meta)?;
+            writeln!(out, "{json}")
+                .map_err(|e| Failure::execution(format!("cannot write the output: {e}")))?;
+            return Ok(());
+        }
+
         let cmd = program::<Cli>();
         // The command is taken before validation consumes the command line it is
         // built from — the clone a declared tree keeps of itself.
@@ -961,6 +993,25 @@ fn asks_for_json(argv: &[OsString]) -> bool {
         match text {
             "--" => return false,
             "--json" => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Whether the argument list asks for machine-readable CLI JSON schema.
+#[cfg(feature = "schema")]
+fn asks_for_schema(argv: &[OsString]) -> bool {
+    if asks_for_help_or_version(argv) {
+        return false;
+    }
+    for argument in argv {
+        let Some(text) = argument.to_str() else {
+            continue;
+        };
+        match text {
+            "--" => return false,
+            "--schema" | "schema" => return true,
             _ => {}
         }
     }
