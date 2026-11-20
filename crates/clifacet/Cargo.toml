@@ -30,6 +30,8 @@ skill-minijinja = ["skill", "dep:minijinja"]
 mcp = ["schema"]
 # Context-aware dynamic shell completions (decision-25, CLI-78).
 completions = ["schema"]
+# Native async command execution traits, cancellation, and progress (decision-26, CLI-79).
+async = []
 # `clifacet::settings::toml`, the settings loader for the format most applications
 # already have (CLI-51). Off by default: a program that never reads a settings file pays
 # nothing for the parser.
