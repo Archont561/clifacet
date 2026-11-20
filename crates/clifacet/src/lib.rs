@@ -196,6 +196,11 @@ pub use facet::Facet;
 pub use failure::{Failure, FailureKind};
 pub use report::{ErrorDetail, ErrorPayload, render_json};
 
+#[cfg(feature = "schema")]
+pub mod schema;
+#[cfg(feature = "schema")]
+pub use schema::{ArgumentMetadata, CliMetadata};
+
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///
 /// A caller that parses with a derived command needs `clap::Parser` in scope, so the

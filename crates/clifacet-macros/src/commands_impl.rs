@@ -223,6 +223,32 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     }
 
+    let has_user_schema = item_impl.items.iter().any(|item| {
+        if let syn::ImplItem::Fn(m) = item {
+            m.sig.ident == "schema"
+        } else {
+            false
+        }
+    });
+
+    if !is_group && !has_user_schema {
+        variants.push(quote! {
+            #[cfg(feature = "schema")]
+            #[command(name = "schema", about = "Print the machine-readable CLI JSON schema")]
+            Schema,
+        });
+        dispatch_arms.push(quote! {
+            #[cfg(feature = "schema")]
+            ::core::option::Option::Some(#enum_ident::Schema) => {
+                let cmd = <Self as ::clifacet::Facet>::command();
+                let meta = ::clifacet::schema::CliMetadata::from_command(&cmd);
+                let json = ::clifacet::schema::to_json_schema_pretty(&meta)
+                    .map_err(|e| ::clifacet::Failure::execution(format!("cannot generate schema: {e}")))?;
+                ::core::result::Result::Ok(json)
+            }
+        });
+    }
+
     let enum_def = quote! {
         #[derive(::clap::Subcommand, ::std::clone::Clone, ::std::fmt::Debug)]
         pub enum #enum_ident {

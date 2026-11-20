@@ -20,6 +20,8 @@ interactive = ["dep:inquire"]
 tui = ["dep:ratatui", "dep:crossterm"]
 # Serialization for `Failure`, `FailureKind`, `Secret`, and structured JSON output mode `--json` (decision-25).
 serde = ["dep:serde", "dep:serde_json"]
+# Machine-readable CLI schema introspection (decision-25, CLI-73).
+schema = ["serde"]
 # `clifacet::settings::toml`, the settings loader for the format most applications
 # already have (CLI-51). Off by default: a program that never reads a settings file pays
 # nothing for the parser.
