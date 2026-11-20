@@ -22,6 +22,8 @@ tui = ["dep:ratatui", "dep:crossterm"]
 serde = ["dep:serde", "dep:serde_json"]
 # Machine-readable CLI schema introspection (decision-25, CLI-73).
 schema = ["serde"]
+# Pluggable skill rendering for agent documentation (decision-25, CLI-74).
+skill = ["schema"]
 # `clifacet::settings::toml`, the settings loader for the format most applications
 # already have (CLI-51). Off by default: a program that never reads a settings file pays
 # nothing for the parser.
