@@ -12,8 +12,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **skill:** implement write-skill command with drift check (CLI-76)
+([7bc936a](https://github.com/Archont561/clifacet/commit/7bc936a4afc507d83b431b4d370ced5088c58d65))
 * **skill:** implement MiniJinja skill renderer and embedded template (CLI-75)
-([8287230](https://github.com/Archont561/clifacet/commit/8287230a4d323638b1a84bf17efda0d96ec43678))
+([9df5115](https://github.com/Archont561/clifacet/commit/9df511577596a8476a4517d4ce0893f9238e9b14))
 * **skill:** define pluggable SkillRenderer trait and feature boundary (CLI-74)
 ([fb023ea](https://github.com/Archont561/clifacet/commit/fb023ea9c55942a991b50e7afd81903d380237b9))
 * **schema:** implement machine-readable CLI schema introspection (CLI-73)
