@@ -274,19 +274,6 @@ fn collect_tools(cmd: &CliMetadata, prefix: &[String], tools: &mut Vec<serde_jso
             "description": desc,
             "inputSchema": schema,
         }));
-    } else if !is_internal_command(&cmd.name) {
-        let desc = cmd
-            .about
-            .as_deref()
-            .or(cmd.long_about.as_deref())
-            .unwrap_or_default();
-        let schema = command_arguments_to_input_schema(&cmd.arguments);
-
-        tools.push(serde_json::json!({
-            "name": cmd.name,
-            "description": desc,
-            "inputSchema": schema,
-        }));
     }
 }
 

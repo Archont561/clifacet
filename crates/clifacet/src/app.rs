@@ -670,72 +670,6 @@ where
             }
         }
 
-        #[cfg(feature = "mcp")]
-        if asks_for_mcp(&argv, &<Cli as Facet>::command()) {
-            let cmd = <Cli as Facet>::command();
-            let meta = crate::schema::CliMetadata::from_command(&cmd);
-            let runner_meta = meta.clone();
-            let runner =
-                move |tool_name: &str, arguments: &serde_json::Value| -> Result<String, Failure> {
-                    let tool_argv_strings = crate::mcp::arguments_to_argv(
-                        &runner_meta.name,
-                        tool_name,
-                        arguments,
-                        &runner_meta,
-                    )?;
-                    let tool_argv: Vec<OsString> =
-                        tool_argv_strings.into_iter().map(OsString::from).collect();
-                    let (cli, globals) = self
-                        .parse_with_settings(&tool_argv)
-                        .map_err(|e| Failure::execution(e.to_string()))?;
-                    let mut tool_out = Vec::new();
-                    let mut tool_err = Vec::new();
-                    let exit_code = self.run_parsed(
-                        cli,
-                        globals,
-                        crate::policy::Capabilities::headless(),
-                        || Box::new(crate::prompt::Scripted::default()),
-                        &mut tool_out,
-                        &mut tool_err,
-                    );
-                    if exit_code == 0 {
-                        let stdout_str = String::from_utf8(tool_out)
-                            .map_err(|e| Failure::execution(e.to_string()))?;
-                        let trimmed = stdout_str.trim().to_string();
-                        if trimmed.is_empty() {
-                            Ok("ok".to_string())
-                        } else {
-                            Ok(trimmed)
-                        }
-                    } else {
-                        let stderr_str = String::from_utf8(tool_err)
-                            .map_err(|e| Failure::execution(e.to_string()))?;
-                        let msg = if stderr_str.trim().is_empty() {
-                            let stdout_str = String::from_utf8(tool_out).unwrap_or_default();
-                            if stdout_str.trim().is_empty() {
-                                format!("command failed with exit code {exit_code}")
-                            } else {
-                                stdout_str.trim().to_string()
-                            }
-                        } else {
-                            stderr_str.trim().to_string()
-                        };
-                        Err(Failure::execution(msg))
-                    }
-                };
-            match crate::mcp::run_stdio_server(&meta, runner) {
-                Ok(msg) => {
-                    if !msg.is_empty() {
-                        let _ = writeln!(out, "{msg}");
-                    }
-                    return self.exit.success();
-                }
-                Err(failure) => {
-                    return report::render(&program::<Cli>(), &failure, &self.exit, out, err);
-                }
-            }
-        }
-
         match self.parse_with_settings(&argv) {
             Ok((cli, globals)) => {
                 self.run_parsed(cli, globals, capabilities, build_frontend, out, err)
@@ -1153,24 +1087,6 @@ fn asks_for_write_skill(
         output,
         check,
     })
-}
-
-/// Whether the argument list asks for MCP stdio tool server.
-#[cfg(feature = "mcp")]
-fn asks_for_mcp(argv: &[OsString], cmd: &clap::Command) -> bool {
-    if cmd.find_subcommand("mcp").is_some() {
-        return false;
-    }
-    if argv.len() < 2 {
-        return false;
-    }
-    if argv[1].to_str() != Some("mcp") {
-        return false;
-    }
-    if asks_for_help_or_version(argv) {
-        return false;
-    }
-    true
 }
 
 /// Parses `argv` into the command line and the global options it carried.

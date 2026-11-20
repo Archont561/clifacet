@@ -527,3 +527,120 @@ fn test_mcp_nested_subcommand_tools() {
         "all systems operational"
     );
 }
+
+#[app(
+    name = "types-cli",
+    about = "CLI with rich types and defaults",
+    commands
+)]
+pub struct TypesCli {}
+
+#[commands]
+impl TypesCli {
+    /// Command with diverse default values
+    pub fn config(
+        &self,
+        #[clifacet(long, default_value = "main")] cluster: String,
+        #[clifacet(long, default_value = "true")] enabled: bool,
+        #[clifacet(long, default_value = "42")] retries: i64,
+        #[clifacet(long, default_value = "2.5")] rate: f64,
+        #[clifacet(long)] tags: Vec<String>,
+    ) -> String {
+        format!("{cluster}-{enabled}-{retries}-{rate}-{tags:?}")
+    }
+}
+
+#[test]
+fn test_mcp_schema_defaults_and_array_args() {
+    let cmd = <TypesCli as clifacet::Facet>::command();
+    let meta = CliMetadata::from_command(&cmd);
+    let tools = generate_tools_list(&meta);
+
+    let config_tool = tools.iter().find(|t| t["name"] == "config").unwrap();
+    let props = &config_tool["inputSchema"]["properties"];
+
+    assert_eq!(props["cluster"]["default"], "main");
+    assert_eq!(props["enabled"]["default"], true);
+    assert_eq!(props["retries"]["default"], 42);
+    assert_eq!(props["rate"]["default"], 2.5);
+
+    // Test arguments_to_argv with multiple option as array and single item
+    let arr_args = serde_json::json!({
+        "cluster": "prod",
+        "tags": ["env:prod", "tier:frontend"]
+    });
+    let argv = arguments_to_argv("types-cli", "config", &arr_args, &meta).unwrap();
+    assert!(argv.contains(&"--cluster".to_string()));
+    assert!(argv.contains(&"prod".to_string()));
+    assert!(argv.contains(&"--tags".to_string()));
+    assert!(argv.contains(&"env:prod".to_string()));
+    assert!(argv.contains(&"tier:frontend".to_string()));
+
+    let single_tag_args = serde_json::json!({
+        "tags": "env:staging"
+    });
+    let argv2 = arguments_to_argv("types-cli", "config", &single_tag_args, &meta).unwrap();
+    assert!(argv2.contains(&"env:staging".to_string()));
+
+    // Test array arguments (positional list)
+    let raw_arr = serde_json::json!(["pos1", "pos2"]);
+    let argv3 = arguments_to_argv("types-cli", "config", &raw_arr, &meta).unwrap();
+    assert_eq!(argv3, vec!["types-cli", "config", "pos1", "pos2"]);
+
+    // Test unknown options with various types
+    let unknown_args = serde_json::json!({
+        "extra_flag": true,
+        "ignored_flag": false,
+        "extra_arr": ["x1", "x2"],
+        "extra_val": "hello"
+    });
+    let argv4 = arguments_to_argv("types-cli", "config", &unknown_args, &meta).unwrap();
+    assert!(argv4.contains(&"--extra-flag".to_string()));
+    assert!(!argv4.contains(&"--ignored-flag".to_string()));
+    assert!(argv4.contains(&"--extra-arr".to_string()));
+    assert!(argv4.contains(&"x1".to_string()));
+    assert!(argv4.contains(&"x2".to_string()));
+    assert!(argv4.contains(&"--extra-val".to_string()));
+    assert!(argv4.contains(&"hello".to_string()));
+}
+
+#[test]
+fn test_mcp_missing_method_and_missing_tool_name() {
+    let cmd = <OpsCli as clifacet::Facet>::command();
+    let meta = CliMetadata::from_command(&cmd);
+    let server = McpServer::new(&meta, |_t, _a| Ok("ok".into()));
+
+    // Request missing "method"
+    let no_method_req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 88
+    });
+    let resp = server.handle_request(&no_method_req).unwrap();
+    assert_eq!(resp["id"], 88);
+    assert_eq!(resp["error"]["code"], -32600);
+    assert!(
+        resp["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("missing method")
+    );
+
+    // tools/call missing "name" parameter
+    let no_name_req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 89,
+        "method": "tools/call",
+        "params": {
+            "arguments": {}
+        }
+    });
+    let resp2 = server.handle_request(&no_name_req).unwrap();
+    assert_eq!(resp2["id"], 89);
+    assert_eq!(resp2["result"]["isError"], true);
+    assert!(
+        resp2["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Missing 'name'")
+    );
+}
