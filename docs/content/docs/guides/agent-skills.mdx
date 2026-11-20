@@ -1,0 +1,135 @@
+---
+title: Agent Skills and Quality Gates
+description: Generate self-describing Agent Skill documents with MiniJinja and guard repository quality gates with drift detection in CI.
+---
+
+Clifacet provides automated agent documentation generation for AI agents. When autonomous
+coding agents interact with a CLI application, they rely on standardized agent skill
+specifications located at `.agents/skills/<name>/SKILL.md`.
+
+Instead of maintaining separate markdown files by hand — which inevitably diverge from actual
+CLI flags, arguments, subcommands, and environment variables — Clifacet generates this
+documentation directly from the command grammar.
+
+<Callout type="info">
+When the `skill` feature is enabled on an application decorated with `#[clifacet::app]`, Clifacet
+automatically registers the built-in `write-skill` subcommand.
+</Callout>
+
+## The `write-skill` Subcommand
+
+The `write-skill` subcommand supports three operational modes:
+
+| Flag | Role | Default |
+| --- | --- | --- |
+| `--stdout` | Streams rendered markdown directly to standard output | Off |
+| `-o`, `--output <PATH>` | Writes the rendered markdown to an explicit file path | `.agents/skills/<name>/SKILL.md` |
+| `--check` | Validates on-disk file content against current CLI rendering without writing | Off |
+
+### Writing to Default Location
+
+Running `write-skill` without flags renders the application documentation and writes it to
+`.agents/skills/<name>/SKILL.md`, creating intermediate parent directories as needed:
+
+```sh
+cargo run -- write-skill
+```
+
+### Inspecting Output with `--stdout`
+
+To inspect the generated markdown or pipe it to another utility without touching the filesystem,
+pass `--stdout`:
+
+```sh
+cargo run -- write-skill --stdout
+```
+
+### Writing to a Custom Path
+
+Specify an explicit target location with `-o` or `--output`:
+
+```sh
+cargo run -- write-skill -o docs/skills/custom.md
+```
+
+## Drift Detection with `--check`
+
+When `--check` is passed, `write-skill` compares the file currently on disk against the
+freshly rendered documentation generated from the active CLI metadata.
+
+- If the on-disk file exists and matches the rendered output, `write-skill` prints an up-to-date
+  confirmation and exits with status code `0`.
+- If the on-disk file is missing or its contents differ from the rendered output, `write-skill`
+  reports drift on standard error and exits with a non-zero status code.
+
+```sh
+cargo run -- write-skill --check
+```
+
+## Adding Drift Checks to Repository Quality Gates
+
+Drift checks belong in continuous integration (CI) quality gates to prevent commits that modify
+CLI arguments or commands without updating committed agent skill documentation.
+
+<Steps>
+<Step>
+
+### Add CI Verification Step
+
+Add a verification step to your GitHub Actions workflow or CI pipeline that runs after code compilation:
+
+```yaml
+- name: Verify Agent Skill Drift
+  run: cargo run -- write-skill --check
+```
+
+If any command, flag, default value, or docstring was modified without regenerating the skill file,
+the CI check will fail and block merging.
+
+</Step>
+
+<Step>
+
+### Configure Local Task Runner
+
+Define a task in your project's task runner (such as `Pixi` or `Taskfile`) so developers can run the check locally:
+
+```toml
+[tasks]
+check-skills = "cargo run -- write-skill --check"
+sync-skills = "cargo run -- write-skill"
+```
+
+</Step>
+
+<Step>
+
+### Add Git Pre-Push Hook
+
+Optionally guard against pushing drifted documentation by adding a pre-push hook:
+
+```sh
+#!/usr/bin/env bash
+set -e
+
+cargo run -- write-skill --check || {
+    echo "Agent skill documentation has drifted. Run 'cargo run -- write-skill' to update." >&2
+    exit 1
+}
+```
+
+</Step>
+</Steps>
+
+## Resolving Drift
+
+When a quality gate fails due to drift:
+
+1. Review the changes between your command implementation and the committed `.agents/skills/<name>/SKILL.md`.
+2. Regenerate the skill document:
+
+   ```sh
+   cargo run -- write-skill
+   ```
+
+3. Commit the updated skill document alongside the code changes.

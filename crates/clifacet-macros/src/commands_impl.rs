@@ -249,6 +249,50 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         });
     }
 
+    let has_user_write_skill = item_impl.items.iter().any(|item| {
+        if let syn::ImplItem::Fn(m) = item {
+            m.sig.ident == "write_skill"
+        } else {
+            false
+        }
+    });
+
+    if !is_group && !has_user_write_skill {
+        variants.push(quote! {
+            #[cfg(feature = "skill")]
+            #[command(name = "write-skill", about = "Generate or verify agent skill documentation")]
+            WriteSkill {
+                /// Write to standard output instead of a file
+                #[arg(long)]
+                stdout: bool,
+
+                /// Explicit output file path
+                #[arg(short, long)]
+                output: Option<::std::path::PathBuf>,
+
+                /// Check on-disk file against current rendering and exit with non-zero status on drift
+                #[arg(long)]
+                check: bool,
+            },
+        });
+        dispatch_arms.push(quote! {
+            #[cfg(feature = "skill")]
+            ::core::option::Option::Some(#enum_ident::WriteSkill { stdout, output, check }) => {
+                let options = ::clifacet::skill::WriteSkillOptions {
+                    stdout: *stdout,
+                    output: output.clone(),
+                    check: *check,
+                };
+                let res = Self::write_skill(&options)?;
+                if *stdout {
+                    ::core::result::Result::Ok(res.trim_end_matches('\n').to_string())
+                } else {
+                    ::core::result::Result::Ok(res)
+                }
+            }
+        });
+    }
+
     let enum_def = quote! {
         #[derive(::clap::Subcommand, ::std::clone::Clone, ::std::fmt::Debug)]
         pub enum #enum_ident {

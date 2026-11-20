@@ -646,6 +646,29 @@ where
             }
         }
 
+        #[cfg(feature = "skill-minijinja")]
+        if let Some(opts) = asks_for_write_skill(&argv, &<Cli as Facet>::command()) {
+            use crate::skill::SkillRenderer as _;
+            let cmd = <Cli as Facet>::command();
+            let meta = crate::schema::CliMetadata::from_command(&cmd);
+            let renderer = crate::skill::MiniJinjaSkillRenderer::new();
+            match renderer.render(&meta).and_then(|rendered| {
+                crate::skill::execute_write_skill(&meta.name, &rendered, &opts)
+            }) {
+                Ok(msg) => {
+                    if opts.stdout {
+                        let _ = write!(out, "{msg}");
+                    } else if !msg.is_empty() {
+                        let _ = writeln!(out, "{msg}");
+                    }
+                    return self.exit.success();
+                }
+                Err(failure) => {
+                    return report::render(&program::<Cli>(), &failure, &self.exit, out, err);
+                }
+            }
+        }
+
         match self.parse_with_settings(&argv) {
             Ok((cli, globals)) => {
                 self.run_parsed(cli, globals, capabilities, build_frontend, out, err)
@@ -1016,6 +1039,53 @@ fn asks_for_schema(argv: &[OsString]) -> bool {
         }
     }
     false
+}
+
+/// Whether the argument list asks for write-skill.
+#[cfg(feature = "skill-minijinja")]
+fn asks_for_write_skill(
+    argv: &[OsString],
+    cmd: &clap::Command,
+) -> Option<crate::skill::WriteSkillOptions> {
+    if cmd.find_subcommand("write-skill").is_some() {
+        return None;
+    }
+    if argv.len() < 2 {
+        return None;
+    }
+    if argv[1].to_str()? != "write-skill" {
+        return None;
+    }
+    if asks_for_help_or_version(argv) {
+        return None;
+    }
+    let mut stdout = false;
+    let mut output = None;
+    let mut check = false;
+    let mut iter = argv[2..].iter();
+    while let Some(arg) = iter.next() {
+        let Some(text) = arg.to_str() else {
+            continue;
+        };
+        match text {
+            "--stdout" => stdout = true,
+            "--check" => check = true,
+            "-o" | "--output" => {
+                if let Some(val) = iter.next() {
+                    output = Some(std::path::PathBuf::from(val));
+                }
+            }
+            s if s.starts_with("--output=") => {
+                output = Some(std::path::PathBuf::from(&s["--output=".len()..]));
+            }
+            _ => {}
+        }
+    }
+    Some(crate::skill::WriteSkillOptions {
+        stdout,
+        output,
+        check,
+    })
 }
 
 /// Parses `argv` into the command line and the global options it carried.
