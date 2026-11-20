@@ -4,6 +4,9 @@
   "pages": [
     "getting-started",
     "derive",
+    "structured-output",
+    "completions-and-settings",
+    "async-commands",
     "tui-composition",
     "testing",
     "agent-skills",

@@ -55,9 +55,11 @@ let plan = cautious
 assert_eq!(plan.mode(), Mode::NonInteractive);
 ```
 
-## The Four Modes
+## The Three Modes and a Refusal
 
-<Tabs items={["Noninteractive", "Interactive Prompt", "Full-Screen TUI", "Refusal"]}>
+Clifacet resolves every invocation into one of three execution modes, or refuses to run:
+
+<Tabs items={["Noninteractive", "Interactive Prompt", "Full-Screen TUI"]}>
   <Tab value="Noninteractive">
     Takes all inputs from CLI flags, environment variables, or configuration files. Output goes to stdout, diagnostics to stderr.
   </Tab>
@@ -67,10 +69,11 @@ assert_eq!(plan.mode(), Mode::NonInteractive);
   <Tab value="Full-Screen TUI">
     Presents a full-screen Ratatui form on the alternate screen buffer, validating on submit.
   </Tab>
-  <Tab value="Refusal">
-    If the requested mode violates policy or lacks terminal capabilities, execution terminates immediately with code 2.
-  </Tab>
 </Tabs>
+
+### Refusal
+
+When a requested mode is forbidden by application policy (for example, `--tui` passed to a command whose ceiling is `Mode::Interactive`), or when interactive input is required but stderr is not an interactive terminal, Clifacet refuses rather than silently degrading into an unwanted mode. Execution terminates immediately with an error and standard validation exit code `2`.
 
 ## Stream Separation
 

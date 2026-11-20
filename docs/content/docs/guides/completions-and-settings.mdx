@@ -1,0 +1,68 @@
+---
+title: Shell Completions and Settings
+description: Generate dynamic shell completions and layer configuration files under environment variables and CLI flags.
+---
+
+Clifacet provides first-class support for both shell autocompletion and configuration file layering through the `completions` and `settings-toml` (or `settings-figment`) features.
+
+## Shell Completions
+
+The `completions` feature (decision-25, CLI-78) generates contextual shell completions for major shells:
+
+- **Bash** (`bash`)
+- **Zsh** (`zsh`)
+- **Fish** (`fish`)
+- **PowerShell** (`powershell`)
+
+```rust features=completions
+use clifacet::completions::Shell;
+use std::str::FromStr;
+
+let bash = Shell::from_str("bash").expect("valid shell target");
+let zsh = Shell::from_str("zsh").expect("valid shell target");
+let fish = Shell::from_str("fish").expect("valid shell target");
+
+assert_eq!(bash, Shell::Bash);
+assert_eq!(zsh, Shell::Zsh);
+assert_eq!(fish, Shell::Fish);
+```
+
+### Generating Completion Scripts
+
+To generate a completion script for your shell, run your CLI with the built-in `completions` subcommand:
+
+```sh
+# For Bash
+mycli completions bash > ~/.local/share/bash-completion/completions/mycli
+
+# For Zsh
+mycli completions zsh > ~/.zfunc/_mycli
+
+# For Fish
+mycli completions fish > ~/.config/fish/completions/mycli.fish
+```
+
+## Layered Configuration Files
+
+Clifacet follows a strict four-layer precedence contract for settings resolution:
+
+```text
+Flag  >  Environment Variable  >  Settings File  >  Built-in Default
+```
+
+Values from configuration files are injected as defaults into Clap. This ensures that:
+
+1. An argument's own parser and validation rules validate file values identically to flags.
+2. A flag always overrides an environment variable, which overrides a configuration file entry.
+3. Provenance tracking identifies the source of every parameter for debugging and `--json` inspection.
+
+```rust features=settings-toml
+use clifacet::settings::toml::Toml;
+use clifacet::settings::Loader;
+
+let loader = Toml;
+let config_data = b"name = 'clifacet'\nrepeat = 3\n";
+
+let settings = loader.load(config_data).expect("valid TOML settings");
+assert!(!settings.is_empty());
+```

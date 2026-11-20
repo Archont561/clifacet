@@ -1,0 +1,65 @@
+---
+title: Async Commands and Cancellation
+description: Execute asynchronous commands with cooperative cancellation tokens and decoupled progress reporting.
+---
+
+<Callout type="warn">
+**Unreleased (on `main`)**: Native async traits and contexts were introduced in CLI-79 (decision-26) and will be published in v0.9.0.
+</Callout>
+
+Modern CLI commands often perform asynchronous I/O: downloading large assets, querying remote databases, or streaming events. Clifacet provides a native async execution model built without mandatory third-party runtime dependencies.
+
+## Core Async Traits
+
+Clifacet defines three async traits using native Rust `async fn` and `Future`:
+
+- **`clifacet::r#async::AsyncCommand`**: Standalone async command that does not require an application context.
+- **`clifacet::r#async::AsyncHandler<Cx>`**: An async handler executed in the context of an application context `Cx` and an execution context `RunCx`.
+- **`clifacet::r#async::LocalAsyncHandler<Cx>`**: Variant for single-threaded or `?Send` execution contexts (for example, WebAssembly).
+
+## Execution Context (`RunCx`)
+
+When an async command executes, it receives a `RunCx` handle containing:
+
+1. **`Cancel` token**: A cooperative cancellation handle that can be polled with `cx.cancel().is_cancelled()` or awaited with `cx.cancel().cancelled()`.
+2. **`ProgressSink`**: A frontend-neutral channel for streaming progress milestones and messages to the UI.
+
+```rust features=async
+use clifacet::r#async::RunCx;
+use clifacet::Failure;
+
+let (cx, progress_recorder) = RunCx::for_test();
+
+// Commands check cancellation cooperatively
+if cx.is_cancelled() {
+    let _ = Failure::cancelled("operation aborted by user");
+}
+
+// Progress reporting is decoupled from presentation
+cx.report_total(Some(100));
+cx.advance(25);
+cx.message("downloading package archive");
+
+assert_eq!(progress_recorder.events().len(), 3);
+```
+
+## Cooperative Cancellation
+
+Cancellation in Clifacet is strictly cooperative: background tasks are never forcefully killed mid-write. Instead:
+
+- In interactive modes, pressing `Ctrl-C` trips the `Cancel` token.
+- Async loops poll or await `cancel.cancelled()` at safe await boundaries.
+- If canceled, handlers return `Failure::cancelled("...")`, producing standard exit code `130`.
+
+## Testing Async Commands
+
+Using `RunCx::for_test()`, you can unit-test async handlers without spinning up a real terminal or running within an active TTY session:
+
+```rust features=async
+use clifacet::r#async::RunCx;
+
+let (cx, sink) = RunCx::for_test();
+cx.request_cancel();
+
+assert!(cx.cancel().is_cancelled());
+```

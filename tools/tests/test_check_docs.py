@@ -247,3 +247,29 @@ def test_a_page_in_a_section_is_accepted(tmp_path):
         (tmp_path / "docs" / name / "page.md").write_text("# Page\n", encoding="utf-8")
 
     assert uncategorised(tmp_path) == []
+
+
+def test_rust_blocks_with_feature_tags(docs):
+    page = (docs / "docs" / "guides" / "guide.md").read_text()
+    page += "\n```rust,features=async\nlet a = 1;\n```\n"
+    page += "\n```rust,features=async+schema\nlet b = 2;\n```\n"
+
+    blocks = rust_blocks(page)
+
+    assert len(blocks) == 3
+    assert blocks[0].features == ()
+    assert blocks[1].features == ("async",)
+    assert blocks[2].features == ("async", "schema")
+
+    generated = generated_snippets(_write(docs, page))
+    assert '#[cfg(feature = "async")]' in generated
+    assert '#[cfg(all(feature = "async", feature = "schema"))]' in generated
+
+
+def test_api_paths_support_raw_identifiers():
+    page = "Use `clifacet::r#async::RunCx` and `clifacet::r#async::Cancel`.\n"
+
+    assert api_paths(page) == [
+        ("clifacet::r#async::RunCx", ("async", "RunCx")),
+        ("clifacet::r#async::Cancel", ("async", "Cancel")),
+    ]

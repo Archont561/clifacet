@@ -1,0 +1,36 @@
+---
+title: Exit Codes and Failures
+description: Authoritative contract for CLI exit codes, failure classifications, and standard streams.
+---
+
+Clifacet establishes a deterministic execution contract: every execution terminates with a standard status code and adheres to strict stream separation.
+
+## Standard Exit Codes
+
+Standard exit codes are governed by `clifacet::contract::ExitPolicy::standard()`:
+
+| Exit Code | Classification | Meaning | When Triggered |
+| ---: | --- | --- | --- |
+| `0` | Success | Command completed successfully | Clean execution of command handler |
+| `1` | `FailureKind::Execution` | Execution failure | Runtime error returned from `Handler::handle` |
+| `2` | `FailureKind::Validation` | Validation / Usage error | Command line syntax error, invalid flag value, or refused mode |
+| `130` | `FailureKind::Cancelled` | User cancellation | SIGINT received or prompt aborted by user (128 + 2) |
+
+## Standard Stream Contract
+
+To maintain predictable behavior when composing with Unix pipes, redirection, or automation scripts:
+
+- **`stdout`**: Reserved exclusively for command output data. In noninteractive mode, this is human-readable result data; in `--json` mode, this is a structured JSON envelope.
+- **`stderr`**: Carries all user interaction (conversational questionnaires, form presentation) and diagnostic reporting (error messages, warnings, stack traces).
+
+```rust
+use clifacet::contract::ExitPolicy;
+use clifacet::{Failure, FailureKind};
+
+let policy = ExitPolicy::standard();
+
+assert_eq!(policy.success(), 0);
+assert_eq!(policy.for_kind(FailureKind::Execution), 1);
+assert_eq!(policy.for_kind(FailureKind::Validation), 2);
+assert_eq!(policy.for_kind(FailureKind::Cancelled), 130);
+```

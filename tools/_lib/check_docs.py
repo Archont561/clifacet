@@ -53,8 +53,8 @@ DOMAIN_WORDS = ("invoice", "todo list", "shopping cart", "customer record", "ord
 
 LINK = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$", re.MULTILINE)
-FENCE = re.compile(r"^```(\S*)\s*$", re.MULTILINE)
-API_PATH = re.compile(r"\b((?:%s)(?:::[A-Za-z_][A-Za-z0-9_]*)+)" % "|".join(CRATES))
+FENCE = re.compile(r"^```(.*)$", re.MULTILINE)
+API_PATH = re.compile(r"\b((?:%s)(?:::(?:r#)?[A-Za-z_][A-Za-z0-9_]*)+)" % "|".join(CRATES))
 # `pub fn x`, `pub struct X`, `pub(crate) fn x` (not public, so not listed), `pub use a::{b, c}`.
 DECLARATION = re.compile(
     r"^\s*pub\s+(?!\(crate\))(?:fn|struct|enum|trait|const|static|type|mod|use)\s+(.+)$",
@@ -271,8 +271,23 @@ def check_links(root: Path = ROOT) -> list[Finding]:
     return findings
 
 
-def rust_blocks(text: str) -> list[tuple[int, str]]:
-    """The Rust fences that must compile, as `(line, code)`.
+class Snippet(tuple):
+    """One Rust snippet that must compile, maintaining 2-tuple unpacking `(line, code)`."""
+
+    line: int
+    code: str
+    features: tuple[str, ...]
+
+    def __new__(cls, line: int, code: str, features: Sequence[str] = ()):
+        instance = super().__new__(cls, (line, code))
+        instance.line = line
+        instance.code = code
+        instance.features = tuple(features)
+        return instance
+
+
+def rust_blocks(text: str) -> list[Snippet]:
+    """The Rust fences that must compile, as Snippet(line, code, features).
 
     Fences tagged `ignore` are illustrations — rustdoc would not compile them either —
     and fences in any other language are not code at all.
@@ -293,9 +308,20 @@ def rust_blocks(text: str) -> list[tuple[int, str]]:
             body.append(lines[index])
             index += 1
         index += 1
-        tags = [tag.strip() for tag in info.replace(",", " ").split()] if info else []
-        if tags[:1] == ["rust"] and "ignore" not in tags:
-            blocks.append((start, "\n".join(body)))
+        if not info:
+            continue
+        raw_tokens = [t.strip() for t in re.split(r"[,\s]+", info.strip()) if t.strip()]
+        if not raw_tokens or raw_tokens[0] != "rust":
+            continue
+        if "ignore" in raw_tokens:
+            continue
+        features = []
+        for m in re.finditer(r"\bfeatures?=(?P<feats>[^\s,]+)", info):
+            for f in re.split(r"[+,]", m.group("feats")):
+                cleaned = f.strip().strip("\"'")
+                if cleaned:
+                    features.append(cleaned)
+        blocks.append(Snippet(start, "\n".join(body), features))
     return blocks
 
 
@@ -310,14 +336,22 @@ def generated_snippets(root: Path = ROOT) -> str:
     entries = []
     for page in pages(root):
         name = page.stem.lower().replace("-", "_")
-        for number, (line, code) in enumerate(rust_blocks(page.read_text(encoding="utf-8")), start=1):
-            body = _snippet_body(code)
+        for number, snippet in enumerate(rust_blocks(page.read_text(encoding="utf-8")), start=1):
+            body = _snippet_body(snippet.code)
             if not body:
                 continue
+            cfg_attr = ""
+            if snippet.features:
+                cfg_preds = ", ".join(f'feature = "{f}"' for f in snippet.features)
+                if len(snippet.features) == 1:
+                    cfg_attr = f"#[cfg({cfg_preds})]\n"
+                else:
+                    cfg_attr = f"#[cfg(all({cfg_preds}))]\n"
             entries.append(
-                f"/// `{page.name}`, line {line}.\n"
+                f"/// `{page.name}`, line {snippet.line}.\n"
                 # The body is a verbatim copy of the page, so rustfmt must not rewrite it:
                 # `cargo fmt --all` and `--write` would otherwise disagree forever.
+                f"{cfg_attr}"
                 f"#[rustfmt::skip]\n"
                 f"#[test]\n"
                 f"fn {name}_snippet_{number}() {{\n"
@@ -384,7 +418,11 @@ def api_paths(text: str) -> list[tuple[str, tuple[str, ...]]]:
     found = []
     for match in API_PATH.finditer(text):
         path = match.group(1)
-        segments = tuple(segment for segment in path.split("::")[1:] if segment)
+        segments = tuple(
+            segment[2:] if segment.startswith("r#") else segment
+            for segment in path.split("::")[1:]
+            if segment
+        )
         found.append((path, segments))
     return found
 

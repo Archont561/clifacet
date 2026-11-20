@@ -105,7 +105,7 @@ fn modes_snippet_2() {
     assert_eq!(plan.mode(), Mode::NonInteractive);
 }
 
-/// `modes.mdx`, line 91.
+/// `modes.mdx`, line 94.
 #[rustfmt::skip]
 #[test]
 fn modes_snippet_3() {
@@ -117,6 +117,68 @@ fn modes_snippet_3() {
     assert_eq!(policy.for_failure(&Failure::cancelled("changed their mind")), policy.cancelled());
     assert_eq!(policy.success(), 0);
     assert_eq!(policy.cancelled(), 130);
+}
+
+/// `async-commands.mdx`, line 27.
+#[cfg(feature = "async")]
+#[rustfmt::skip]
+#[test]
+fn async_commands_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::r#async::RunCx;
+    use clifacet::Failure;
+    let (cx, progress_recorder) = RunCx::for_test();
+    // Commands check cancellation cooperatively
+    if cx.is_cancelled() {
+        let _ = Failure::cancelled("operation aborted by user");
+    }
+    // Progress reporting is decoupled from presentation
+    cx.report_total(Some(100));
+    cx.advance(25);
+    cx.message("downloading package archive");
+    assert_eq!(progress_recorder.events().len(), 3);
+}
+
+/// `async-commands.mdx`, line 58.
+#[cfg(feature = "async")]
+#[rustfmt::skip]
+#[test]
+fn async_commands_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::r#async::RunCx;
+    let (cx, sink) = RunCx::for_test();
+    cx.request_cancel();
+    assert!(cx.cancel().is_cancelled());
+}
+
+/// `completions-and-settings.mdx`, line 17.
+#[cfg(feature = "completions")]
+#[rustfmt::skip]
+#[test]
+fn completions_and_settings_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::completions::Shell;
+    use std::str::FromStr;
+    let bash = Shell::from_str("bash").expect("valid shell target");
+    let zsh = Shell::from_str("zsh").expect("valid shell target");
+    let fish = Shell::from_str("fish").expect("valid shell target");
+    assert_eq!(bash, Shell::Bash);
+    assert_eq!(zsh, Shell::Zsh);
+    assert_eq!(fish, Shell::Fish);
+}
+
+/// `completions-and-settings.mdx`, line 59.
+#[cfg(feature = "settings-toml")]
+#[rustfmt::skip]
+#[test]
+fn completions_and_settings_snippet_2() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::settings::toml::Toml;
+    use clifacet::settings::Loader;
+    let loader = Toml;
+    let config_data = b"name = 'clifacet'\nrepeat = 3\n";
+    let settings = loader.load(config_data).expect("valid TOML settings");
+    assert!(!settings.is_empty());
 }
 
 /// `derive.mdx`, line 10.
@@ -216,7 +278,7 @@ fn derive_snippet_3() {
     assert_eq!(input.name, "grace");
 }
 
-/// `getting-started.mdx`, line 60.
+/// `getting-started.mdx`, line 66.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {
@@ -234,7 +296,7 @@ fn getting_started_snippet_1() {
     assert_eq!(greeting, "hello, ada");
 }
 
-/// `getting-started.mdx`, line 90.
+/// `getting-started.mdx`, line 96.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_2() {
@@ -280,7 +342,7 @@ fn getting_started_snippet_2() {
     assert_eq!((code, out.as_slice()), (0, b"hello, ada\n".as_slice()));
 }
 
-/// `getting-started.mdx`, line 175.
+/// `getting-started.mdx`, line 181.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_3() {
@@ -330,6 +392,44 @@ fn getting_started_snippet_3() {
         &mut err,
     );
     assert_eq!((code, out.as_slice()), (0, b"mark CLI-47 done\n".as_slice()), "{err:?}");
+}
+
+/// `structured-output.mdx`, line 56.
+#[cfg(all(feature = "serde", feature = "schema"))]
+#[rustfmt::skip]
+#[test]
+fn structured_output_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::schema::{ArgumentMetadata, CliMetadata};
+    let metadata = CliMetadata {
+        name: "fleet".to_string(),
+        about: Some("Manage fleet services".to_string()),
+        long_about: None,
+        version: Some("0.8.0".to_string()),
+        author: None,
+        arguments: vec![
+            ArgumentMetadata {
+                id: "verbose".to_string(),
+                long: Some("verbose".to_string()),
+                short: Some('v'),
+                help: Some("Enable verbose diagnostic logs".to_string()),
+                long_help: None,
+                required: false,
+                positional: false,
+                is_flag: true,
+                multiple: false,
+                value_name: None,
+                default_values: vec![],
+                possible_values: vec![],
+                env: None,
+                global: false,
+                value_type: Some("boolean".to_string()),
+            },
+        ],
+        subcommands: vec![],
+    };
+    assert_eq!(metadata.name, "fleet");
+    assert_eq!(metadata.arguments.len(), 1);
 }
 
 /// `tui-composition.mdx`, line 28.
@@ -467,4 +567,18 @@ fn command_core_snippet_3() {
     assert_eq!(provenance.source_of("repeat"), Some(Source::Default));
     assert_eq!(provenance.source_of("name"), Some(Source::Prompt));
     assert!(!provenance.to_string().contains("s3cret"));
+}
+
+/// `exit-codes.mdx`, line 26.
+#[rustfmt::skip]
+#[test]
+fn exit_codes_snippet_1() {
+    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
+    use clifacet::contract::ExitPolicy;
+    use clifacet::{Failure, FailureKind};
+    let policy = ExitPolicy::standard();
+    assert_eq!(policy.success(), 0);
+    assert_eq!(policy.for_kind(FailureKind::Execution), 1);
+    assert_eq!(policy.for_kind(FailureKind::Validation), 2);
+    assert_eq!(policy.for_kind(FailureKind::Cancelled), 130);
 }
