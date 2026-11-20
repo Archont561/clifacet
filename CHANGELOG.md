@@ -12,8 +12,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **skill:** define pluggable SkillRenderer trait and feature boundary (CLI-74)
+([1f5fe8c](https://github.com/Archont561/clifacet/commit/1f5fe8c58111a7c14fbb39577291f0fadc4387f0))
 * **schema:** implement machine-readable CLI schema introspection (CLI-73)
-([3af9641](https://github.com/Archont561/clifacet/commit/3af964147ae3148fd031746cb921000119863922))
+([cfc3584](https://github.com/Archont561/clifacet/commit/cfc3584a84e7ae142ec6fc07b1a49488b91023c6))
 * **cli:** structured JSON execution mode and standardized failure schema (CLI-72)
 ([c2db237](https://github.com/Archont561/clifacet/commit/c2db237430ace6f1b6fda0c938262eba1822afff))
 * **cli:** retire build api and directory scanning (CLI-71)
