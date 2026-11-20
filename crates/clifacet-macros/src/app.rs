@@ -13,6 +13,14 @@ enum VersionArg {
     Specified(LitStr),
 }
 
+#[derive(Clone)]
+enum SkillConfig {
+    Default,
+    Renderer(Path),
+    Template(LitStr),
+    TemplatePath(LitStr),
+}
+
 #[derive(Default)]
 struct AppArgs {
     name: Option<LitStr>,
@@ -26,7 +34,7 @@ struct AppArgs {
     input: Option<Type>,
     commands: Option<Option<Ident>>,
     schema: Option<bool>,
-    skill: Option<Option<Path>>,
+    skill: Option<SkillConfig>,
 }
 
 struct ContextFieldInfo {
@@ -334,21 +342,49 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
-    let skill_inherent_impl = if let Some(skill_arg) = &app_args.skill {
-        let (renderer_methods, provider_impl) = if let Some(renderer_path) = skill_arg {
-            let methods = quote! {
-                /// Renders the CLI skill documentation using the configured [`#renderer_path`] renderer.
-                pub fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
-                    let renderer = <#renderer_path as ::core::default::Default>::default();
-                    Self::render_skill_with(&renderer)
+    let skill_inherent_impl = match &app_args.skill {
+        Some(SkillConfig::Renderer(renderer_path)) => {
+            quote! {
+                #[cfg(feature = "skill")]
+                impl #impl_generics #name #type_generics #where_clause {
+                    /// Renders the CLI skill documentation using the configured [`#renderer_path`] renderer.
+                    pub fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = <#renderer_path as ::core::default::Default>::default();
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    /// Returns a new instance of the configured skill renderer.
+                    pub fn skill_renderer() -> #renderer_path {
+                        <#renderer_path as ::core::default::Default>::default()
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template string.
+                    pub fn render_skill_with_template(
+                        template: &str,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::with_template(template);
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template file path.
+                    pub fn render_skill_with_template_file(
+                        path: impl ::core::convert::AsRef<::std::path::Path>,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::from_file(path)?;
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
+                    pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
+                        renderer: &R,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let meta = Self::cli_metadata();
+                        renderer.render(&meta)
+                    }
                 }
 
-                /// Returns a new instance of the configured skill renderer.
-                pub fn skill_renderer() -> #renderer_path {
-                    <#renderer_path as ::core::default::Default>::default()
-                }
-            };
-            let provider = quote! {
                 #[cfg(feature = "skill")]
                 impl #impl_generics ::clifacet::skill::SkillProvider for #name #type_generics #where_clause {
                     type Renderer = #renderer_path;
@@ -361,38 +397,211 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                         <#name #type_generics>::render_skill()
                     }
                 }
-            };
-            (methods, provider)
-        } else {
-            (quote!(), quote!())
-        };
+            }
+        }
+        Some(SkillConfig::Template(tmpl_lit)) => {
+            quote! {
+                #[cfg(feature = "skill")]
+                impl #impl_generics #name #type_generics #where_clause {
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using the configured template.
+                    pub fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = Self::skill_renderer();
+                        Self::render_skill_with(&renderer)
+                    }
 
-        quote! {
-            #[cfg(feature = "skill")]
-            impl #impl_generics #name #type_generics #where_clause {
-                #renderer_methods
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Returns a new instance of the configured skill renderer.
+                    pub fn skill_renderer() -> ::clifacet::skill::MiniJinjaSkillRenderer {
+                        ::clifacet::skill::MiniJinjaSkillRenderer::with_template(#tmpl_lit)
+                    }
 
-                /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
-                pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
-                    renderer: &R,
-                ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
-                    let meta = Self::cli_metadata();
-                    renderer.render(&meta)
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template string.
+                    pub fn render_skill_with_template(
+                        template: &str,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::with_template(template);
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template file path.
+                    pub fn render_skill_with_template_file(
+                        path: impl ::core::convert::AsRef<::std::path::Path>,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::from_file(path)?;
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
+                    pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
+                        renderer: &R,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let meta = Self::cli_metadata();
+                        renderer.render(&meta)
+                    }
+                }
+
+                #[cfg(all(feature = "skill", feature = "skill-minijinja"))]
+                impl #impl_generics ::clifacet::skill::SkillProvider for #name #type_generics #where_clause {
+                    type Renderer = ::clifacet::skill::MiniJinjaSkillRenderer;
+
+                    fn skill_renderer() -> Self::Renderer {
+                        <#name #type_generics>::skill_renderer()
+                    }
+
+                    fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::render_skill()
+                    }
                 }
             }
-
-            #provider_impl
         }
-    } else {
-        quote! {
-            #[cfg(feature = "skill")]
-            impl #impl_generics #name #type_generics #where_clause {
-                /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
-                pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
-                    renderer: &R,
-                ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
-                    let meta = Self::cli_metadata();
-                    renderer.render(&meta)
+        Some(SkillConfig::TemplatePath(path_lit)) => {
+            quote! {
+                #[cfg(feature = "skill")]
+                impl #impl_generics #name #type_generics #where_clause {
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using the template file.
+                    pub fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = Self::skill_renderer();
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Returns a new instance of the configured skill renderer.
+                    pub fn skill_renderer() -> ::clifacet::skill::MiniJinjaSkillRenderer {
+                        ::clifacet::skill::MiniJinjaSkillRenderer::with_template(::core::include_str!(#path_lit))
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template string.
+                    pub fn render_skill_with_template(
+                        template: &str,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::with_template(template);
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template file path.
+                    pub fn render_skill_with_template_file(
+                        path: impl ::core::convert::AsRef<::std::path::Path>,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::from_file(path)?;
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
+                    pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
+                        renderer: &R,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let meta = Self::cli_metadata();
+                        renderer.render(&meta)
+                    }
+                }
+
+                #[cfg(all(feature = "skill", feature = "skill-minijinja"))]
+                impl #impl_generics ::clifacet::skill::SkillProvider for #name #type_generics #where_clause {
+                    type Renderer = ::clifacet::skill::MiniJinjaSkillRenderer;
+
+                    fn skill_renderer() -> Self::Renderer {
+                        <#name #type_generics>::skill_renderer()
+                    }
+
+                    fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::render_skill()
+                    }
+                }
+            }
+        }
+        Some(SkillConfig::Default) => {
+            quote! {
+                #[cfg(feature = "skill")]
+                impl #impl_generics #name #type_generics #where_clause {
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using the default [`MiniJinjaSkillRenderer`].
+                    pub fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::new();
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Returns a new instance of the default skill renderer.
+                    pub fn skill_renderer() -> ::clifacet::skill::MiniJinjaSkillRenderer {
+                        ::clifacet::skill::MiniJinjaSkillRenderer::new()
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template string.
+                    pub fn render_skill_with_template(
+                        template: &str,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::with_template(template);
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template file path.
+                    pub fn render_skill_with_template_file(
+                        path: impl ::core::convert::AsRef<::std::path::Path>,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::from_file(path)?;
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
+                    pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
+                        renderer: &R,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let meta = Self::cli_metadata();
+                        renderer.render(&meta)
+                    }
+                }
+
+                #[cfg(all(feature = "skill", feature = "skill-minijinja"))]
+                impl #impl_generics ::clifacet::skill::SkillProvider for #name #type_generics #where_clause {
+                    type Renderer = ::clifacet::skill::MiniJinjaSkillRenderer;
+
+                    fn skill_renderer() -> Self::Renderer {
+                        ::clifacet::skill::MiniJinjaSkillRenderer::new()
+                    }
+
+                    fn render_skill() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        <#name #type_generics>::render_skill()
+                    }
+                }
+            }
+        }
+        None => {
+            quote! {
+                #[cfg(feature = "skill")]
+                impl #impl_generics #name #type_generics #where_clause {
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template string.
+                    pub fn render_skill_with_template(
+                        template: &str,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::with_template(template);
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    #[cfg(feature = "skill-minijinja")]
+                    /// Renders the CLI skill documentation using a custom template file path.
+                    pub fn render_skill_with_template_file(
+                        path: impl ::core::convert::AsRef<::std::path::Path>,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let renderer = ::clifacet::skill::MiniJinjaSkillRenderer::from_file(path)?;
+                        Self::render_skill_with(&renderer)
+                    }
+
+                    /// Renders the CLI skill documentation using the provided [`SkillRenderer`].
+                    pub fn render_skill_with<R: ::clifacet::skill::SkillRenderer>(
+                        renderer: &R,
+                    ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let meta = Self::cli_metadata();
+                        renderer.render(&meta)
+                    }
                 }
             }
         }
@@ -593,22 +802,47 @@ fn parse_app_args(attribute: TokenStream) -> syn::Result<AppArgs> {
                 }
             },
             "skill" => match entry {
-                Meta::Path(_) => args.skill = Some(None),
+                Meta::Path(_) => args.skill = Some(SkillConfig::Default),
                 Meta::NameValue(nv) => {
                     if let syn::Expr::Path(ep) = nv.value {
-                        args.skill = Some(Some(ep.path));
+                        args.skill = Some(SkillConfig::Renderer(ep.path));
                     } else {
                         return Err(syn::Error::new_spanned(
                             nv,
-                            "`skill` must be a flag or `skill = RendererPath`",
+                            "`skill` must be a flag, `skill = RendererPath`, or `skill(...)`",
                         ));
                     }
                 }
-                _ => {
-                    return Err(syn::Error::new_spanned(
-                        entry,
-                        "`skill` must be a flag or `skill = RendererPath`",
-                    ));
+                Meta::List(ml) => {
+                    let mut config = None;
+                    ml.parse_nested_meta(|meta| {
+                        let sub_ident = meta
+                            .path
+                            .get_ident()
+                            .ok_or_else(|| meta.error("expected identifier"))?;
+                        let sub_key = sub_ident.to_string();
+                        match sub_key.as_str() {
+                            "template" => {
+                                let lit: syn::LitStr = meta.value()?.parse()?;
+                                config = Some(SkillConfig::Template(lit));
+                                Ok(())
+                            }
+                            "template_path" => {
+                                let lit: syn::LitStr = meta.value()?.parse()?;
+                                config = Some(SkillConfig::TemplatePath(lit));
+                                Ok(())
+                            }
+                            "renderer" => {
+                                let path: syn::Path = meta.value()?.parse()?;
+                                config = Some(SkillConfig::Renderer(path));
+                                Ok(())
+                            }
+                            _ => Err(meta.error(format!(
+                                "unknown key `{sub_key}` in skill: supported keys are `template`, `template_path`, `renderer`"
+                            ))),
+                        }
+                    })?;
+                    args.skill = Some(config.unwrap_or(SkillConfig::Default));
                 }
             },
             _ => {

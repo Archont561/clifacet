@@ -48,7 +48,7 @@ crossterm = "0.29.0"
 # Official Model Context Protocol SDK for Rust (CLI-77).
 rmcp = { version = "3.11.0", default-features = false, features = ["server", "transport-io"] }
 # Template engine for agent skill generation (CLI-75).
-minijinja = { version = "3.1.0", default-features = false, features = ["loader"] }
+minijinja = { version = "3.1.0", default-features = false, features = ["builtins", "serde"] }
 # Machine-readable JSON Schema introspection and MCP tool schema (CLI-73, CLI-77).
 schemars = { version = "1.0.4", default-features = false, features = ["derive"] }
 # Dynamic shell completion generation for bash, zsh, fish, and powershell (CLI-78).

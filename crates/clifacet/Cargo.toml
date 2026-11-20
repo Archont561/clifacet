@@ -24,6 +24,8 @@ serde = ["dep:serde", "dep:serde_json"]
 schema = ["serde"]
 # Pluggable skill rendering for agent documentation (decision-25, CLI-74).
 skill = ["schema"]
+# Built-in MiniJinja skill renderer for agent documentation (decision-25, CLI-75).
+skill-minijinja = ["skill", "dep:minijinja"]
 # `clifacet::settings::toml`, the settings loader for the format most applications
 # already have (CLI-51). Off by default: a program that never reads a settings file pays
 # nothing for the parser.
@@ -43,6 +45,7 @@ figment = { workspace = true, optional = true }
 inquire = { workspace = true, optional = true }
 ratatui = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }
+minijinja = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd.workspace = true

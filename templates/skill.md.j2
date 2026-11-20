@@ -1,0 +1,48 @@
+---
+name: {{ name }}
+description: {{ (about | default(name ~ " command-line tool")) | trim | replace("\n", " ") }}
+---
+
+# {{ name }}
+
+{{ long_about | default(about | default(name ~ " command-line tool.")) | trim }}
+
+## Non-Interactive Execution Rules
+
+- Use non-interactive flags or explicit arguments when running unattended to avoid interactive prompts.
+- Pass `--json` when structured, machine-readable output is needed.
+- Successful commands exit with status code 0. Execution and validation errors exit with non-zero status codes and output error details to standard error.
+{% if arguments %}
+
+## Options
+
+{% for arg in arguments -%}
+- `{% if arg.positional %}<{{ arg.value_name | default(arg.id) }}>{% else %}--{{ arg.long | default(arg.id) }}{% if arg.short %}, -{{ arg.short }}{% endif %}{% if not arg.is_flag %} <{{ arg.value_name | default("VALUE") }}>{% endif %}{% endif %}`: {{ arg.help | default("No description.") }}{% if arg.required %} *(required)*{% endif %}{% if arg.default_values %} *(default: `{{ arg.default_values | join(", ") }}`)*{% endif %}{% if arg.env %} *(environment: `{{ arg.env }}`)*{% endif %}
+{% endfor -%}
+{% endif %}
+{% if subcommands %}
+
+## Commands
+{% for sub in subcommands %}
+
+### `{{ name }} {{ sub.name }}`
+
+{{ sub.long_about | default(sub.about | default("No description.")) | trim }}
+{% if sub.arguments %}
+
+#### Options
+
+{% for arg in sub.arguments -%}
+- `{% if arg.positional %}<{{ arg.value_name | default(arg.id) }}>{% else %}--{{ arg.long | default(arg.id) }}{% if arg.short %}, -{{ arg.short }}{% endif %}{% if not arg.is_flag %} <{{ arg.value_name | default("VALUE") }}>{% endif %}{% endif %}`: {{ arg.help | default("No description.") }}{% if arg.required %} *(required)*{% endif %}{% if arg.default_values %} *(default: `{{ arg.default_values | join(", ") }}`)*{% endif %}{% if arg.env %} *(environment: `{{ arg.env }}`)*{% endif %}
+{% endfor -%}
+{% endif %}
+{% if sub.subcommands %}
+
+#### Subcommands
+
+{% for nested in sub.subcommands -%}
+- `{{ name }} {{ sub.name }} {{ nested.name }}`: {{ nested.help | default(nested.about | default("No description.")) | trim }}
+{% endfor -%}
+{% endif %}
+{% endfor -%}
+{% endif %}

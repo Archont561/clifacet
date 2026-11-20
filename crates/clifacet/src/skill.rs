@@ -5,6 +5,113 @@ use crate::schema::CliMetadata;
 use std::rc::Rc;
 use std::sync::Arc;
 
+#[cfg(feature = "skill-minijinja")]
+pub const DEFAULT_SKILL_TEMPLATE: &str = include_str!("../templates/skill.md.j2");
+
+/// A skill renderer that uses `MiniJinja` to render agent documentation templates (CLI-75, decision-25).
+#[cfg(feature = "skill-minijinja")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MiniJinjaSkillRenderer {
+    template: Option<String>,
+}
+
+#[cfg(feature = "skill-minijinja")]
+impl Default for MiniJinjaSkillRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "skill-minijinja")]
+impl MiniJinjaSkillRenderer {
+    /// Creates a new `MiniJinjaSkillRenderer` using the default embedded template.
+    #[must_use]
+    pub fn new() -> Self {
+        Self { template: None }
+    }
+
+    /// Creates a new `MiniJinjaSkillRenderer` with a custom template string.
+    #[must_use]
+    pub fn with_template(template: impl Into<String>) -> Self {
+        Self {
+            template: Some(template.into()),
+        }
+    }
+
+    /// Creates a new `MiniJinjaSkillRenderer` reading a custom template from a file path.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if reading the file fails.
+    pub fn from_file(path: impl AsRef<std::path::Path>) -> Result<Self, Failure> {
+        let path = path.as_ref();
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            Failure::execution(format!(
+                "cannot read template file `{}`: {e}",
+                path.display()
+            ))
+        })?;
+        Ok(Self::with_template(content))
+    }
+
+    /// Returns the template string used by this renderer.
+    #[must_use]
+    pub fn template(&self) -> &str {
+        self.template.as_deref().unwrap_or(DEFAULT_SKILL_TEMPLATE)
+    }
+}
+
+#[cfg(feature = "skill-minijinja")]
+impl SkillRenderer for MiniJinjaSkillRenderer {
+    fn render(&self, cli: &CliMetadata) -> Result<String, Failure> {
+        let template_source = self.template();
+        let mut env = minijinja::Environment::new();
+
+        env.add_template("skill.md.j2", template_source)
+            .map_err(|e| Failure::execution(format!("failed to parse skill template: {e}")))?;
+        let tmpl = env
+            .get_template("skill.md.j2")
+            .map_err(|e| Failure::execution(format!("failed to load skill template: {e}")))?;
+        let raw = tmpl
+            .render(minijinja::value::Serde(cli))
+            .map_err(|e| Failure::execution(format!("failed to render skill template: {e}")))?;
+
+        Ok(clean_rendered_markdown(&raw))
+    }
+}
+
+#[cfg(feature = "skill-minijinja")]
+fn clean_rendered_markdown(raw: &str) -> String {
+    let mut cleaned_lines: Vec<&str> = Vec::new();
+    let mut prev_blank = false;
+
+    for line in raw.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.is_empty() {
+            if !prev_blank {
+                cleaned_lines.push("");
+                prev_blank = true;
+            }
+        } else {
+            cleaned_lines.push(trimmed);
+            prev_blank = false;
+        }
+    }
+
+    while let Some(&"") = cleaned_lines.first() {
+        cleaned_lines.remove(0);
+    }
+    while let Some(&"") = cleaned_lines.last() {
+        cleaned_lines.pop();
+    }
+
+    let mut result = cleaned_lines.join("\n");
+    if !result.is_empty() {
+        result.push('\n');
+    }
+    result
+}
+
 /// A pluggable renderer converting [`CliMetadata`] into agent documentation or skill content.
 pub trait SkillRenderer {
     /// Renders the CLI metadata into a formatted string (such as Markdown or JSON).
