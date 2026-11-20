@@ -723,6 +723,109 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
+    let mcp_inherent_impl = if subcommand_field.is_some() {
+        quote! {
+            #[cfg(feature = "mcp")]
+            impl #impl_generics #name #type_generics #where_clause {
+                /// Runs the Model Context Protocol (MCP) server for this application over custom streams.
+                ///
+                /// # Errors
+                ///
+                /// Returns a [`Failure`] if running the server fails.
+                pub fn run_mcp_server_streams<R: ::std::io::BufRead, W: ::std::io::Write>(
+                    reader: R,
+                    writer: W,
+                ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                    let cmd = <Self as ::clifacet::Facet>::command();
+                    let meta = ::clifacet::schema::CliMetadata::from_command(&cmd);
+                    let runner_meta = meta.clone();
+                    let runner = move |tool_name: &str, arguments: &::serde_json::Value| -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        let argv = ::clifacet::mcp::arguments_to_argv(&runner_meta.name, tool_name, arguments, &runner_meta)?;
+                        let app = <::clifacet::App<Self, Self, ::clifacet::app::Plain, <Self as ::clifacet::cli::Cli>::Context>>::for_cli();
+                        let mut out = ::std::vec::Vec::new();
+                        let mut err = ::std::vec::Vec::new();
+                        let exit_code = app.run_with(
+                            argv,
+                            ::clifacet::policy::Capabilities::headless(),
+                            || ::std::boxed::Box::new(::clifacet::prompt::Scripted::default()),
+                            &mut out,
+                            &mut err,
+                        );
+                        if exit_code == 0 {
+                            let stdout_str = ::std::string::String::from_utf8(out)
+                                .map_err(|e| ::clifacet::Failure::execution(e.to_string()))?;
+                            let trimmed = stdout_str.trim().to_string();
+                            if trimmed.is_empty() {
+                                ::core::result::Result::Ok("ok".to_string())
+                            } else {
+                                ::core::result::Result::Ok(trimmed)
+                            }
+                        } else {
+                            let stderr_str = ::std::string::String::from_utf8(err)
+                                .map_err(|e| ::clifacet::Failure::execution(e.to_string()))?;
+                            let msg = if stderr_str.trim().is_empty() {
+                                let stdout_str = ::std::string::String::from_utf8(out).unwrap_or_default();
+                                if stdout_str.trim().is_empty() {
+                                    format!("command failed with exit code {exit_code}")
+                                } else {
+                                    stdout_str.trim().to_string()
+                                }
+                            } else {
+                                stderr_str.trim().to_string()
+                            };
+                            ::core::result::Result::Err(::clifacet::Failure::execution(msg))
+                        }
+                    };
+                    ::clifacet::mcp::run_server_streams(&meta, runner, reader, writer)
+                }
+
+                /// Runs the Model Context Protocol (MCP) stdio tool server for this application.
+                ///
+                /// # Errors
+                ///
+                /// Returns a [`Failure`] if running the server fails.
+                pub fn run_mcp_server() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                    let stdin = ::std::io::stdin();
+                    let stdout = ::std::io::stdout();
+                    Self::run_mcp_server_streams(stdin.lock(), stdout.lock())
+                }
+            }
+        }
+    } else {
+        quote! {
+            #[cfg(feature = "mcp")]
+            impl #impl_generics #name #type_generics #where_clause {
+                /// Runs the Model Context Protocol (MCP) server for this application over custom streams.
+                ///
+                /// # Errors
+                ///
+                /// Returns a [`Failure`] if running the server fails.
+                pub fn run_mcp_server_streams<R: ::std::io::BufRead, W: ::std::io::Write>(
+                    reader: R,
+                    writer: W,
+                ) -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                    let cmd = <Self as ::clifacet::Facet>::command();
+                    let meta = ::clifacet::schema::CliMetadata::from_command(&cmd);
+                    let runner = |_tool_name: &str, _arguments: &::serde_json::Value| -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                        ::core::result::Result::Err(::clifacet::Failure::execution("no commands declared"))
+                    };
+                    ::clifacet::mcp::run_server_streams(&meta, runner, reader, writer)
+                }
+
+                /// Runs the Model Context Protocol (MCP) stdio tool server for this application.
+                ///
+                /// # Errors
+                ///
+                /// Returns a [`Failure`] if running the server fails.
+                pub fn run_mcp_server() -> ::core::result::Result<::std::string::String, ::clifacet::Failure> {
+                    let stdin = ::std::io::stdin();
+                    let stdout = ::std::io::stdout();
+                    Self::run_mcp_server_streams(stdin.lock(), stdout.lock())
+                }
+            }
+        }
+    };
+
     parsed.attrs.insert(
         0,
         syn::parse_quote!(#[derive(::clap::Parser, ::std::clone::Clone)]),
@@ -740,6 +843,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         #json_inherent_impl
         #schema_inherent_impl
         #skill_inherent_impl
+        #mcp_inherent_impl
     })
 }
 

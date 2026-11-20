@@ -293,6 +293,28 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         });
     }
 
+    let has_user_mcp = item_impl.items.iter().any(|item| {
+        if let syn::ImplItem::Fn(m) = item {
+            m.sig.ident == "mcp"
+        } else {
+            false
+        }
+    });
+
+    if !is_group && !has_user_mcp {
+        variants.push(quote! {
+            #[cfg(feature = "mcp")]
+            #[command(name = "mcp", about = "Run Model Context Protocol (MCP) stdio tool server")]
+            Mcp,
+        });
+        dispatch_arms.push(quote! {
+            #[cfg(feature = "mcp")]
+            ::core::option::Option::Some(#enum_ident::Mcp) => {
+                Self::run_mcp_server()
+            }
+        });
+    }
+
     let enum_def = quote! {
         #[derive(::clap::Subcommand, ::std::clone::Clone, ::std::fmt::Debug)]
         pub enum #enum_ident {

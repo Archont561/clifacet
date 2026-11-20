@@ -1,7 +1,7 @@
 ---
 id: CLI-77
 title: Implement Model Context Protocol stdio tool server
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:30'
 labels: []
@@ -19,8 +19,8 @@ Implement the Model Context Protocol (MCP) tool server behind the `mcp` Cargo fe
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 mcp Cargo feature and stdio JSON-RPC protocol handler are implemented
-- [ ] #2 mycli mcp implements tools/list reflecting controller commands and argument schemas
-- [ ] #3 tools/call dispatches to controller command execution and returns structured results
-- [ ] #4 Integration tests verify MCP JSON-RPC protocol compliance and error handling over stdio
+- [x] #1 mcp Cargo feature and stdio JSON-RPC protocol handler are implemented
+- [x] #2 mycli mcp implements tools/list reflecting controller commands and argument schemas
+- [x] #3 tools/call dispatches to controller command execution and returns structured results
+- [x] #4 Integration tests verify MCP JSON-RPC protocol compliance and error handling over stdio
 <!-- AC:END -->

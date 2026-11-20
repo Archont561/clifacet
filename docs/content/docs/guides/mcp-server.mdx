@@ -1,0 +1,234 @@
+---
+title: Model Context Protocol (MCP) Server
+description: Run your CLI as a Model Context Protocol stdio tool server for Claude Desktop, Cursor, and agent environments.
+---
+
+The Model Context Protocol (MCP) is an open standard that enables AI models and agent runtimes
+to securely discover and execute tools provided by external applications.
+
+With Clifacet's `mcp` feature, any CLI application decorated with `#[clifacet::app]` can serve
+as an MCP stdio server. Controller commands are exposed as MCP tools with JSON input
+schemas derived directly from your command argument types.
+
+<Callout type="info">
+Enable the `mcp` feature in `Cargo.toml` to inject the built-in `mcp` subcommand and runtime protocol handler.
+</Callout>
+
+## Enabling MCP
+
+Add the `mcp` feature to your `clifacet` dependency:
+
+```toml
+[dependencies]
+clifacet = { version = "0.7", features = ["mcp"] }
+```
+
+When `mcp` is active, Clifacet automatically injects the `mcp` command:
+
+```sh
+cargo run -- --help
+```
+
+```text
+Commands:
+  mcp          Run Model Context Protocol (MCP) stdio tool server
+  schema       Print the machine-readable CLI JSON schema
+  write-skill  Generate or verify agent skill documentation
+```
+
+## Running the Stdio Server
+
+Running `mycli mcp` starts a synchronous JSON-RPC 2.0 loop reading requests from standard input
+and writing responses to standard output:
+
+```sh
+cargo run -- mcp
+```
+
+Host environments launch the CLI as a subprocess and communicate over stdio, streaming newline-delimited
+JSON-RPC messages.
+
+## Supported MCP Methods
+
+The Clifacet MCP server implements the core specification methods:
+
+### 1. `initialize`
+
+Returns protocol version `2024-11-05`, server capabilities (`tools`), and application metadata:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {},
+    "clientInfo": {
+      "name": "claude-ai",
+      "version": "1.0.0"
+    }
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "serverInfo": {
+      "name": "mycli",
+      "version": "0.1.0"
+    }
+  }
+}
+```
+
+### 2. `ping`
+
+Health-check probe returning an empty result object:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "ping"
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {}
+}
+```
+
+### 3. `tools/list`
+
+Lists all controller commands as available tools, with argument types translated to JSON Schema properties:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/list"
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "tools": [
+      {
+        "name": "deploy",
+        "description": "Deploy container image to target cluster",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "type": "string"
+            },
+            "replicas": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          "required": [
+            "image"
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+Internal framework commands (`mcp`, `help`, `schema`, `write-skill`) are excluded from `tools/list`.
+
+### 4. `tools/call`
+
+Executes the requested tool with the provided arguments and returns structured content:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "deploy",
+    "arguments": {
+      "image": "nginx:latest",
+      "replicas": 3
+    }
+  }
+}
+```
+
+Successful execution returns `isError: false` with the command's standard output:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "deployed nginx:latest with 3 replicas"
+      }
+    ],
+    "isError": false
+  }
+}
+```
+
+If argument validation fails or the command reports an error, MCP returns `isError: true` with the diagnostic message:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "error: the following required arguments were not provided: <IMAGE>"
+      }
+    ],
+    "isError": true
+  }
+}
+```
+
+## Configuring Claude Desktop
+
+To use your CLI in Claude Desktop, add your binary to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "my-cli": {
+      "command": "/path/to/mycli",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
+```
