@@ -12,8 +12,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **completions:** implement context-aware dynamic shell completions (CLI-78)
+([01fdf4b](https://github.com/Archont561/clifacet/commit/01fdf4b7f4bee00e69f4aa8ffd55554254c99670))
 * **mcp:** implement Model Context Protocol stdio tool server (CLI-77)
-([a379213](https://github.com/Archont561/clifacet/commit/a3792130aac65f03c01e13f41b4d1b51b6e40dca))
+([8912831](https://github.com/Archont561/clifacet/commit/8912831081b390a634ba7900f0c7bfb7742a2710))
 * **skill:** implement write-skill command with drift check (CLI-76)
 ([6c9cde7](https://github.com/Archont561/clifacet/commit/6c9cde781a15311cb9fe53739e3209bea878a0ed))
 * **skill:** implement MiniJinja skill renderer and embedded template (CLI-75)
