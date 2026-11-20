@@ -14,6 +14,13 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **async:** define core async traits, cancellation, and progress contexts (CLI-79)
+([33485ca](https://github.com/Archont561/clifacet/commit/33485ca10df89154cd4dc75bece746e5dade1fd6))
+
+## [0.8.0] - 2026-11-20
+
+### Added
+
 * **completions:** implement context-aware dynamic shell completions (CLI-78)
 ([20b762e](https://github.com/Archont561/clifacet/commit/20b762eb3576260ca47c917e4423295c382b6c81))
 * **mcp:** implement Model Context Protocol stdio tool server (CLI-77)
