@@ -1,9 +1,10 @@
 ---
 id: CLI-73
 title: Machine-readable CLI schema introspection
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:30'
+updated_date: '2026-11-20 09:30'
 labels: []
 milestone: m-19
 dependencies:
@@ -19,8 +20,8 @@ Implement machine-readable CLI schema introspection behind the `schema` Cargo fe
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 schema Cargo feature and CliMetadata reflection types are defined
-- [ ] #2 mycli schema emits complete command hierarchy, argument constraints, and docstrings as JSON Schema
-- [ ] #3 Macro #[clifacet::app] conditionally generates the schema command when feature is active
-- [ ] #4 Integration tests verify schema accuracy against declared commands and argument types
+- [x] #1 schema Cargo feature and CliMetadata reflection types are defined
+- [x] #2 mycli schema emits complete command hierarchy, argument constraints, and docstrings as JSON Schema
+- [x] #3 Macro #[clifacet::app] conditionally generates the schema command when feature is active
+- [x] #4 Integration tests verify schema accuracy against declared commands and argument types
 <!-- AC:END -->
