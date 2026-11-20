@@ -220,6 +220,15 @@ pub mod completions;
 #[cfg(feature = "completions")]
 pub use completions::Shell;
 
+#[cfg(feature = "async")]
+pub mod r#async;
+#[cfg(feature = "async")]
+pub use r#async::{
+    AsyncCommand, AsyncHandler, AsyncPlan, AsyncPlanned, AsyncPlannedWith, BoxFuture, Cancel,
+    CancelledFuture, LocalAsyncHandler, NoopProgressSink, ProgressEvent, ProgressSink,
+    RecordingProgressSink, RunCx,
+};
+
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///
 /// A caller that parses with a derived command needs `clap::Parser` in scope, so the

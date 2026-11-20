@@ -1,9 +1,10 @@
 ---
 id: CLI-79
 title: Define async feature core traits and runtime contexts
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 19:00'
+updated_date: '2026-11-20 20:01'
 labels: []
 milestone: m-21
 dependencies: []
@@ -18,8 +19,8 @@ Define the `async` Cargo feature without any third-party runtime dependencies (d
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 async Cargo feature is defined with zero runtime dependencies (std futures only)
-- [ ] #2 AsyncHandler, AsyncCommand, AsyncPlanned, and LocalAsyncHandler traits are implemented
-- [ ] #3 RunCx, Cancel token, and ProgressSink trait are defined and passed to async handlers
-- [ ] #4 Unit tests and contract tests verify trait implementations and test harness helpers (RunCx::for_test)
+- [x] #1 async Cargo feature is defined with zero runtime dependencies (std futures only)
+- [x] #2 AsyncHandler, AsyncCommand, AsyncPlanned, and LocalAsyncHandler traits are implemented
+- [x] #3 RunCx, Cancel token, and ProgressSink trait are defined and passed to async handlers
+- [x] #4 Unit tests and contract tests verify trait implementations and test harness helpers (RunCx::for_test)
 <!-- AC:END -->
