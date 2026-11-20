@@ -13,7 +13,7 @@ copy has drifted. Edit the commit messages, not the file.
 ### Added
 
 * **completions:** implement context-aware dynamic shell completions (CLI-78)
-([01fdf4b](https://github.com/Archont561/clifacet/commit/01fdf4b7f4bee00e69f4aa8ffd55554254c99670))
+([20b762e](https://github.com/Archont561/clifacet/commit/20b762eb3576260ca47c917e4423295c382b6c81))
 * **mcp:** implement Model Context Protocol stdio tool server (CLI-77)
 ([8912831](https://github.com/Archont561/clifacet/commit/8912831081b390a634ba7900f0c7bfb7742a2710))
 * **skill:** implement write-skill command with drift check (CLI-76)
