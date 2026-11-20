@@ -81,14 +81,14 @@ use crate::settings;
 /// struct Cli {
 ///     /// The application's own global option.
 ///     #[arg(long, global = true)]
-///     json: bool,
+///     verbose: bool,
 ///
 ///     #[command(flatten)]
 ///     globals: clifacet::Globals,
 /// }
 ///
-/// let cli = <Cli as clap::Parser>::try_parse_from(["app", "--dry-run", "--json"]).unwrap();
-/// assert!(cli.globals.dry_run && cli.json);
+/// let cli = <Cli as clap::Parser>::try_parse_from(["app", "--dry-run", "--verbose"]).unwrap();
+/// assert!(cli.globals.dry_run && cli.verbose);
 /// ```
 ///
 /// Both are `global`, so they are accepted after a subcommand too. They decide how a run
@@ -97,6 +97,7 @@ use crate::settings;
 /// `yes` and `dry_run`, so an application that declared its own flags with those ids
 /// before this type existed keeps working unchanged.
 #[derive(Debug, Clone, Default, PartialEq, Eq, clap::Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Globals {
     /// Answer every confirmation with yes instead of asking.
     #[arg(long, global = true)]
@@ -105,6 +106,10 @@ pub struct Globals {
     /// Show what would run, and run nothing.
     #[arg(long, global = true)]
     pub dry_run: bool,
+
+    /// Output structured JSON instead of human-readable text.
+    #[arg(long, global = true)]
+    pub json: bool,
 
     /// Read settings from this file instead of the default location.
     ///
@@ -127,6 +132,7 @@ impl Globals {
         Self {
             yes: on("yes"),
             dry_run: on("dry_run"),
+            json: on("json"),
             config: matches
                 .try_get_one::<std::path::PathBuf>("config")
                 .ok()
@@ -164,6 +170,17 @@ pub trait Render<T> {
     /// Returns the stream's error. The runner reports it as an execution failure: a run
     /// that cannot write its data has nowhere to report success.
     fn render(&self, output: T, out: &mut dyn Write) -> std::io::Result<()>;
+
+    /// Writes `output` as structured JSON on `out`.
+    ///
+    /// By default delegates to [`render`](Self::render).
+    ///
+    /// # Errors
+    ///
+    /// Returns the stream's error.
+    fn render_json(&self, output: T, out: &mut dyn Write) -> std::io::Result<()> {
+        self.render(output, out)
+    }
 }
 
 /// The default renderer: an output's [`Display`], then a newline.
@@ -174,6 +191,37 @@ impl<T: Display> Render<T> for Plain {
     fn render(&self, output: T, out: &mut dyn Write) -> std::io::Result<()> {
         writeln!(out, "{output}")
     }
+
+    fn render_json(&self, output: T, out: &mut dyn Write) -> std::io::Result<()> {
+        #[cfg(feature = "serde")]
+        {
+            let text = output.to_string();
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                serde_json::to_writer_pretty(&mut *out, &value).map_err(std::io::Error::other)?;
+                return writeln!(out);
+            }
+            serde_json::to_writer_pretty(&mut *out, &text).map_err(std::io::Error::other)?;
+            writeln!(out)
+        }
+        #[cfg(not(feature = "serde"))]
+        {
+            writeln!(out, "{output}")
+        }
+    }
+}
+
+pub use crate::cli::{Json, JsonRenderer};
+
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize> Render<T> for Json<()> {
+    fn render(&self, output: T, out: &mut dyn Write) -> std::io::Result<()> {
+        serde_json::to_writer_pretty(&mut *out, &output).map_err(std::io::Error::other)?;
+        writeln!(out)
+    }
+
+    fn render_json(&self, output: T, out: &mut dyn Write) -> std::io::Result<()> {
+        self.render(output, out)
+    }
 }
 
 impl<T, F> Render<T> for F
@@ -181,6 +229,10 @@ where
     F: Fn(T, &mut dyn Write) -> std::io::Result<()>,
 {
     fn render(&self, output: T, out: &mut dyn Write) -> std::io::Result<()> {
+        self(output, out)
+    }
+
+    fn render_json(&self, output: T, out: &mut dyn Write) -> std::io::Result<()> {
         self(output, out)
     }
 }
@@ -576,7 +628,14 @@ where
             Ok((cli, globals)) => {
                 self.run_parsed(cli, globals, capabilities, build_frontend, out, err)
             }
-            Err(error) => report::render(&program::<Cli>(), &error, &self.exit, out, err),
+            Err(error) => {
+                let json = asks_for_json(&argv);
+                if json && error.use_stderr() {
+                    report::render_json(&program::<Cli>(), &error, &self.exit, out, err)
+                } else {
+                    report::render(&program::<Cli>(), &error, &self.exit, out, err)
+                }
+            }
         }
     }
 
@@ -656,7 +715,7 @@ where
             }
             Err(refusal) => Err(Failure::validation(refusal.message())),
         };
-        self.conclude(outcome, out, err)
+        self.conclude(outcome, &globals, out, err)
     }
 
     /// Hosts the form generated from `Cli`'s `form` fields, drawn on the diagnostic stream.
@@ -759,6 +818,26 @@ where
                     let steps = plan.describe();
                     if steps.is_empty() {
                         Ok(())
+                    } else if globals.json {
+                        #[cfg(feature = "serde")]
+                        {
+                            let payload = serde_json::json!({
+                                "dry_run": true,
+                                "steps": plan.steps(),
+                            });
+                            serde_json::to_writer_pretty(&mut *out, &payload)
+                                .map_err(std::io::Error::other)
+                                .and_then(|()| writeln!(out))
+                                .map_err(|error| {
+                                    Failure::execution(format!("cannot write the output: {error}"))
+                                })
+                        }
+                        #[cfg(not(feature = "serde"))]
+                        {
+                            writeln!(out, "{steps}").map_err(|error| {
+                                Failure::execution(format!("cannot write the output: {error}"))
+                            })
+                        }
                     } else {
                         writeln!(out, "{steps}").map_err(|error| {
                             Failure::execution(format!("cannot write the output: {error}"))
@@ -769,9 +848,17 @@ where
             }
         } else {
             match Handler::<Cx>::handle(command, input, &cx) {
-                Ok(output) => self.render.render(output, out).map_err(|error| {
-                    Failure::execution(format!("cannot write the output: {error}"))
-                }),
+                Ok(output) => {
+                    if globals.json {
+                        self.render.render_json(output, out).map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    } else {
+                        self.render.render(output, out).map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    }
+                }
                 Err(err) => Err(err),
             }
         };
@@ -801,12 +888,19 @@ where
     fn conclude(
         &self,
         outcome: Result<(), Failure>,
+        globals: &Globals,
         out: &mut dyn Write,
         err: &mut dyn Write,
     ) -> i32 {
         match outcome {
             Ok(()) => self.exit.success(),
-            Err(failure) => report::render(&program::<Cli>(), &failure, &self.exit, out, err),
+            Err(failure) => {
+                if globals.json {
+                    report::render_json(&program::<Cli>(), &failure, &self.exit, out, err)
+                } else {
+                    report::render(&program::<Cli>(), &failure, &self.exit, out, err)
+                }
+            }
         }
     }
 }
@@ -852,6 +946,21 @@ fn asks_for_help_or_version(argv: &[OsString]) -> bool {
         match text {
             "--" => return false,
             "--help" | "-h" | "--version" | "-V" => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Whether the argument list asks for structured JSON output.
+fn asks_for_json(argv: &[OsString]) -> bool {
+    for argument in argv {
+        let Some(text) = argument.to_str() else {
+            continue;
+        };
+        match text {
+            "--" => return false,
+            "--json" => return true,
             _ => {}
         }
     }

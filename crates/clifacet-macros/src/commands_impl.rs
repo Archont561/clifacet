@@ -168,7 +168,14 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 ::core::option::Option::Some(#enum_ident::#variant_ident(#sub_ident)) => {
                     let outcome = self.#method_ident(::std::clone::Clone::clone(#sub_ident));
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
-                    ::core::result::Result::Ok(res.to_string())
+                    let is_json = {
+                        use ::clifacet::cli::check_json::FallbackIsJson as _;
+                        self.__clifacet_is_json()
+                    };
+                    {
+                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
+                        res.format_outcome(is_json)
+                    }
                 }
             });
         } else if variant_fields.is_empty() {
@@ -181,7 +188,14 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 ::core::option::Option::Some(#enum_ident::#variant_ident) => {
                     let outcome = self.#method_ident();
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
-                    ::core::result::Result::Ok(res.to_string())
+                    let is_json = {
+                        use ::clifacet::cli::check_json::FallbackIsJson as _;
+                        self.__clifacet_is_json()
+                    };
+                    {
+                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
+                        res.format_outcome(is_json)
+                    }
                 }
             });
         } else {
@@ -196,7 +210,14 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 ::core::option::Option::Some(#enum_ident::#variant_ident { #(#field_names),* }) => {
                     let outcome = self.#method_ident(#(#call_args),*);
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
-                    ::core::result::Result::Ok(res.to_string())
+                    let is_json = {
+                        use ::clifacet::cli::check_json::FallbackIsJson as _;
+                        self.__clifacet_is_json()
+                    };
+                    {
+                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
+                        res.format_outcome(is_json)
+                    }
                 }
             });
         }

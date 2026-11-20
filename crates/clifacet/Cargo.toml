@@ -18,9 +18,8 @@ exclude = ["features/", "tests/*_bdd.rs"]
 default = []
 interactive = ["dep:inquire"]
 tui = ["dep:ratatui", "dep:crossterm"]
-# `Serialize` for `Failure`, `FailureKind` and a redacted `Secret`. JSON is not the
-# library's to write (decision-3): an application serialises a failure itself.
-serde = ["dep:serde"]
+# Serialization for `Failure`, `FailureKind`, `Secret`, and structured JSON output mode `--json` (decision-25).
+serde = ["dep:serde", "dep:serde_json"]
 # `clifacet::settings::toml`, the settings loader for the format most applications
 # already have (CLI-51). Off by default: a program that never reads a settings file pays
 # nothing for the parser.
@@ -33,6 +32,7 @@ settings-figment = ["dep:figment", "serde", "dep:toml_edit"]
 clifacet-macros.workspace = true
 clap.workspace = true
 serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 toml_edit = { workspace = true, optional = true }
 figment = { workspace = true, optional = true }

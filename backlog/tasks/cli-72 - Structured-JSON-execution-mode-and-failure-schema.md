@@ -1,9 +1,10 @@
 ---
 id: CLI-72
 title: Structured JSON execution mode and failure schema
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:30'
+updated_date: '2026-11-20 09:02'
 labels: []
 milestone: m-19
 dependencies: []
@@ -18,8 +19,8 @@ Implement the global `--json` execution mode and standardized failure schema (de
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Global --json flag formats successful command outputs as structured JSON on stdout
-- [ ] #2 Command failures and validation errors format as standardized JSON error payloads on stderr
-- [ ] #3 Non-interactive and piped executions without a TTY preserve strict separation of data and logs
-- [ ] #4 Integration tests verify JSON output structure, exit codes, and deserializability across success and failure
+- [x] #1 Global --json flag formats successful command outputs as structured JSON on stdout
+- [x] #2 Command failures and validation errors format as standardized JSON error payloads on stderr
+- [x] #3 Non-interactive and piped executions without a TTY preserve strict separation of data and logs
+- [x] #4 Integration tests verify JSON output structure, exit codes, and deserializability across success and failure
 <!-- AC:END -->
