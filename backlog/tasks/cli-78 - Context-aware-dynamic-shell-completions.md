@@ -1,7 +1,7 @@
 ---
 id: CLI-78
 title: Context aware dynamic shell completions
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 14:30'
 labels: []
@@ -19,8 +19,8 @@ Implement context-aware dynamic shell completions behind the `completions` Cargo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 completions Cargo feature provides mycli completions for Bash, Zsh, Fish, and PowerShell
-- [ ] #2 #[clifacet(complete = ...)] connects argument completion callbacks to live context state
-- [ ] #3 Integration tests verify static completion script generation across all supported shells
-- [ ] #4 Integration tests verify dynamic completion resolution using mock context state
+- [x] #1 completions Cargo feature provides mycli completions for Bash, Zsh, Fish, and PowerShell
+- [x] #2 #[clifacet(complete = ...)] connects argument completion callbacks to live context state
+- [x] #3 Integration tests verify static completion script generation across all supported shells
+- [x] #4 Integration tests verify dynamic completion resolution using mock context state
 <!-- AC:END -->
