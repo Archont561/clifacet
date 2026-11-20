@@ -6,9 +6,10 @@
 
 ## Overview
 
-Clifacet is a Rust library for command-line applications whose commands are **functions**:
-a `#[clifacet::command]` function's parameters are its arguments, and the same declaration
-gives the `clap` surface, the validated input, the prompts and the full-screen form. An
+Clifacet is a Rust library for command-line applications built from declarative
+controllers and commands: `#[clifacet::app]` and `#[clifacet::commands]` define the
+application surface, context, and command methods, where each declaration gives the
+`clap` surface, the validated input, the prompts and the full-screen form. An
 application is a value — `clifacet::App` — that composes the policy, the settings layering
 and the exit codes around it.
 

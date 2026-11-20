@@ -13,7 +13,7 @@ copy has drifted. Edit the commit messages, not the file.
 ### Added
 
 * **async:** define core async traits, cancellation, and progress contexts (CLI-79)
-([33485ca](https://github.com/Archont561/clifacet/commit/33485ca10df89154cd4dc75bece746e5dade1fd6))
+([31074a3](https://github.com/Archont561/clifacet/commit/31074a3e13989ee33ccfb5fa82c397bf614e15e8))
 
 ## [0.8.0] - 2026-11-20
 

@@ -13,7 +13,7 @@ authors = ["Archont561 <142521648+Archont561@users.noreply.github.com>"]
 [workspace.lints.rust]
 unsafe_code = "forbid"
 unused_must_use = "deny"
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("serde"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("serde", "schema", "skill", "skill-minijinja", "mcp", "completions", "async"))'] }
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
