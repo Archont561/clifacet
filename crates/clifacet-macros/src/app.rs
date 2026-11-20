@@ -138,6 +138,11 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     }
 
+    let has_globals = fields_named
+        .named
+        .iter()
+        .any(|f| f.ident.as_ref().is_some_and(|i| i == "globals"));
+
     // Forward any remaining field attributes through crate::field
     crate::command::forward_field_attributes(&mut parsed)?;
 
@@ -291,6 +296,21 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
+    let is_json_expr = if has_globals {
+        quote!(self.globals.json)
+    } else {
+        quote!(false)
+    };
+
+    let json_inherent_impl = quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            #[doc(hidden)]
+            pub fn __clifacet_is_json(&self) -> bool {
+                #is_json_expr
+            }
+        }
+    };
+
     parsed.attrs.insert(
         0,
         syn::parse_quote!(#[derive(::clap::Parser, ::std::clone::Clone)]),
@@ -305,6 +325,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         #cli_impl
         #facet_impl
         #collect_impl
+        #json_inherent_impl
     })
 }
 

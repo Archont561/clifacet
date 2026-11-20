@@ -98,3 +98,127 @@ pub fn render<'a>(
         }
     }
 }
+
+/// Standardized JSON error payload emitted on `stderr` when `--json` is active (decision-25).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ErrorPayload {
+    /// Status indicator, always `"error"`.
+    pub status: String,
+    /// Detailed failure metadata.
+    pub error: ErrorDetail,
+}
+
+/// Details of the error in an [`ErrorPayload`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ErrorDetail {
+    /// Failure category (e.g. `"validation"`, `"execution"`, `"cancelled"`, `"usage"`).
+    pub kind: String,
+    /// Exit code associated with this failure.
+    pub code: i32,
+    /// Human-readable message describing the failure.
+    pub message: String,
+}
+
+/// Writes `report` as a standardized JSON error payload on `err` (or data on `out` for help/version)
+/// and answers with the code it costs.
+///
+/// When the failure or usage error is written to `err`, it conforms to the decision-25 schema:
+/// ```json
+/// {
+///   "status": "error",
+///   "error": {
+///     "kind": "validation",
+///     "code": 2,
+///     "message": "..."
+///   }
+/// }
+/// ```
+pub fn render_json<'a>(
+    _program: &str,
+    report: impl Into<Report<'a>>,
+    policy: &ExitPolicy,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    match report.into() {
+        Report::Failure(failure) => {
+            let code = policy.for_failure(failure);
+            let kind = match failure.kind() {
+                crate::failure::FailureKind::Validation => "validation",
+                crate::failure::FailureKind::Execution => "execution",
+                crate::failure::FailureKind::Cancelled => "cancelled",
+            };
+            write_json_error(err, kind, code, failure.message());
+            code
+        }
+        Report::Clap(error) if error.use_stderr() => {
+            let code = policy.usage();
+            let kind = match error.kind() {
+                clap::error::ErrorKind::ValueValidation
+                | clap::error::ErrorKind::MissingRequiredArgument
+                | clap::error::ErrorKind::MissingSubcommand
+                | clap::error::ErrorKind::WrongNumberOfValues
+                | clap::error::ErrorKind::InvalidValue => "validation",
+                _ => "usage",
+            };
+            let raw = error.to_string();
+            let mut message = raw.trim();
+            if let Some(idx) = message.find("\nUsage:") {
+                message = &message[..idx];
+            } else if let Some(idx) = message.find("\n\nUsage:") {
+                message = &message[..idx];
+            } else if let Some(idx) = message.find("\n\nFor more information") {
+                message = &message[..idx];
+            }
+            let message = message.strip_prefix("error: ").unwrap_or(message).trim();
+            write_json_error(err, kind, code, message);
+            code
+        }
+        Report::Clap(error) => {
+            let _ = write!(out, "{error}");
+            policy.success()
+        }
+    }
+}
+
+fn write_json_error(err: &mut dyn Write, kind: &str, code: i32, message: &str) {
+    #[cfg(feature = "serde")]
+    {
+        let payload = ErrorPayload {
+            status: "error".to_owned(),
+            error: ErrorDetail {
+                kind: kind.to_owned(),
+                code,
+                message: message.to_owned(),
+            },
+        };
+        if let Ok(json) = serde_json::to_string_pretty(&payload) {
+            let _ = writeln!(err, "{json}");
+            return;
+        }
+    }
+    let _ = writeln!(
+        err,
+        "{{\n  \"status\": \"error\",\n  \"error\": {{\n    \"kind\": \"{}\",\n    \"code\": {},\n    \"message\": \"{}\"\n  }}\n}}",
+        escape_str(kind),
+        code,
+        escape_str(message)
+    );
+}
+
+fn escape_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out
+}

@@ -187,11 +187,14 @@ pub use clifacet_macros::__commands;
 /// may keep a hand-written `Request` of its own beside it.
 pub use clifacet_macros::registry;
 
-pub use app::{App, Globals, Plain, Render, run, run_cli};
-pub use cli::{Cli, ContextCell, FromCli, IntoFailure, IntoOutcome, OutcomePayload};
+pub use app::{App, Globals, JsonRenderer, Plain, Render, run, run_cli};
+pub use cli::{
+    Cli, ContextCell, FromCli, IntoFailure, IntoOutcome, Json, OutcomePayload, Structured,
+};
 pub use command::{Command, Handler};
 pub use facet::Facet;
 pub use failure::{Failure, FailureKind};
+pub use report::{ErrorDetail, ErrorPayload, render_json};
 
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///

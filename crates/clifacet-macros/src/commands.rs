@@ -143,12 +143,21 @@ impl Declared {
         self.root
             .iter()
             .map(|(field, ty)| {
-                quote! {
-                    /// A field of the root, declared by `commands!`: a global long flag, in
-                    /// the input under the same name.
-                    #[clifacet(long)]
-                    #[arg(global = true)]
-                    pub #field: #ty,
+                if field == "json" {
+                    quote! {
+                        /// Re-exported from globals.
+                        #[arg(skip)]
+                        #[clifacet(fill = cli.globals.json)]
+                        pub #field: Option<#ty>,
+                    }
+                } else {
+                    quote! {
+                        /// A field of the root, declared by `commands!`: a global long flag, in
+                        /// the input under the same name.
+                        #[clifacet(long)]
+                        #[arg(global = true)]
+                        pub #field: #ty,
+                    }
                 }
             })
             .collect()
@@ -492,8 +501,6 @@ fn tokens(declared: &Declared) -> syn::Result<TokenStream> {
             pub command: Option<#request>,
             #(#root_fields)*
         }
-
-
 
         /// The root command: the subcommand, the globals every application gets, and the
         /// application's own.

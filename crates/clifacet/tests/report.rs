@@ -86,3 +86,72 @@ fn help_and_the_version_are_the_data_that_was_asked_for(
     assert!(err.is_empty(), "{err}");
     assert_eq!(code, POLICY.success());
 }
+
+/// Renders `report` as JSON and answers with the code and both streams.
+fn rendered_json<'a>(report: impl Into<report::Report<'a>>) -> (i32, String, String) {
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let code = report::render_json("demo", report, &POLICY, &mut out, &mut err);
+    (
+        code,
+        String::from_utf8(out).expect("utf-8"),
+        String::from_utf8(err).expect("utf-8"),
+    )
+}
+
+#[rstest]
+#[case::validation(Failure::validation("--name must not be blank"), "validation", 2)]
+#[case::execution(Failure::execution("the operation failed"), "execution", 1)]
+#[case::cancelled(Failure::cancelled("the user declined"), "cancelled", 130)]
+fn a_failure_in_json_mode_formats_as_standardized_error_payload_on_stderr(
+    #[case] failure: Failure,
+    #[case] expected_kind: &str,
+    #[case] expected_code: i32,
+) {
+    let (code, out, err) = rendered_json(&failure);
+
+    assert!(out.is_empty(), "stdout must be empty on failure: {out}");
+    assert_eq!(code, expected_code);
+
+    let parsed: serde_json::Value = serde_json::from_str(&err).expect("valid json error payload");
+    assert_eq!(parsed["status"], "error");
+    assert_eq!(parsed["error"]["kind"], expected_kind);
+    assert_eq!(parsed["error"]["code"], expected_code);
+    assert_eq!(parsed["error"]["message"], failure.message());
+}
+
+#[test]
+fn a_usage_error_in_json_mode_formats_as_standardized_error_payload_on_stderr() {
+    let error = Demo::try_parse_from(["demo", "--bogus"]).expect_err("an unknown flag");
+
+    let (code, out, err) = rendered_json(&error);
+
+    assert!(out.is_empty(), "stdout must be empty on usage error: {out}");
+    assert_eq!(code, POLICY.usage());
+
+    let parsed: serde_json::Value = serde_json::from_str(&err).expect("valid json error payload");
+    assert_eq!(parsed["status"], "error");
+    assert_eq!(parsed["error"]["code"], POLICY.usage());
+    assert!(
+        parsed["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--bogus")
+    );
+}
+
+#[rstest]
+#[case::help(&["demo", "--help"], "A demonstration")]
+#[case::version(&["demo", "--version"], "demo 1.2.3")]
+fn help_and_version_in_json_mode_remain_on_stdout(#[case] argv: &[&str], #[case] expected: &str) {
+    let error = Demo::try_parse_from(argv).expect_err("clap answers instead of parsing");
+
+    let (code, out, err) = rendered_json(&error);
+
+    assert!(out.contains(expected), "{out}");
+    assert!(
+        err.is_empty(),
+        "stderr must be empty on help/version: {err}"
+    );
+    assert_eq!(code, POLICY.success());
+}

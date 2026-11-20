@@ -158,6 +158,32 @@ pub mod auto_wire {
 }
 
 #[doc(hidden)]
+pub mod check_json {
+    pub trait FallbackIsJson {
+        fn __clifacet_is_json(&self) -> bool {
+            false
+        }
+    }
+
+    impl<T: ?Sized> FallbackIsJson for T {}
+}
+
+#[doc(hidden)]
+pub mod auto_wire_json {
+    use crate::failure::Failure;
+
+    pub trait FallbackFormatOutcome {
+        fn format_outcome(self, _is_json: bool) -> Result<String, Failure>;
+    }
+
+    impl<T: std::fmt::Display> FallbackFormatOutcome for T {
+        fn format_outcome(self, _is_json: bool) -> Result<String, Failure> {
+            Ok(self.to_string())
+        }
+    }
+}
+
+#[doc(hidden)]
 pub mod extract {
     use std::marker::PhantomData;
 
@@ -310,6 +336,142 @@ impl<T: OutcomePayload, E: IntoFailure> IntoOutcome for Result<T, E> {
     fn into_outcome(self) -> Result<Self::Output, Failure> {
         self.map(OutcomePayload::into_displayed)
             .map_err(IntoFailure::into_failure)
+    }
+}
+
+/// An outcome payload that serializes as structured JSON, or a renderer when `T = ()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct Json<T = ()>(pub T);
+
+/// A renderer that writes output directly as structured JSON.
+pub type JsonRenderer = Json<()>;
+
+impl<T> Json<T> {
+    /// Wraps `value` to be formatted as JSON.
+    pub const fn new(value: T) -> Self {
+        Self(value)
+    }
+
+    /// Unwraps the inner value.
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+
+    /// Formats the outcome as a JSON string.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if serialization fails.
+    #[cfg(feature = "serde")]
+    pub fn format_outcome(self, _is_json: bool) -> Result<String, Failure>
+    where
+        T: serde::Serialize,
+    {
+        serde_json::to_string_pretty(&self.0)
+            .map_err(|e| Failure::execution(format!("cannot serialize output: {e}")))
+    }
+}
+
+impl<T> From<T> for Json<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize> std::fmt::Display for Json<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match serde_json::to_string_pretty(&self.0) {
+            Ok(json) => f.write_str(&json),
+            Err(_) => Err(std::fmt::Error),
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize> OutcomePayload for Json<T> {
+    type Displayed = String;
+    fn into_displayed(self) -> String {
+        serde_json::to_string_pretty(&self.0).unwrap_or_default()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl OutcomePayload for serde_json::Value {
+    type Displayed = String;
+    fn into_displayed(self) -> String {
+        serde_json::to_string_pretty(&self).unwrap_or_default()
+    }
+}
+
+/// A command outcome holding structured data for `--json` and human-readable text for plain rendering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Structured<T> {
+    /// The structured data payload.
+    pub data: T,
+    /// The human-readable display string.
+    pub display: String,
+}
+
+impl<T> Structured<T> {
+    /// Creates a new outcome with its structured data and human-readable text.
+    pub fn new(data: T, display: impl Into<String>) -> Self {
+        Self {
+            data,
+            display: display.into(),
+        }
+    }
+
+    /// Formats the outcome depending on whether JSON mode is requested.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if serialization fails.
+    #[cfg(feature = "serde")]
+    pub fn format_outcome(self, is_json: bool) -> Result<String, Failure>
+    where
+        T: serde::Serialize,
+    {
+        if is_json {
+            serde_json::to_string_pretty(&self.data)
+                .map_err(|e| Failure::execution(format!("cannot serialize output: {e}")))
+        } else {
+            Ok(self.display)
+        }
+    }
+
+    /// Formats the outcome when serde is not enabled.
+    ///
+    /// # Errors
+    ///
+    /// Always succeeds.
+    #[cfg(not(feature = "serde"))]
+    pub fn format_outcome(self, _is_json: bool) -> Result<String, Failure> {
+        Ok(self.display)
+    }
+}
+
+impl<T> std::fmt::Display for Structured<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.display)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize> serde::Serialize for Structured<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.data.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize> OutcomePayload for Structured<T> {
+    type Displayed = Self;
+    fn into_displayed(self) -> Self {
+        self
     }
 }
 
