@@ -166,6 +166,24 @@ impl Choice {
     }
 }
 
+impl std::fmt::Display for Choice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label)
+    }
+}
+
+impl From<&str> for Choice {
+    fn from(s: &str) -> Self {
+        Self::new(s)
+    }
+}
+
+impl From<String> for Choice {
+    fn from(s: String) -> Self {
+        Self::new(s)
+    }
+}
+
 /// A question followed by its choices, numbered from one, ready to be read as text.
 fn menu(question: &str, choices: &[Choice]) -> String {
     let mut menu = String::from(question);
@@ -728,6 +746,29 @@ impl Session {
         Ok(Some(options.swap_remove(index)))
     }
 
+    /// Asynchronously loads options and prompts the user to choose, unless `supplied`
+    /// already holds a value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the frontend's failure, including cancellation.
+    #[cfg(feature = "async")]
+    pub async fn choose_async<T: std::fmt::Display, Fut>(
+        &mut self,
+        supplied: Option<T>,
+        question: &str,
+        load_options: impl FnOnce() -> Fut,
+    ) -> Result<Option<T>, Failure>
+    where
+        Fut: std::future::Future<Output = Vec<T>>,
+    {
+        if supplied.is_some() {
+            return Ok(supplied);
+        }
+        let options = load_options().await;
+        self.choose(None, question, options)
+    }
+
     /// Takes the supplied secret, or asks for one without echoing it.
     ///
     /// The answer is wrapped in a [`Secret`] the moment it arrives, so it is reachable
@@ -967,5 +1008,53 @@ impl fmt::Debug for Session {
             .field("provenance", &self.provenance)
             .field("context", &self.context.as_ref().map(|_| "shared"))
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_choice_display_and_conversions() {
+        let from_str = Choice::from("apples");
+        assert_eq!(format!("{from_str}"), "apples");
+        assert_eq!(from_str.label(), "apples");
+
+        let from_string = Choice::from(String::from("oranges"));
+        assert_eq!(format!("{from_string}"), "oranges");
+        assert_eq!(from_string.label(), "oranges");
+
+        let custom = Choice::new("Bananas").with_help("yellow fruit");
+        assert_eq!(format!("{custom}"), "Bananas");
+        assert_eq!(custom.help(), Some("yellow fruit"));
+    }
+
+    fn non_interactive_plan() -> Plan {
+        crate::policy::Policy::non_interactive()
+            .resolve(
+                crate::policy::Request::none(),
+                crate::policy::Capabilities::headless(),
+            )
+            .expect("the default resolves")
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_choose_async_supplied_returns_early() {
+        let mut session = Session::start(non_interactive_plan(), || unreachable!());
+        let choice = session
+            .choose_async(Some("preselected"), "pick a fruit", || async {
+                panic!("should not load options when supplied")
+            })
+            .await;
+        assert_eq!(choice.unwrap(), Some("preselected"));
+    }
+
+    #[test]
+    fn test_session_with_context() {
+        let session =
+            Session::start(non_interactive_plan(), || unreachable!()).with_context(|| Ok(42usize));
+        assert!(session.context.is_some());
     }
 }

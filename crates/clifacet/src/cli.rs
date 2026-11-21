@@ -541,6 +541,50 @@ pub mod auto_wire_json_async {
 }
 
 #[doc(hidden)]
+pub mod auto_wire_choice {
+    pub struct ChoiceWrap<T>(pub T);
+
+    impl<T> ChoiceWrap<T> {
+        #[must_use]
+        pub const fn new(val: T) -> Self {
+            Self(val)
+        }
+    }
+
+    pub trait CallSyncChoiceResult {
+        fn call_choice_result(self) -> Vec<String>;
+    }
+
+    impl<I, S> CallSyncChoiceResult for ChoiceWrap<I>
+    where
+        I: IntoIterator<Item = S>,
+        S: std::fmt::Display,
+    {
+        fn call_choice_result(self) -> Vec<String> {
+            self.0.into_iter().map(|s| s.to_string()).collect()
+        }
+    }
+
+    #[cfg(feature = "async")]
+    pub trait CallAsyncChoiceResult {
+        fn call_choice_result(self) -> Vec<String>;
+    }
+
+    #[cfg(feature = "async")]
+    impl<Fut, I, S> CallAsyncChoiceResult for ChoiceWrap<Fut>
+    where
+        Fut: std::future::Future<Output = I>,
+        I: IntoIterator<Item = S>,
+        S: std::fmt::Display,
+    {
+        fn call_choice_result(self) -> Vec<String> {
+            let items = crate::cli::block_on(self.0);
+            items.into_iter().map(|s| s.to_string()).collect()
+        }
+    }
+}
+
+#[doc(hidden)]
 pub mod extract {
     use std::marker::PhantomData;
 
@@ -1416,6 +1460,9 @@ mod tests {
     #[allow(clippy::similar_names)]
     fn auto_wire_async_and_wrappers_coverage() {
         use crate::cli::auto_wire_async::AutoWireAsync;
+        use crate::cli::auto_wire_choice::{
+            CallAsyncChoiceResult as _, CallSyncChoiceResult as _, ChoiceWrap,
+        };
         use crate::cli::auto_wire_factory::{
             CallAsyncFactoryResult as _, CallSyncFactoryResult as _, FactoryWrap,
         };
@@ -1467,6 +1514,13 @@ mod tests {
 
             let fail_async2 = FailHookWrap::new(async {});
             fail_async2.call_async_result().await;
+
+            let choice_sync = ChoiceWrap::new(vec!["one", "two"]);
+            assert_eq!(choice_sync.call_choice_result(), vec!["one", "two"]);
+
+            let choice_async =
+                ChoiceWrap::new(async { vec!["apple".to_string(), "banana".to_string()] });
+            assert_eq!(choice_async.call_choice_result(), vec!["apple", "banana"]);
         });
     }
 }
