@@ -10,6 +10,11 @@ copy has drifted. Edit the commit messages, not the file.
 
 ## [Unreleased]
 
+### Added
+
+* support async methods in commands macro and lazy async context (CLI-81)
+([90b1b77](https://github.com/Archont561/clifacet/commit/90b1b7778e1b53e73b4e1554ba53e23933c5dbb6))
+
 ## [0.9.0] - 2026-11-21
 
 ### Added
