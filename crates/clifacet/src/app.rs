@@ -281,6 +281,16 @@ pub struct App<'c, Cli, C = Cli, R = Plain, Cx = ()> {
     #[allow(clippy::type_complexity)]
     after_failure: Option<Rc<dyn Fn(&Cli, &str, &Failure, Option<&Cx>)>>,
     settings: Option<Settings>,
+    #[cfg(feature = "async")]
+    #[allow(clippy::type_complexity)]
+    executor: std::sync::Arc<
+        dyn Fn(
+                crate::r#async::BoxFuture<'static, Result<Box<dyn std::any::Any + Send>, Failure>>,
+                crate::r#async::Cancel,
+            ) -> Result<Box<dyn std::any::Any + Send>, Failure>
+            + Send
+            + Sync,
+    >,
 }
 
 /// Reads the settings file for a given argument list.
@@ -304,6 +314,23 @@ impl<Cli: Clone> App<'_, Cli> {
             after_success: None,
             after_failure: None,
             settings: None,
+            #[cfg(feature = "async")]
+            executor: {
+                #[cfg(feature = "tokio")]
+                {
+                    std::sync::Arc::new(|fut, cancel| {
+                        use crate::r#async::Executor as _;
+                        crate::r#async::TokioExecutor::current_thread().run(fut, cancel)
+                    })
+                }
+                #[cfg(not(feature = "tokio"))]
+                {
+                    std::sync::Arc::new(|fut, cancel| {
+                        use crate::r#async::Executor as _;
+                        crate::r#async::StdExecutor.run(fut, cancel)
+                    })
+                }
+            },
         }
     }
 }
@@ -332,6 +359,23 @@ where
             after_success: Some(Rc::new(|cli, cmd, cx| cli.after_success(cmd, cx))),
             after_failure: Some(Rc::new(|cli, cmd, err, cx| cli.after_failure(cmd, err, cx))),
             settings: None,
+            #[cfg(feature = "async")]
+            executor: {
+                #[cfg(feature = "tokio")]
+                {
+                    std::sync::Arc::new(|fut, cancel| {
+                        use crate::r#async::Executor as _;
+                        crate::r#async::TokioExecutor::current_thread().run(fut, cancel)
+                    })
+                }
+                #[cfg(not(feature = "tokio"))]
+                {
+                    std::sync::Arc::new(|fut, cancel| {
+                        use crate::r#async::Executor as _;
+                        crate::r#async::StdExecutor.run(fut, cancel)
+                    })
+                }
+            },
         }
     }
 }
@@ -385,6 +429,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_success: self.after_success,
             after_failure: self.after_failure,
             settings: self.settings,
+            #[cfg(feature = "async")]
+            executor: self.executor,
         }
     }
 
@@ -402,6 +448,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_success: self.after_success,
             after_failure: self.after_failure,
             settings: self.settings,
+            #[cfg(feature = "async")]
+            executor: self.executor,
         }
     }
 
@@ -434,6 +482,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_success: None,
             after_failure: None,
             settings: self.settings,
+            #[cfg(feature = "async")]
+            executor: self.executor,
         }
     }
 
@@ -459,7 +509,17 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_success: None,
             after_failure: None,
             settings: self.settings,
+            #[cfg(feature = "async")]
+            executor: self.executor,
         }
+    }
+
+    /// Sets the executor used to drive asynchronous commands synchronously.
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn executor(mut self, executor: impl crate::r#async::Executor + 'static) -> Self {
+        self.executor = std::sync::Arc::new(move |fut, cancel| executor.run(fut, cancel));
+        self
     }
 
     /// Hook executed immediately before command execution starts.
@@ -542,6 +602,29 @@ where
         ExitCode::from(u8::try_from(code).unwrap_or(1))
     }
 
+    /// Asynchronously runs the process's own invocation and answers with its exit status.
+    ///
+    /// Executes directly in the ambient asynchronous runtime without blocking threads.
+    #[cfg(feature = "async")]
+    pub async fn run_async(&self) -> ExitCode {
+        let mut out = std::io::stdout();
+        let mut err = std::io::stderr();
+        let code = self
+            .run_with_async(
+                std::env::args_os(),
+                Capabilities::detected(),
+                process_frontend,
+                &mut out,
+                &mut err,
+            )
+            .await;
+        let code = match out.flush().and_then(|()| err.flush()) {
+            Ok(()) => code,
+            Err(_) => self.exit.execution(),
+        };
+        ExitCode::from(u8::try_from(code).unwrap_or(1))
+    }
+
     /// Layers a settings file under the flags and the environment.
     ///
     /// The file is chosen the way a user expects — `--config PATH`, then `<APP>_CONFIG`,
@@ -608,47 +691,70 @@ where
         I: IntoIterator<Item = T>,
         T: Into<OsString> + Clone,
     {
-        // The settings file has to be read before the parse, because a file's value is a
-        // default and `clap` needs the default before it reads the argument list. The
-        // argument list is collected once so it can be looked at twice: `--config` is in
-        // it, and the parse still receives it (clap ignores what it does not declare, and
-        // the two flags below are declared by this module's own readers).
-        let argv: Vec<OsString> = argv.into_iter().map(Into::into).collect();
+        #[cfg(feature = "tokio")]
+        if tokio::runtime::Handle::try_current().is_ok() {
+            let failure = Failure::execution(
+                "invoking synchronous App::run() inside an active Tokio runtime is not \
+                 supported; use App::run_async() instead",
+            );
+            return report::render(&program::<Cli>(), &failure, &self.exit, out, err);
+        }
 
-        // `--help` and `--version` are answered from the command as the application built
-        // it, before the settings file is read. That is AC#7: help documents the built-in
-        // defaults and never one machine's settings file. It is also the one place where
-        // precedence does not matter, because neither flag is a value.
-        if self.settings.is_some() && asks_for_help_or_version(&argv) {
+        let argv: Vec<OsString> = argv.into_iter().map(Into::into).collect();
+        match self.prepare_argv(&argv, out, err) {
+            Ok(Some((cli, globals))) => {
+                self.run_parsed(cli, globals, capabilities, build_frontend, out, err)
+            }
+            Ok(None) => self.exit.success(),
+            Err(code) => code,
+        }
+    }
+
+    /// Prepares and parses command-line arguments, handling early flags such as `--help` or `--schema`.
+    fn prepare_argv(
+        &self,
+        argv: &[OsString],
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Result<Option<(Cli, Globals)>, i32> {
+        if self.settings.is_some() && asks_for_help_or_version(argv) {
             match <Cli as Facet>::command().try_get_matches_from(argv.iter().cloned()) {
-                // `DisplayHelp` and `DisplayVersion` arrive here as an `Err` clap has
-                // already rendered, which `report::render` writes on the data stream with
-                // the policy's success code — the same rendering a run without settings
-                // produces, because it is the same command.
                 Ok(_) => {}
                 Err(error) => {
-                    return report::render(&program::<Cli>(), &error, &self.exit, out, err);
+                    return Err(report::render(
+                        &program::<Cli>(),
+                        &error,
+                        &self.exit,
+                        out,
+                        err,
+                    ));
                 }
             }
         }
 
         #[cfg(feature = "schema")]
-        if asks_for_schema(&argv) {
+        if asks_for_schema(argv) {
             let cmd = <Cli as Facet>::command();
             let meta = crate::schema::CliMetadata::from_command(&cmd);
             match crate::schema::to_json_schema_pretty(&meta) {
                 Ok(json) => {
                     let _ = writeln!(out, "{json}");
-                    return self.exit.success();
+                    return Err(self.exit.success());
                 }
                 Err(failure) => {
-                    return report::render(&program::<Cli>(), &failure, &self.exit, out, err);
+                    return Err(report::render(
+                        &program::<Cli>(),
+                        &failure,
+                        &self.exit,
+                        out,
+                        err,
+                    ));
                 }
             }
         }
 
         #[cfg(feature = "skill-minijinja")]
-        if let Some(opts) = asks_for_write_skill(&argv, &<Cli as Facet>::command()) {
+        if let Some(opts) = asks_for_write_skill(argv, &<Cli as Facet>::command()) {
             use crate::skill::SkillRenderer as _;
             let cmd = <Cli as Facet>::command();
             let meta = crate::schema::CliMetadata::from_command(&cmd);
@@ -662,24 +768,40 @@ where
                     } else if !msg.is_empty() {
                         let _ = writeln!(out, "{msg}");
                     }
-                    return self.exit.success();
+                    return Err(self.exit.success());
                 }
                 Err(failure) => {
-                    return report::render(&program::<Cli>(), &failure, &self.exit, out, err);
+                    return Err(report::render(
+                        &program::<Cli>(),
+                        &failure,
+                        &self.exit,
+                        out,
+                        err,
+                    ));
                 }
             }
         }
 
-        match self.parse_with_settings(&argv) {
-            Ok((cli, globals)) => {
-                self.run_parsed(cli, globals, capabilities, build_frontend, out, err)
-            }
+        match self.parse_with_settings(argv) {
+            Ok((cli, globals)) => Ok(Some((cli, globals))),
             Err(error) => {
-                let json = asks_for_json(&argv);
+                let json = asks_for_json(argv);
                 if json && error.use_stderr() {
-                    report::render_json(&program::<Cli>(), &error, &self.exit, out, err)
+                    Err(report::render_json(
+                        &program::<Cli>(),
+                        &error,
+                        &self.exit,
+                        out,
+                        err,
+                    ))
                 } else {
-                    report::render(&program::<Cli>(), &error, &self.exit, out, err)
+                    Err(report::render(
+                        &program::<Cli>(),
+                        &error,
+                        &self.exit,
+                        out,
+                        err,
+                    ))
                 }
             }
         }
@@ -762,6 +884,85 @@ where
             Err(refusal) => Err(Failure::validation(refusal.message())),
         };
         self.conclude(outcome, &globals, out, err)
+    }
+
+    /// Asynchronously runs `argv` against explicit capabilities, frontend and streams.
+    ///
+    /// The asynchronous counterpart to [`run_with`](Self::run_with), executing natively
+    /// within an existing asynchronous runtime without blocking threads.
+    #[cfg(feature = "async")]
+    #[allow(clippy::too_many_lines)]
+    pub async fn run_with_async<I, T>(
+        &self,
+        argv: I,
+        capabilities: Capabilities,
+        build_frontend: impl FnOnce() -> Box<dyn Prompter>,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> i32
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<OsString> + Clone,
+    {
+        let argv: Vec<OsString> = argv.into_iter().map(Into::into).collect();
+        match self.prepare_argv(&argv, out, err) {
+            Ok(Some((cli, globals))) => {
+                self.run_parsed_async(cli, globals, capabilities, build_frontend, out, err)
+                    .await
+            }
+            Ok(None) => self.exit.success(),
+            Err(code) => code,
+        }
+    }
+
+    /// Asynchronously runs the parsed command line.
+    #[cfg(feature = "async")]
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "a published signature, kept stable for callers"
+    )]
+    pub async fn run_parsed_async(
+        &self,
+        cli: Cli,
+        globals: Globals,
+        capabilities: Capabilities,
+        build_frontend: impl FnOnce() -> Box<dyn Prompter>,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> i32 {
+        let requested = (self.mode_from)(&cli);
+        let requested = requested.assuming_yes(requested.assumes_yes() || globals.yes);
+        let cli_for_cx = cli.clone();
+        let builder = Rc::clone(&self.context);
+        let context = Rc::new(Lazy::new(Rc::new(move || builder(&cli_for_cx))));
+        let outcome = match self.policy.resolve(requested, capabilities) {
+            Ok(plan) if plan.mode() == Mode::Tui => self.full_screen(&globals, &context, out, err),
+            Ok(plan) => {
+                let mut session = Session::start(plan, build_frontend).sharing(Rc::clone(&context));
+                match cli.collect(&mut session) {
+                    Ok(collected_cli) => {
+                        self.settle_async(collected_cli, &globals, &context, out)
+                            .await
+                    }
+                    Err(err) => Err(err),
+                }
+            }
+            Err(refusal) => Err(Failure::validation(refusal.message())),
+        };
+        self.conclude(outcome, &globals, out, err)
+    }
+
+    /// Asynchronously settles the run after collection.
+    #[cfg(feature = "async")]
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+    async fn settle_async(
+        &self,
+        cli: Cli,
+        globals: &Globals,
+        context: &Lazy<Cx>,
+        out: &mut dyn Write,
+    ) -> Result<(), Failure> {
+        self.settle(cli, globals, context, out)
     }
 
     /// Hosts the form generated from `Cli`'s `form` fields, drawn on the diagnostic stream.
@@ -991,6 +1192,23 @@ where
     App::<C, C, Plain, C::Context>::for_cli().run()
 }
 
+/// Runs `C` asynchronously as an application implementing [`Cli`](crate::cli::Cli).
+#[cfg(feature = "async")]
+pub async fn run_cli_async<C>() -> ExitCode
+where
+    C: crate::cli::Cli
+        + Parser
+        + Facet
+        + Collect
+        + Clone
+        + Handler<C::Context, Input = <C as Facet>::Input>
+        + 'static,
+    <C as Handler<C::Context>>::Output: Display,
+    C::Context: 'static,
+{
+    App::<C, C, Plain, C::Context>::for_cli().run_async().await
+}
+
 /// Whether the argument list asks for help or a version, which is answered without a file.
 ///
 /// `--` ends the flags, so anything after it names a value rather than asking a question.
@@ -1118,4 +1336,105 @@ fn process_frontend() -> Box<dyn Prompter> {
     #[cfg(not(feature = "interactive"))]
     let frontend = Box::new(crate::prompt::Terminal::stdio());
     frontend
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone, clap::Parser)]
+    #[command(name = "unitapp")]
+    struct UnitCli {
+        #[arg(long)]
+        flag: bool,
+    }
+
+    impl Facet for UnitCli {
+        type Input = Self;
+        fn command() -> clap::Command {
+            <Self as clap::CommandFactory>::command()
+        }
+        fn validate(self) -> Result<Self::Input, Failure> {
+            Ok(self)
+        }
+    }
+
+    impl crate::prompt::Collect for UnitCli {
+        fn collect(self, _session: &mut crate::prompt::Session) -> Result<Self, Failure> {
+            Ok(self)
+        }
+    }
+
+    impl crate::Handler<()> for UnitCli {
+        type Input = Self;
+        type Output = String;
+        fn handle(&self, _input: Self::Input, _cx: &()) -> Result<Self::Output, Failure> {
+            Ok(format!("flag={}", self.flag))
+        }
+    }
+
+    #[test]
+    fn app_render_and_context_builders() {
+        let app = App::<UnitCli>::new()
+            .render(Plain)
+            .before_run(|_, ()| Ok(()))
+            .after_success(|_, ()| Ok(()))
+            .after_failure(|_, _, _| ())
+            .context(|| Ok::<_, std::convert::Infallible>(()))
+            .context_from(|_| Ok::<_, std::convert::Infallible>(()));
+        assert_eq!(app.policy.ceiling(), Mode::Interactive);
+    }
+
+    #[cfg(feature = "async")]
+    #[test]
+    fn app_async_builder_and_prepare_argv() {
+        let app = App::<UnitCli>::new().executor(crate::r#async::StdExecutor);
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let parsed = app.prepare_argv(
+            &[OsString::from("unitapp"), OsString::from("--flag")],
+            &mut out,
+            &mut err,
+        );
+        assert!(parsed.is_ok());
+        let (cli, _globals) = parsed.unwrap().unwrap();
+        assert!(cli.flag);
+
+        let code = app.run_parsed(
+            cli,
+            Globals::default(),
+            Capabilities::headless(),
+            process_frontend,
+            &mut out,
+            &mut err,
+        );
+        assert_eq!(code, 0);
+        assert_eq!(String::from_utf8(out).unwrap(), "flag=true\n");
+    }
+
+    #[cfg(all(feature = "async", feature = "tokio"))]
+    #[test]
+    fn app_run_parsed_async_unit() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let app = App::<UnitCli>::new();
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app
+                .run_parsed_async(
+                    UnitCli { flag: true },
+                    Globals::default(),
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+            assert_eq!(code, 0);
+            assert_eq!(String::from_utf8(out).unwrap(), "flag=true\n");
+        });
+    }
 }

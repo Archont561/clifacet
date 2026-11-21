@@ -21,6 +21,7 @@ All optional features are disabled by default.
 | `mcp` | Model Context Protocol stdio tool server (decision-25, CLI-77). | `schema` |
 | `completions` | Context-aware dynamic shell completions (decision-25, CLI-78). | `schema` |
 | `async` | Native async command execution traits, cancellation, and progress (decision-26, CLI-79). | *(none)* |
+| `tokio` | Pluggable `tokio` runtime executor and signal integration (decision-26, CLI-80). | `async`, `tokio` |
 | `settings-toml` | `clifacet::settings::toml`, the settings loader for the format most applications already have (CLI-51). Off by default: a program that never reads a settings file pays nothing for the parser. | `toml_edit` |
 | `settings-figment` | `clifacet::settings::figment`, the Figment-backed layered settings loader (CLI-59). Off by default: an application opting into Figment enables it. | `figment`, `serde`, `toml_edit` |
 
