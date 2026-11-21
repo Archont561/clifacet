@@ -120,6 +120,105 @@ pub fn run_on<W: std::io::Write>(
     run_on_with(screen, state, keys, draw_form, submit)
 }
 
+/// A drop guard that restores the terminal to cooked mode and leaves the alternate screen
+/// on drop, guaranteeing cleanup even if a panic or hard cancellation occurs.
+pub struct TerminalGuard<W: std::io::Write> {
+    writer: Option<W>,
+    raw_mode_enabled: bool,
+    alternate_screen_entered: bool,
+}
+
+impl<W: std::io::Write> TerminalGuard<W> {
+    /// Enters the alternate screen and enables terminal raw mode on `writer`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::execution`] if entering the alternate screen fails.
+    pub fn enter(mut writer: W) -> Result<Self, Failure> {
+        let raw = crossterm::terminal::enable_raw_mode().is_ok();
+        if let Err(error) =
+            crossterm::execute!(&mut writer, crossterm::terminal::EnterAlternateScreen)
+        {
+            if raw {
+                let _ = crossterm::terminal::disable_raw_mode();
+            }
+            return Err(Failure::execution(format!(
+                "cannot enter the screen: {error}"
+            )));
+        }
+        Ok(Self {
+            writer: Some(writer),
+            raw_mode_enabled: raw,
+            alternate_screen_entered: true,
+        })
+    }
+
+    /// Accesses the underlying writer mutably.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the guard was already consumed.
+    pub fn writer_mut(&mut self) -> &mut W {
+        self.writer
+            .as_mut()
+            .expect("terminal writer is present until drop")
+    }
+
+    /// Restores the terminal explicitly, leaving the alternate screen and disabling raw mode.
+    pub fn restore(&mut self) {
+        self.clean_up();
+    }
+
+    /// Consumes the guard, restoring the terminal and returning the inner writer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the guard was already consumed.
+    pub fn into_inner(mut self) -> W {
+        self.clean_up();
+        self.writer
+            .take()
+            .expect("terminal writer is present until drop")
+    }
+
+    fn clean_up(&mut self) {
+        if self.alternate_screen_entered {
+            if let Some(writer) = self.writer.as_mut() {
+                let _ = crossterm::execute!(writer, crossterm::terminal::LeaveAlternateScreen);
+            }
+            self.alternate_screen_entered = false;
+        }
+        if self.raw_mode_enabled {
+            let _ = crossterm::terminal::disable_raw_mode();
+            self.raw_mode_enabled = false;
+        }
+    }
+}
+
+impl<W: std::io::Write> Drop for TerminalGuard<W> {
+    fn drop(&mut self) {
+        self.clean_up();
+    }
+}
+
+impl<W: std::io::Write> std::ops::Deref for TerminalGuard<W> {
+    type Target = W;
+
+    fn deref(&self) -> &Self::Target {
+        self.writer
+            .as_ref()
+            .expect("terminal writer is present until drop")
+    }
+}
+
+impl<W: std::io::Write> std::ops::DerefMut for TerminalGuard<W> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.writer
+            .as_mut()
+            .expect("terminal writer is present until drop")
+    }
+}
+
 /// The alternate-screen run, drawing whatever the application asks for.
 ///
 /// Split from [`run_on`] only by the drawing, so a custom screen inherits the same
@@ -135,21 +234,12 @@ pub fn run_on_with<W: std::io::Write>(
     draw: impl Fn(&FormState, Rect, &mut Buffer),
     submit: impl FnMut(&FormState) -> Result<Vec<String>, String>,
 ) -> Result<Vec<String>, Failure> {
-    use crossterm::execute;
-    use crossterm::terminal::{
-        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-    };
-
-    let mut screen = screen;
-
-    let raw = enable_raw_mode().is_ok();
-    execute!(&mut screen, EnterAlternateScreen)
-        .map_err(|error| Failure::execution(format!("cannot enter the screen: {error}")))?;
+    let mut guard = TerminalGuard::enter(screen)?;
 
     // The terminal borrows the writer for this block only, so the screen can be left
     // below no matter which way the loop ends.
     let outcome = {
-        let backend = CrosstermBackend::new(&mut screen);
+        let backend = CrosstermBackend::new(&mut *guard);
 
         // A real terminal knows its size and follows it if the window changes. A
         // writer that is not a terminal — a buffer in a test, a pipe — has no size to
@@ -172,13 +262,285 @@ pub fn run_on_with<W: std::io::Write>(
         }
     };
 
-    // Leave the screen whatever happened; the original failure is the one worth
-    // reporting, so a second failure here does not replace it.
-    let _ = execute!(&mut screen, LeaveAlternateScreen);
-    if raw {
-        let _ = disable_raw_mode();
-    }
+    guard.restore();
+    outcome
+}
 
+#[cfg(all(feature = "tui", feature = "async"))]
+fn is_cancel_event(event: &crossterm::event::Event) -> bool {
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+    if let Event::Key(KeyEvent {
+        code,
+        modifiers,
+        kind,
+        ..
+    }) = *event
+    {
+        if kind == KeyEventKind::Release {
+            return false;
+        }
+        if code == KeyCode::Esc {
+            return true;
+        }
+        if code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL) {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(all(feature = "tui", feature = "async"))]
+struct TaskEventLoop<'a, B: Backend, S, Fut, D, H> {
+    terminal: &'a mut Terminal<B>,
+    events: S,
+    task: std::pin::Pin<&'a mut Fut>,
+    cancel: Option<crate::r#async::Cancel>,
+    draw: D,
+    handle_event: H,
+    needs_redraw: bool,
+}
+
+#[cfg(all(feature = "tui", feature = "async"))]
+impl<B, S, Fut, D, H, T> std::future::Future for TaskEventLoop<'_, B, S, Fut, D, H>
+where
+    B: Backend,
+    S: futures_core::Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
+    Fut: std::future::Future<Output = Result<T, Failure>>,
+    D: FnMut(&mut ratatui::Frame<'_>) + Unpin,
+    H: FnMut(&crossterm::event::Event) -> Option<Result<T, Failure>> + Unpin,
+{
+    type Output = Result<T, Failure>;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        let this = self.get_mut();
+
+        // 1. Poll the background task.
+        if let std::task::Poll::Ready(output) = this.task.as_mut().poll(cx) {
+            let _ = this.terminal.draw(&mut this.draw);
+            return std::task::Poll::Ready(output);
+        }
+
+        // 2. Check cancellation token if present.
+        if let Some(ref cancel) = this.cancel
+            && cancel.is_cancelled()
+        {
+            return std::task::Poll::Ready(Err(Failure::cancelled("the task was cancelled")));
+        }
+
+        // 3. Poll available events from the event stream.
+        let mut got_event = false;
+        while let std::task::Poll::Ready(Some(event_res)) =
+            std::pin::Pin::new(&mut this.events).poll_next(cx)
+        {
+            got_event = true;
+            if let Ok(event) = event_res {
+                if let Some(res) = (this.handle_event)(&event) {
+                    return std::task::Poll::Ready(res);
+                }
+                if is_cancel_event(&event) {
+                    if let Some(ref cancel) = this.cancel {
+                        cancel.cancel();
+                    }
+                    return std::task::Poll::Ready(Err(Failure::cancelled(
+                        "the task was cancelled by the user",
+                    )));
+                }
+            }
+        }
+
+        // 4. Redraw whenever the task was polled (to update progress) or an event arrived.
+        if this.needs_redraw || got_event {
+            this.needs_redraw = false;
+            if let Err(error) = this.terminal.draw(&mut this.draw) {
+                return std::task::Poll::Ready(Err(Failure::execution(format!(
+                    "cannot draw to the terminal: {error}"
+                ))));
+            }
+        }
+
+        // Always request another redraw on next wake.
+        this.needs_redraw = true;
+
+        std::task::Poll::Pending
+    }
+}
+
+/// Runs a background task in the TUI, selecting over terminal events and redrawing live.
+///
+/// Keystrokes are read from crossterm's live [`EventStream`](crossterm::event::EventStream).
+/// An `Escape` or `Ctrl-C` key cancels the task via the provided [`Cancel`](crate::async::Cancel) token.
+///
+/// # Errors
+///
+/// Returns [`Failure::cancelled`] if the user cancels with Escape or Ctrl-C,
+/// or any failure produced by `task` or terminal drawing.
+#[cfg(all(feature = "tui", feature = "async"))]
+pub async fn run_task<B: Backend, T, Fut, D>(
+    terminal: &mut Terminal<B>,
+    task: Fut,
+    cancel: Option<crate::r#async::Cancel>,
+    draw: D,
+) -> Result<T, Failure>
+where
+    Fut: std::future::Future<Output = Result<T, Failure>>,
+    D: FnMut(&mut ratatui::Frame<'_>) + Unpin,
+{
+    run_task_with(
+        terminal,
+        crossterm::event::EventStream::new(),
+        task,
+        cancel,
+        draw,
+    )
+    .await
+}
+
+/// Runs a background task with a custom event stream, selecting between events and task completion.
+///
+/// This allows testing with synthetic event streams or non-default event sources.
+///
+/// # Errors
+///
+/// As [`run_task`].
+#[cfg(all(feature = "tui", feature = "async"))]
+pub async fn run_task_with<B: Backend, T, Fut, S, D>(
+    terminal: &mut Terminal<B>,
+    events: S,
+    task: Fut,
+    cancel: Option<crate::r#async::Cancel>,
+    draw: D,
+) -> Result<T, Failure>
+where
+    Fut: std::future::Future<Output = Result<T, Failure>>,
+    S: futures_core::Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
+    D: FnMut(&mut ratatui::Frame<'_>) + Unpin,
+{
+    run_task_with_handler(terminal, events, task, cancel, draw, |_| None).await
+}
+
+/// Runs a background task with a custom event stream and a custom event handler.
+///
+/// If `handle_event` returns `Some(outcome)`, the loop returns immediately with that outcome.
+///
+/// # Errors
+///
+/// As [`run_task`].
+#[cfg(all(feature = "tui", feature = "async"))]
+pub async fn run_task_with_handler<B: Backend, T, Fut, S, D, H>(
+    terminal: &mut Terminal<B>,
+    events: S,
+    task: Fut,
+    cancel: Option<crate::r#async::Cancel>,
+    draw: D,
+    handle_event: H,
+) -> Result<T, Failure>
+where
+    Fut: std::future::Future<Output = Result<T, Failure>>,
+    S: futures_core::Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
+    D: FnMut(&mut ratatui::Frame<'_>) + Unpin,
+    H: FnMut(&crossterm::event::Event) -> Option<Result<T, Failure>> + Unpin,
+{
+    let mut task = std::pin::pin!(task);
+    let loop_fut = TaskEventLoop {
+        terminal,
+        events,
+        task: task.as_mut(),
+        cancel,
+        draw,
+        handle_event,
+        needs_redraw: true,
+    };
+    loop_fut.await
+}
+
+/// Runs a background task on a writer inside the alternate screen, with terminal drop guards.
+///
+/// # Errors
+///
+/// As [`run_task`], plus [`Failure::execution`] if entering the alternate screen fails.
+#[cfg(all(feature = "tui", feature = "async"))]
+pub async fn run_task_on<W: std::io::Write, T, Fut, D>(
+    screen: W,
+    task: Fut,
+    cancel: Option<crate::r#async::Cancel>,
+    draw: D,
+) -> Result<T, Failure>
+where
+    Fut: std::future::Future<Output = Result<T, Failure>>,
+    D: FnMut(&mut ratatui::Frame<'_>) + Unpin,
+{
+    run_task_on_with(
+        screen,
+        crossterm::event::EventStream::new(),
+        task,
+        cancel,
+        draw,
+    )
+    .await
+}
+
+/// Runs a background task on a writer with a custom event stream and terminal drop guards.
+///
+/// # Errors
+///
+/// As [`run_task_on`].
+#[cfg(all(feature = "tui", feature = "async"))]
+pub async fn run_task_on_with<W: std::io::Write, T, Fut, S, D>(
+    screen: W,
+    events: S,
+    task: Fut,
+    cancel: Option<crate::r#async::Cancel>,
+    draw: D,
+) -> Result<T, Failure>
+where
+    Fut: std::future::Future<Output = Result<T, Failure>>,
+    S: futures_core::Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
+    D: FnMut(&mut ratatui::Frame<'_>) + Unpin,
+{
+    run_task_on_with_handler(screen, events, task, cancel, draw, |_| None).await
+}
+
+/// Runs a background task on a writer with custom events and custom event handler, with terminal drop guards.
+///
+/// # Errors
+///
+/// As [`run_task_on`].
+#[cfg(all(feature = "tui", feature = "async"))]
+pub async fn run_task_on_with_handler<W: std::io::Write, T, Fut, S, D, H>(
+    screen: W,
+    events: S,
+    task: Fut,
+    cancel: Option<crate::r#async::Cancel>,
+    draw: D,
+    handle_event: H,
+) -> Result<T, Failure>
+where
+    Fut: std::future::Future<Output = Result<T, Failure>>,
+    S: futures_core::Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
+    D: FnMut(&mut ratatui::Frame<'_>) + Unpin,
+    H: FnMut(&crossterm::event::Event) -> Option<Result<T, Failure>> + Unpin,
+{
+    let mut guard = TerminalGuard::enter(screen)?;
+    let backend = CrosstermBackend::new(&mut *guard);
+    let opened = match crossterm::terminal::size() {
+        Ok(_size) => Terminal::new(backend),
+        Err(_) => Terminal::with_options(
+            backend,
+            TerminalOptions {
+                viewport: Viewport::Fixed(OFF_SCREEN),
+            },
+        ),
+    };
+    let mut terminal =
+        opened.map_err(|error| Failure::execution(format!("cannot open the screen: {error}")))?;
+
+    let outcome =
+        run_task_with_handler(&mut terminal, events, task, cancel, draw, handle_event).await;
+    drop(terminal);
+    guard.restore();
     outcome
 }
 
@@ -231,5 +593,160 @@ pub fn translate(event: &crossterm::event::Event) -> Option<Key> {
         KeyCode::Enter => Some(Key::Enter),
         KeyCode::Esc => Some(Key::Escape),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn terminal_guard_methods_and_deref() {
+        let mut buffer = Vec::new();
+        let mut guard = TerminalGuard::enter(&mut buffer).expect("enter alternate screen");
+        guard.writer_mut().write_all(b"test").unwrap();
+        guard.write_all(b" more").unwrap();
+        let deref_len = (*guard).len();
+        assert!(deref_len > 0);
+        guard.restore();
+    }
+
+    #[test]
+    fn terminal_guard_into_inner() {
+        let mut buffer = Vec::new();
+        let guard = TerminalGuard::enter(&mut buffer).expect("enter alternate screen");
+        let inner = guard.into_inner();
+        assert_ne!(inner.as_slice(), &[] as &[u8]);
+    }
+
+    #[cfg(feature = "async")]
+    #[test]
+    fn test_is_cancel_event() {
+        use crossterm::event::{
+            Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
+        };
+
+        let esc = Event::Key(KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        });
+        assert!(is_cancel_event(&esc));
+
+        let esc_release = Event::Key(KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Release,
+            state: KeyEventState::NONE,
+        });
+        assert!(!is_cancel_event(&esc_release));
+
+        let ctrl_c = Event::Key(KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        });
+        assert!(is_cancel_event(&ctrl_c));
+
+        let regular_key = Event::Key(KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        });
+        assert!(!is_cancel_event(&regular_key));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_run_task_on_with_handler_custom() {
+        use futures_core::Stream;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        struct EmptyStream;
+        impl Stream for EmptyStream {
+            type Item = std::io::Result<crossterm::event::Event>;
+            fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                Poll::Pending
+            }
+        }
+
+        let mut buffer = Vec::new();
+        let res = run_task_on_with_handler(
+            &mut buffer,
+            EmptyStream,
+            async { Ok("done".to_string()) },
+            None,
+            |_frame| {},
+            |_event| None,
+        )
+        .await;
+
+        assert_eq!(res.unwrap(), "done");
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_run_task_with_pre_cancelled_token() {
+        use futures_core::Stream;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        struct EmptyStream;
+        impl Stream for EmptyStream {
+            type Item = std::io::Result<crossterm::event::Event>;
+            fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                Poll::Pending
+            }
+        }
+
+        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+        let cancel = crate::r#async::Cancel::new();
+        cancel.cancel();
+
+        let pending_task = std::future::pending::<Result<String, Failure>>();
+        let res = run_task_with(
+            &mut terminal,
+            EmptyStream,
+            pending_task,
+            Some(cancel),
+            |_| {},
+        )
+        .await;
+        assert_eq!(res.unwrap_err().kind(), crate::FailureKind::Cancelled);
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_run_task_on_with_success() {
+        use futures_core::Stream;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        struct EmptyStream;
+        impl Stream for EmptyStream {
+            type Item = std::io::Result<crossterm::event::Event>;
+            fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                Poll::Pending
+            }
+        }
+
+        let mut buffer = Vec::new();
+        let res = run_task_on_with(
+            &mut buffer,
+            EmptyStream,
+            async { Ok::<_, Failure>("success_output") },
+            None,
+            |_frame| {},
+        )
+        .await;
+        assert_eq!(res.unwrap(), "success_output");
+        let output = String::from_utf8_lossy(&buffer);
+        assert!(output.contains("\x1b[?1049h"));
+        assert!(output.contains("\x1b[?1049l"));
     }
 }

@@ -17,7 +17,7 @@ exclude = ["features/", "tests/*_bdd.rs"]
 # pays for no others. The TUI's components are public either way — see `tui` in the docs.
 default = []
 interactive = ["dep:inquire"]
-tui = ["dep:ratatui", "dep:crossterm"]
+tui = ["dep:ratatui", "dep:crossterm", "dep:futures-core"]
 # Serialization for `Failure`, `FailureKind`, `Secret`, and structured JSON output mode `--json` (decision-25).
 serde = ["dep:serde", "dep:serde_json"]
 # Machine-readable CLI schema introspection (decision-25, CLI-73).
@@ -52,7 +52,8 @@ toml_edit = { workspace = true, optional = true }
 figment = { workspace = true, optional = true }
 inquire = { workspace = true, optional = true }
 ratatui = { workspace = true, optional = true }
-crossterm = { workspace = true, optional = true }
+crossterm = { workspace = true, optional = true, features = ["event-stream"] }
+futures-core = { workspace = true, optional = true }
 minijinja = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "signal", "time", "macros", "sync"] }
 

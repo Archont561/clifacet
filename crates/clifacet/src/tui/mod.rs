@@ -36,7 +36,13 @@ pub mod state;
 pub mod widgets;
 
 pub use app::{
-    draw_form, keys_when_interactive, live_keys, run, run_on, run_on_with, run_with, translate,
+    TerminalGuard, draw_form, keys_when_interactive, live_keys, run, run_on, run_on_with, run_with,
+    translate,
+};
+#[cfg(feature = "async")]
+pub use app::{
+    run_task, run_task_on, run_task_on_with, run_task_on_with_handler, run_task_with,
+    run_task_with_handler,
 };
 pub use state::{FieldState, FormState, Key, Outcome};
 pub use widgets::{CustomField, Field, Form, ProgressGauge};

@@ -1,7 +1,7 @@
 ---
 id: CLI-85
 title: Implement TUI EventStream loop and async choice providers
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 19:00'
 labels: []
@@ -20,8 +20,8 @@ Refactor the TUI runner under `tui` + `async` to run command work as an async ta
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 TUI loop selects over crossterm EventStream, redrawing while background tasks execute
-- [ ] #2 Drop guards guarantee terminal restoration to cooked mode even on hard cancellation or panic
-- [ ] #3 #[clifacet(choices = ...)] supports async callback functions accessing &Cx
-- [ ] #4 Async choice callbacks integrate cleanly with dynamic shell completion hooks
+- [x] #1 TUI loop selects over crossterm EventStream, redrawing while background tasks execute
+- [x] #2 Drop guards guarantee terminal restoration to cooked mode even on hard cancellation or panic
+- [x] #3 #[clifacet(choices = ...)] supports async callback functions accessing &Cx
+- [x] #4 Async choice callbacks integrate cleanly with dynamic shell completion hooks
 <!-- AC:END -->

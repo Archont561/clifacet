@@ -143,7 +143,9 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                             || entry.path().is_ident("subcommands")
                         {
                             is_subcmd = true;
-                        } else if entry.path().is_ident("complete") {
+                        } else if entry.path().is_ident("complete")
+                            || entry.path().is_ident("choices")
+                        {
                             if let Meta::NameValue(nv) = entry {
                                 if let syn::Expr::Path(ep) = nv.value {
                                     complete_fn = Some(ep.path);
@@ -623,10 +625,16 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         let flag = format!("--{a_kebab}");
         complete_arms.push(quote! {
             (#c_name, #a_name) | (#c_name, #a_kebab) | (#c_name, #flag) => {
-                let items = #cb(cx, current);
-                ::core::option::Option::Some(
-                    items.into_iter().map(|item| item.to_string()).collect()
-                )
+                let items = {
+                    use ::clifacet::cli::auto_wire_choice::{
+                        CallSyncChoiceResult as _, ChoiceWrap,
+                    };
+                    #[cfg(feature = "async")]
+                    use ::clifacet::cli::auto_wire_choice::CallAsyncChoiceResult as _;
+
+                    ChoiceWrap(#cb(cx, current)).call_choice_result()
+                };
+                ::core::option::Option::Some(items)
             }
         });
     }
