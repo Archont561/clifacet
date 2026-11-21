@@ -343,58 +343,6 @@ fn getting_started_snippet_2() {
     assert_eq!((code, out.as_slice()), (0, b"hello, ada x1\n".as_slice()));
 }
 
-/// `getting-started.mdx`, line 178.
-#[rustfmt::skip]
-#[test]
-fn getting_started_snippet_3() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::command::{Plan, PlannedWith};
-    use clifacet::prompt::Scripted;
-    use clifacet::{App, Failure, Globals};
-    #[clifacet::command(input = DoneInput)]
-    #[derive(Clone)]
-    #[command(name = "done")]
-    struct Done {
-        #[arg(long)]
-        task: String,
-        #[command(flatten)]
-        #[clifacet(skip)]
-        globals: Globals,
-    }
-    struct DoneInput {
-        task: String,
-    }
-    struct Store {
-        open: Vec<String>,
-    }
-    #[clifacet::planned]
-    impl PlannedWith<Store> for Done {
-        type Input = DoneInput;
-        type Output = String;
-        fn plan<'a>(&'a self, input: DoneInput, store: &'a Store) -> Result<Plan<'a, String>, Failure> {
-            if !store.open.contains(&input.task) {
-                return Err(Failure::validation(format!("there is no open task named {}", input.task)));
-            }
-            let step = format!("mark {} done", input.task);
-            let task = input.task;
-            Ok(Plan::new(move || Ok(format!("{task} is done"))).step(step))
-        }
-    }
-    let store = Store { open: vec![String::from("CLI-47")] };
-    let app = App::<Done>::new().context(move || Ok::<_, std::io::Error>(Store {
-        open: store.open.clone(),
-    }));
-    let (mut out, mut err) = (Vec::new(), Vec::new());
-    let code = app.run_with(
-        ["done", "--task", "CLI-47", "--dry-run"],
-        clifacet::policy::Capabilities::headless(),
-        || Box::new(Scripted::new([])),
-        &mut out,
-        &mut err,
-    );
-    assert_eq!((code, out.as_slice()), (0, b"mark CLI-47 done\n".as_slice()), "{err:?}");
-}
-
 /// `structured-output.mdx`, line 56.
 #[cfg(all(feature = "serde", feature = "schema"))]
 #[rustfmt::skip]

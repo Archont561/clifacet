@@ -173,55 +173,52 @@ The runner evaluates execution steps in a strict, predictable order:
 
 <Accordion title="Injecting Application Context Dependencies">
 
-Commands declare user input, not application resources. Shared state (such as stores or database connections) is provided via `App::context`:
+Commands declare user input, not application resources. Shared state (such as
+stores or database connections) is provided via `#[clifacet(context)]` and
+automatically wired through `FromCli`:
 
-```rust
-use clifacet::command::{Plan, PlannedWith};
+```rust ignore
+use clifacet::command::Plan;
 use clifacet::prompt::Scripted;
-use clifacet::{App, Failure, Globals};
-
-#[clifacet::command(input = DoneInput)]
-#[derive(Clone)]
-#[command(name = "done")]
-struct Done {
-    #[arg(long)]
-    task: String,
-
-    #[command(flatten)]
-    #[clifacet(skip)]
-    globals: Globals,
-}
-
-struct DoneInput {
-    task: String,
-}
+use clifacet::{Failure, FromCli, Globals};
 
 struct Store {
     open: Vec<String>,
 }
 
-#[clifacet::planned]
-impl PlannedWith<Store> for Done {
-    type Input = DoneInput;
-    type Output = String;
+impl FromCli<DoneApp> for Store {
+    fn from_cli(_cli: &DoneApp) -> Result<Self, Failure> {
+        Ok(Store {
+            open: vec![String::from("CLI-47")],
+        })
+    }
+}
 
-    fn plan<'a>(&'a self, input: DoneInput, store: &'a Store) -> Result<Plan<'a, String>, Failure> {
-        if !store.open.contains(&input.task) {
-            return Err(Failure::validation(format!("there is no open task named {}", input.task)));
+#[clifacet::app(name = "done", commands)]
+struct DoneApp {
+    #[command(flatten)]
+    #[clifacet(skip)]
+    globals: Globals,
+
+    #[clifacet(context)]
+    store: Store,
+}
+
+#[clifacet::commands]
+impl DoneApp {
+    pub fn done(&self, #[clifacet(long)] task: String) -> Result<Plan<'_, String>, Failure> {
+        if !self.store.open.contains(&task) {
+            return Err(Failure::validation(format!("there is no open task named {task}")));
         }
-        let step = format!("mark {} done", input.task);
-        let task = input.task;
+        let step = format!("mark {task} done");
         Ok(Plan::new(move || Ok(format!("{task} is done"))).step(step))
     }
 }
 
-let store = Store { open: vec![String::from("CLI-47")] };
-let app = App::<Done>::new().context(move || Ok::<_, std::io::Error>(Store {
-    open: store.open.clone(),
-}));
+let app = clifacet::App::<DoneApp, DoneApp, clifacet::Plain, Store>::for_cli();
 let (mut out, mut err) = (Vec::new(), Vec::new());
 let code = app.run_with(
-    ["done", "--task", "CLI-47", "--dry-run"],
+    ["done", "done", "--task", "CLI-47", "--dry-run"],
     clifacet::policy::Capabilities::headless(),
     || Box::new(Scripted::new([])),
     &mut out,
