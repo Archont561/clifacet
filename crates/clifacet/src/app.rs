@@ -496,6 +496,8 @@ pub struct App<'c, Cli, C = Cli, R = Plain, Cx = ()> {
     >,
     #[cfg(feature = "async")]
     grace_period: std::time::Duration,
+    #[cfg(feature = "async")]
+    progress_writer: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Write + Send>>>>,
 }
 
 /// Reads the settings file for a given argument list.
@@ -548,6 +550,8 @@ impl<Cli: Clone> App<'_, Cli> {
             async_runner: None,
             #[cfg(feature = "async")]
             grace_period: std::time::Duration::from_secs(5),
+            #[cfg(feature = "async")]
+            progress_writer: None,
         }
     }
 }
@@ -619,6 +623,8 @@ where
             )),
             #[cfg(feature = "async")]
             grace_period: std::time::Duration::from_secs(5),
+            #[cfg(feature = "async")]
+            progress_writer: None,
         }
     }
 }
@@ -686,6 +692,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             async_runner: None,
             #[cfg(feature = "async")]
             grace_period: self.grace_period,
+            #[cfg(feature = "async")]
+            progress_writer: self.progress_writer,
         }
     }
 
@@ -717,6 +725,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             async_runner: self.async_runner,
             #[cfg(feature = "async")]
             grace_period: self.grace_period,
+            #[cfg(feature = "async")]
+            progress_writer: self.progress_writer,
         }
     }
 
@@ -763,6 +773,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             async_runner: None,
             #[cfg(feature = "async")]
             grace_period: self.grace_period,
+            #[cfg(feature = "async")]
+            progress_writer: self.progress_writer,
         }
     }
 
@@ -802,6 +814,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             async_runner: None,
             #[cfg(feature = "async")]
             grace_period: self.grace_period,
+            #[cfg(feature = "async")]
+            progress_writer: self.progress_writer,
         }
     }
 
@@ -846,6 +860,7 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_failure_async: None,
             async_runner: None,
             grace_period: self.grace_period,
+            progress_writer: self.progress_writer,
         }
     }
 
@@ -862,6 +877,14 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
     #[must_use]
     pub fn grace_period(mut self, period: std::time::Duration) -> Self {
         self.grace_period = period;
+        self
+    }
+
+    /// Sets a custom writer to receive asynchronous progress updates.
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn progress_writer(mut self, writer: impl Write + Send + 'static) -> Self {
+        self.progress_writer = Some(std::sync::Arc::new(std::sync::Mutex::new(Box::new(writer))));
         self
     }
 
@@ -1348,7 +1371,7 @@ where
                 let mut session = Session::start(plan, build_frontend).sharing(Rc::clone(&context));
                 match cli.collect(&mut session) {
                     Ok(collected_cli) => {
-                        self.settle_async(collected_cli, &globals, &context, out)
+                        self.settle_async(collected_cli, &globals, &context, out, capabilities)
                             .await
                     }
                     Err(err) => Err(err),
@@ -1368,6 +1391,7 @@ where
         globals: &Globals,
         context: &Lazy<Cx>,
         out: &mut dyn Write,
+        capabilities: Capabilities,
     ) -> Result<(), Failure> {
         #[cfg(feature = "schema")]
         if globals.schema {
@@ -1456,7 +1480,21 @@ where
             return Err(err);
         }
 
-        let run_cx = crate::r#async::RunCx::empty();
+        let progress_writer = self.progress_writer.clone().unwrap_or_else(|| {
+            std::sync::Arc::new(std::sync::Mutex::new(
+                Box::new(std::io::stderr()) as Box<dyn std::io::Write + Send>
+            ))
+        });
+
+        let progress_sink: std::sync::Arc<dyn crate::r#async::ProgressSink> = if globals.json {
+            std::sync::Arc::new(crate::r#async::NdjsonProgressSink::new(progress_writer))
+        } else if capabilities.supports(Mode::Interactive) {
+            std::sync::Arc::new(crate::r#async::TtyProgressSink::new(progress_writer))
+        } else {
+            std::sync::Arc::new(crate::r#async::NoopProgressSink)
+        };
+
+        let run_cx = crate::r#async::RunCx::new(crate::r#async::Cancel::new(), progress_sink);
 
         let async_fut = self
             .async_runner

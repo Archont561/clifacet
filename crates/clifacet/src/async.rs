@@ -17,6 +17,7 @@
 
 use std::fmt;
 use std::future::Future;
+use std::io::Write;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -376,6 +377,325 @@ impl ProgressSink for RecordingProgressSink {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(ProgressEvent::Message(m.to_owned()));
+    }
+}
+
+/// A [`ProgressSink`] that writes ephemeral single-line progress updates to a writer.
+///
+/// Designed for plain interactive TTY modes. Each update rewrites the current terminal line
+/// using `\r\x1b[2K` so that progress updates remain on a single line without scrolling.
+pub struct TtyProgressSink {
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    current: AtomicU64,
+    total: Mutex<Option<u64>>,
+    message: Mutex<Option<String>>,
+}
+
+impl fmt::Debug for TtyProgressSink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TtyProgressSink")
+            .field("current", &self.current.load(Ordering::SeqCst))
+            .finish_non_exhaustive()
+    }
+}
+
+impl TtyProgressSink {
+    /// Creates a new TTY progress sink writing to `writer`.
+    pub fn new(writer: Arc<Mutex<Box<dyn Write + Send>>>) -> Self {
+        Self {
+            writer,
+            current: AtomicU64::new(0),
+            total: Mutex::new(None),
+            message: Mutex::new(None),
+        }
+    }
+
+    /// Creates a new TTY progress sink from any thread-safe writer.
+    pub fn from_writer<W: Write + Send + 'static>(writer: W) -> Self {
+        Self::new(Arc::new(Mutex::new(Box::new(writer))))
+    }
+
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
+    fn render(&self) {
+        let cur = self.current.load(Ordering::SeqCst);
+        let tot = *self
+            .total
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let msg = self
+            .message
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let line = match (msg.as_deref(), tot) {
+            (Some(m), Some(t)) if t > 0 => {
+                let pct = (cur as f64 / t as f64 * 100.0).clamp(0.0, 100.0) as u16;
+                format!("{m} [{cur}/{t}] ({pct}%)")
+            }
+            (Some(m), Some(t)) => format!("{m} [{cur}/{t}]"),
+            (Some(m), None) => format!("{m} [{cur}]"),
+            (None, Some(t)) if t > 0 => {
+                let pct = (cur as f64 / t as f64 * 100.0).clamp(0.0, 100.0) as u16;
+                format!("[{cur}/{t}] ({pct}%)")
+            }
+            (None, Some(t)) => format!("[{cur}/{t}]"),
+            (None, None) => format!("[{cur}]"),
+        };
+
+        if let Ok(mut w) = self.writer.lock() {
+            let _ = write!(w, "\r\x1b[2K{line}");
+            let _ = w.flush();
+        }
+    }
+
+    /// Clears the ephemeral progress line from the terminal.
+    pub fn clear(&self) {
+        if let Ok(mut w) = self.writer.lock() {
+            let _ = write!(w, "\r\x1b[2K");
+            let _ = w.flush();
+        }
+    }
+}
+
+impl Drop for TtyProgressSink {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
+impl ProgressSink for TtyProgressSink {
+    fn total(&self, n: Option<u64>) {
+        *self
+            .total
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = n;
+        self.render();
+    }
+
+    fn advance(&self, n: u64) {
+        self.current.fetch_add(n, Ordering::SeqCst);
+        self.render();
+    }
+
+    fn message(&self, m: &str) {
+        *self
+            .message
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(m.to_owned());
+        self.render();
+    }
+}
+
+/// A [`ProgressSink`] that writes structured NDJSON progress events to a writer.
+///
+/// Designed for `--json` execution mode (CLI-72). Each progress event (`total`, `advance`, `message`)
+/// emits a single line-delimited JSON object to stderr:
+/// `{"event":"progress","current":...,"total":...,"message":...}\n`.
+pub struct NdjsonProgressSink {
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    current: AtomicU64,
+    total: Mutex<Option<u64>>,
+    message: Mutex<Option<String>>,
+}
+
+impl fmt::Debug for NdjsonProgressSink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NdjsonProgressSink")
+            .field("current", &self.current.load(Ordering::SeqCst))
+            .finish_non_exhaustive()
+    }
+}
+
+impl NdjsonProgressSink {
+    /// Creates a new NDJSON progress sink writing to `writer`.
+    pub fn new(writer: Arc<Mutex<Box<dyn Write + Send>>>) -> Self {
+        Self {
+            writer,
+            current: AtomicU64::new(0),
+            total: Mutex::new(None),
+            message: Mutex::new(None),
+        }
+    }
+
+    /// Creates a new NDJSON progress sink from any thread-safe writer.
+    pub fn from_writer<W: Write + Send + 'static>(writer: W) -> Self {
+        Self::new(Arc::new(Mutex::new(Box::new(writer))))
+    }
+
+    fn emit(&self) {
+        let cur = self.current.load(Ordering::SeqCst);
+        let tot = *self
+            .total
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let msg = self
+            .message
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        #[cfg(feature = "serde")]
+        let json_line = {
+            let payload = serde_json::json!({
+                "event": "progress",
+                "current": cur,
+                "total": tot,
+                "message": msg.as_deref(),
+            });
+            serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
+        };
+
+        #[cfg(not(feature = "serde"))]
+        let json_line = {
+            let tot_val = match tot {
+                Some(t) => t.to_string(),
+                None => "null".to_string(),
+            };
+            let msg_val = match msg.as_deref() {
+                Some(m) => format!("\"{m}\""),
+                None => "null".to_string(),
+            };
+            format!(
+                "{{\"event\":\"progress\",\"current\":{cur},\"total\":{tot_val},\"message\":{msg_val}}}"
+            )
+        };
+
+        if let Ok(mut w) = self.writer.lock() {
+            let _ = writeln!(w, "{json_line}");
+            let _ = w.flush();
+        }
+    }
+}
+
+impl ProgressSink for NdjsonProgressSink {
+    fn total(&self, n: Option<u64>) {
+        *self
+            .total
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = n;
+        self.emit();
+    }
+
+    fn advance(&self, n: u64) {
+        self.current.fetch_add(n, Ordering::SeqCst);
+        self.emit();
+    }
+
+    fn message(&self, m: &str) {
+        *self
+            .message
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(m.to_owned());
+        self.emit();
+    }
+}
+
+/// Shared progress state for TUI gauge rendering.
+#[cfg(feature = "tui")]
+#[derive(Debug, Default)]
+pub struct TuiProgressState {
+    current: AtomicU64,
+    total: Mutex<Option<u64>>,
+    message: Mutex<Option<String>>,
+}
+
+#[cfg(feature = "tui")]
+impl TuiProgressState {
+    /// Returns the current progress count.
+    #[must_use]
+    pub fn current(&self) -> u64 {
+        self.current.load(Ordering::SeqCst)
+    }
+
+    /// Returns the total expected count, if known.
+    #[must_use]
+    pub fn total(&self) -> Option<u64> {
+        *self
+            .total
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Returns the current status message, if set.
+    #[must_use]
+    pub fn message(&self) -> Option<String> {
+        self.message
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Returns the progress ratio in the range `[0.0, 1.0]`, if total is known and non-zero.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn ratio(&self) -> Option<f64> {
+        let total = self.total()?;
+        if total == 0 {
+            Some(1.0)
+        } else {
+            Some((self.current() as f64 / total as f64).clamp(0.0, 1.0))
+        }
+    }
+
+    /// Returns the progress percentage in the range `[0, 100]`, if total is known and non-zero.
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn percent(&self) -> Option<u16> {
+        self.ratio().map(|r| (r * 100.0) as u16)
+    }
+}
+
+/// A [`ProgressSink`] that writes updates to a [`TuiProgressState`].
+#[cfg(feature = "tui")]
+#[derive(Debug, Clone)]
+pub struct TuiProgressSink {
+    state: Arc<TuiProgressState>,
+}
+
+#[cfg(feature = "tui")]
+impl TuiProgressSink {
+    /// Creates a new TUI progress sink and its paired state.
+    #[must_use]
+    pub fn new() -> (Self, Arc<TuiProgressState>) {
+        let state = Arc::new(TuiProgressState::default());
+        (
+            Self {
+                state: Arc::clone(&state),
+            },
+            state,
+        )
+    }
+
+    /// Returns a reference to the shared state.
+    #[must_use]
+    pub fn state(&self) -> &Arc<TuiProgressState> {
+        &self.state
+    }
+}
+
+#[cfg(feature = "tui")]
+impl ProgressSink for TuiProgressSink {
+    fn total(&self, n: Option<u64>) {
+        *self
+            .state
+            .total
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = n;
+    }
+
+    fn advance(&self, n: u64) {
+        self.state.current.fetch_add(n, Ordering::SeqCst);
+    }
+
+    fn message(&self, m: &str) {
+        *self
+            .state
+            .message
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(m.to_owned());
     }
 }
 

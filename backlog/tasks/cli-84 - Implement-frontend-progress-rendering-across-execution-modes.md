@@ -1,7 +1,7 @@
 ---
 id: CLI-84
 title: Implement frontend progress rendering across execution modes
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 19:00'
 labels: []
@@ -20,8 +20,8 @@ Implement presentation-tier rendering for `ProgressSink` events across all suppo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Plain interactive TTY mode displays ephemeral progress updates on stderr
-- [ ] #2 Non-TTY, redirected, or batch mode suppresses all progress rendering
-- [ ] #3 TUI frontend renders live progress via Ratatui gauge widgets
-- [ ] #4 --json mode emits structured NDJSON progress events to stderr without contaminating stdout data
+- [x] #1 Plain interactive TTY mode displays ephemeral progress updates on stderr
+- [x] #2 Non-TTY, redirected, or batch mode suppresses all progress rendering
+- [x] #3 TUI frontend renders live progress via Ratatui gauge widgets
+- [x] #4 --json mode emits structured NDJSON progress events to stderr without contaminating stdout data
 <!-- AC:END -->
