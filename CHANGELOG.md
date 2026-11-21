@@ -12,8 +12,12 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **async:** implement frontend progress rendering across execution modes (CLI-84)
+([55ba0ff](https://github.com/Archont561/clifacet/commit/55ba0ff3a6b9191157baa67f1adabbe73363e8c8))
+* **async:** implement AsyncPlan and async dry-run preview (CLI-83)
+([5f49282](https://github.com/Archont561/clifacet/commit/5f4928295b056cb438b896499e2954177515fd61))
 * implement cancellation contract Ctrl-C grace period and timeout (CLI-82)
-([1d7fef7](https://github.com/Archont561/clifacet/commit/1d7fef730017a86306d43058055892dd82d48cb6))
+([c870235](https://github.com/Archont561/clifacet/commit/c870235add7a4df256400aa23dd7cfa97c83093a))
 * support async methods in commands macro and lazy async context (CLI-81)
 ([25a8b06](https://github.com/Archont561/clifacet/commit/25a8b066e4e180dc7fbceece3ca9d2e61355a37c))
 
