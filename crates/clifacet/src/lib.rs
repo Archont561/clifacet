@@ -190,7 +190,7 @@ pub use clifacet_macros::registry;
 pub use app::{App, Globals, JsonRenderer, Plain, Render, run, run_cli};
 pub use cli::{
     ActionLog, Cli, ContextCell, FromCli, IntoFailure, IntoOutcome, Json, OutcomePayload,
-    PlannedOutcome, Structured,
+    PlannedOutcome, Structured, block_on,
 };
 pub use command::{Command, Handler};
 pub use facet::Facet;

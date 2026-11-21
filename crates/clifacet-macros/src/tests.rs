@@ -2117,3 +2117,40 @@ fn commands_impl_and_app_dry_run_support() {
         "{tokens_cmd}"
     );
 }
+
+#[test]
+fn commands_impl_detects_async_fn_and_auto_wires_runtime() {
+    let attr: proc_macro2::TokenStream = syn::parse_str("").unwrap();
+    let item: proc_macro2::TokenStream = syn::parse_str(
+        r"
+        impl TestApp {
+            pub async fn fetch(&self, url: String) -> Result<String, Failure> {
+                Ok(url)
+            }
+
+            pub async fn ping(&self) -> Result<(), Failure> {
+                Ok(())
+            }
+
+            pub async fn sub(&self, #[subcommand] s: SubTree) -> Result<(), Failure> {
+                Ok(())
+            }
+        }
+        ",
+    )
+    .unwrap();
+    let res = crate::commands_impl::expand(attr, item).expect("commands expand");
+    let tokens = res.to_string();
+    assert!(
+        tokens.contains("block_on") && tokens.contains("self . fetch"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("block_on") && tokens.contains("self . ping"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("block_on") && tokens.contains("self . sub"),
+        "{tokens}"
+    );
+}

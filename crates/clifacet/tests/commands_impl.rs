@@ -2,7 +2,8 @@
     clippy::pedantic,
     clippy::unnecessary_wraps,
     clippy::needless_pass_by_value,
-    clippy::unused_self
+    clippy::unused_self,
+    clippy::unused_async
 )]
 
 use clifacet::policy::Capabilities;
@@ -72,6 +73,11 @@ impl MyCli {
     /// Custom error return.
     pub fn fail(&self) -> Result<(), String> {
         Err("deliberate failure".into())
+    }
+
+    /// Asynchronous fetch test.
+    pub async fn async_fetch(&self, resource: String) -> Result<String, Failure> {
+        Ok(format!("fetched async:{resource}"))
     }
 }
 
@@ -155,6 +161,19 @@ fn test_commands_dispatch_and_self_context() {
             .unwrap()
             .contains("deliberate failure")
     );
+
+    // 6. Test async command returning String
+    let mut out6 = Vec::new();
+    let mut err6 = Vec::new();
+    let code6 = app.run_with(
+        ["mycli", "async-fetch", "users"],
+        Capabilities::headless(),
+        prompter,
+        &mut out6,
+        &mut err6,
+    );
+    assert_eq!(code6, 0);
+    assert_eq!(String::from_utf8(out6).unwrap(), "fetched async:users\n");
 }
 
 #[test]

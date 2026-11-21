@@ -139,7 +139,7 @@ fn async_commands_snippet_1() {
     assert_eq!(progress_recorder.events().len(), 3);
 }
 
-/// `async-commands.mdx`, line 58.
+/// `async-commands.mdx`, line 81.
 #[cfg(feature = "async")]
 #[rustfmt::skip]
 #[test]

@@ -51,6 +51,29 @@ Cancellation in Clifacet is strictly cooperative: background tasks are never for
 - Async loops poll or await `cancel.cancelled()` at safe await boundaries.
 - If canceled, handlers return `Failure::cancelled("...")`, producing standard exit code `130`.
 
+## Declarative Async Controller Methods
+
+Controller methods declared with `pub async fn` inside `#[clifacet::commands]`
+are automatically detected and driven to completion:
+
+```rust ignore
+use clifacet::{app, commands, Failure};
+
+#[app(name = "demo", commands)]
+struct DemoApp {}
+
+#[commands]
+impl DemoApp {
+    /// Controller methods can be asynchronous
+    pub async fn fetch(&self, url: String) -> Result<String, Failure> {
+        // Asynchronous operations execute seamlessly
+        Ok(format!("fetched {url}"))
+    }
+}
+```
+
+Clifacet's command dispatcher wires in an execution runtime automatically, eliminating the need to manually pass runtime handles or call `block_on` by hand.
+
 ## Testing Async Commands
 
 Using `RunCx::for_test()`, you can unit-test async handlers without spinning up a real terminal or running within an active TTY session:
