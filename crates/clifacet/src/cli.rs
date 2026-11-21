@@ -1169,4 +1169,88 @@ mod tests {
         assert_eq!(block_on(YieldWakeRef(AtomicBool::new(false))), 42);
         assert_eq!(block_on(YieldWakeOwn(AtomicBool::new(false))), 99);
     }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn json_and_structured_payload_and_display() {
+        use crate::cli::OutcomePayload;
+        let j = Json::new(42);
+        assert_eq!(j.into_inner(), 42);
+        let j2 = Json::from("hello");
+        assert_eq!(j2.format_outcome(false, false).unwrap(), "\"hello\"");
+        assert_eq!(format!("{j2}"), "\"hello\"");
+        assert_eq!(j2.into_displayed(), "\"hello\"");
+        let val: serde_json::Value = serde_json::json!({"key": "val"});
+        assert!(val.into_displayed().contains("key"));
+
+        let st = Structured::new(vec![1, 2, 3], "text display");
+        assert_eq!(st.data, vec![1, 2, 3]);
+        assert_eq!(format!("{st}"), "text display");
+        assert_eq!(st.into_displayed().display, "text display");
+
+        let plan = Plan::new(|| Ok::<_, Failure>("plan executed")).step("test step");
+        let planned_outcome = PlannedOutcome::new(plan);
+        assert_eq!(format!("{planned_outcome}"), "test step");
+        let dry_json = planned_outcome.format_outcome(true, true).unwrap();
+        assert!(dry_json.contains("dry_run"));
+    }
+
+    #[cfg(feature = "async")]
+    #[test]
+    #[allow(clippy::similar_names)]
+    fn auto_wire_async_and_wrappers_coverage() {
+        use crate::cli::auto_wire_async::AutoWireAsync;
+        use crate::cli::auto_wire_factory::{
+            CallAsyncFactoryResult as _, CallSyncFactoryResult as _, FactoryWrap,
+        };
+        use crate::cli::auto_wire_fail_hook::{
+            CallAsyncFailHookResult as _, CallSyncFailHookResult as _, FailHookWrap,
+        };
+        use crate::cli::auto_wire_hook::{
+            CallAsyncHookResult as _, CallSyncHookResult as _, HookWrap,
+        };
+
+        let aw = AutoWireAsync::<i32>(std::marker::PhantomData);
+        let () = block_on(async {
+            use crate::cli::auto_wire_async::AutoWireAsyncDefault as _;
+            let def = aw.init_ctx_async(&()).await.unwrap();
+            assert_eq!(def, 0);
+
+            let wrap_sync = FactoryWrap::new(Ok::<_, Failure>(1));
+            assert_eq!(wrap_sync.call_sync_result().unwrap(), 1);
+
+            let wrap_sync2 = FactoryWrap::new(Ok::<_, Failure>(2));
+            assert_eq!(wrap_sync2.call_async_result().await.unwrap(), 2);
+
+            let wrap_async = FactoryWrap::new(async { Ok::<_, Failure>(3) });
+            assert_eq!(wrap_async.call_sync_result().unwrap(), 3);
+
+            let wrap_async2 = FactoryWrap::new(async { Ok::<_, Failure>(4) });
+            assert_eq!(wrap_async2.call_async_result().await.unwrap(), 4);
+
+            let hook_sync = HookWrap::new(Ok::<(), Failure>(()));
+            assert!(hook_sync.call_sync_result().is_ok());
+
+            let hook_sync2 = HookWrap::new(Ok::<(), Failure>(()));
+            assert!(hook_sync2.call_async_result().await.is_ok());
+
+            let hook_async = HookWrap::new(async { Ok::<(), Failure>(()) });
+            assert!(hook_async.call_sync_result().is_ok());
+
+            let hook_async2 = HookWrap::new(async { Ok::<(), Failure>(()) });
+            assert!(hook_async2.call_async_result().await.is_ok());
+
+            let fail_sync = FailHookWrap::new(());
+            fail_sync.call_sync_result();
+
+            let fail_sync2 = FailHookWrap::new(());
+            fail_sync2.call_async_result().await;
+
+            let fail_async = FailHookWrap::new(async {});
+            fail_async.call_sync_result();
+
+            let fail_async2 = FailHookWrap::new(async {});
+            fail_async2.call_async_result().await;
+        });
+    }
 }
