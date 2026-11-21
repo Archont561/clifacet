@@ -108,6 +108,16 @@ pub trait Cli: Sized {
     ) -> Option<crate::r#async::LocalBoxFuture<'a, Result<Box<dyn std::any::Any>, Failure>>> {
         None
     }
+
+    /// Asynchronously previews command steps for `--dry-run` when this CLI supports async subcommands.
+    #[cfg(feature = "async")]
+    #[doc(hidden)]
+    fn async_preview<'a>(
+        &'a self,
+        _cx: &'a Self::Context,
+    ) -> Option<crate::r#async::LocalBoxFuture<'a, Result<Vec<String>, Failure>>> {
+        None
+    }
 }
 
 /// Constructs an application context or component from parsed CLI root options.
@@ -490,7 +500,41 @@ pub mod auto_wire_json {
     }
 
     impl<T: std::fmt::Display> FallbackFormatOutcome for T {
-        fn format_outcome(self, _is_dry_run: bool, _is_json: bool) -> Result<String, Failure> {
+        fn format_outcome(self, is_dry_run: bool, _is_json: bool) -> Result<String, Failure> {
+            if is_dry_run {
+                return Err(Failure::validation(
+                    "this command cannot describe what it would do, so it cannot be run with --dry-run",
+                ));
+            }
+            Ok(self.to_string())
+        }
+    }
+}
+
+#[doc(hidden)]
+pub mod auto_wire_json_async {
+    use crate::failure::Failure;
+
+    pub trait FallbackFormatOutcomeAsync {
+        fn format_outcome_async(
+            self,
+            is_dry_run: bool,
+            is_json: bool,
+        ) -> impl std::future::Future<Output = Result<String, Failure>> + Send;
+    }
+
+    impl<T: std::fmt::Display + Send> FallbackFormatOutcomeAsync for T {
+        #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+        async fn format_outcome_async(
+            self,
+            is_dry_run: bool,
+            _is_json: bool,
+        ) -> Result<String, Failure> {
+            if is_dry_run {
+                return Err(Failure::validation(
+                    "this command cannot describe what it would do, so it cannot be run with --dry-run",
+                ));
+            }
             Ok(self.to_string())
         }
     }
@@ -739,12 +783,17 @@ impl<T> Structured<T> {
     ///
     /// # Errors
     ///
-    /// Returns a [`Failure`] if serialization fails.
+    /// Returns a [`Failure`] if serialization fails or if run in dry-run mode without a plan.
     #[cfg(feature = "serde")]
-    pub fn format_outcome(self, _is_dry_run: bool, is_json: bool) -> Result<String, Failure>
+    pub fn format_outcome(self, is_dry_run: bool, is_json: bool) -> Result<String, Failure>
     where
         T: serde::Serialize,
     {
+        if is_dry_run {
+            return Err(Failure::validation(
+                "this command cannot describe what it would do, so it cannot be run with --dry-run",
+            ));
+        }
         if is_json {
             serde_json::to_string_pretty(&self.data)
                 .map_err(|e| Failure::execution(format!("cannot serialize output: {e}")))
@@ -753,14 +802,52 @@ impl<T> Structured<T> {
         }
     }
 
+    /// Formats the outcome asynchronously depending on whether JSON mode is requested.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if serialization fails or if run in dry-run mode without a plan.
+    #[cfg(feature = "serde")]
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+    pub async fn format_outcome_async(
+        self,
+        is_dry_run: bool,
+        is_json: bool,
+    ) -> Result<String, Failure>
+    where
+        T: serde::Serialize + Send,
+    {
+        self.format_outcome(is_dry_run, is_json)
+    }
+
     /// Formats the outcome when serde is not enabled.
     ///
     /// # Errors
     ///
-    /// Always succeeds.
+    /// Returns a [`Failure`] if run in dry-run mode without a plan.
     #[cfg(not(feature = "serde"))]
-    pub fn format_outcome(self, _is_dry_run: bool, _is_json: bool) -> Result<String, Failure> {
+    pub fn format_outcome(self, is_dry_run: bool, _is_json: bool) -> Result<String, Failure> {
+        if is_dry_run {
+            return Err(Failure::validation(
+                "this command cannot describe what it would do, so it cannot be run with --dry-run",
+            ));
+        }
         Ok(self.display)
+    }
+
+    /// Formats the outcome asynchronously when serde is not enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if run in dry-run mode without a plan.
+    #[cfg(not(feature = "serde"))]
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+    pub async fn format_outcome_async(
+        self,
+        is_dry_run: bool,
+        is_json: bool,
+    ) -> Result<String, Failure> {
+        self.format_outcome(is_dry_run, is_json)
     }
 }
 
@@ -833,6 +920,23 @@ impl<'a, T> PlannedOutcome<'a, T> {
             res.into_displayed().format_outcome(is_dry_run, is_json)
         }
     }
+
+    /// Formats the planned outcome asynchronously.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if plan execution or serialization fails.
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+    pub async fn format_outcome_async(
+        self,
+        is_dry_run: bool,
+        is_json: bool,
+    ) -> Result<String, Failure>
+    where
+        T: OutcomePayload,
+    {
+        self.format_outcome(is_dry_run, is_json)
+    }
 }
 
 impl<T> std::fmt::Display for PlannedOutcome<'_, T> {
@@ -855,6 +959,118 @@ impl<'a, T: OutcomePayload> IntoOutcome for Plan<'a, T> {
 
     fn into_outcome(self) -> Result<Self::Output, Failure> {
         Ok(PlannedOutcome::new(self))
+    }
+}
+
+/// An asynchronous command outcome holding a plan to execute or preview.
+#[cfg(feature = "async")]
+pub struct AsyncPlannedOutcome<'a, T> {
+    plan: crate::r#async::AsyncPlan<'a, T>,
+}
+
+#[cfg(feature = "async")]
+impl<'a, T> AsyncPlannedOutcome<'a, T> {
+    /// Wraps an [`AsyncPlan`](crate::r#async::AsyncPlan) into an [`AsyncPlannedOutcome`].
+    #[must_use]
+    pub fn new(plan: crate::r#async::AsyncPlan<'a, T>) -> Self {
+        Self { plan }
+    }
+
+    /// Formats the planned outcome depending on whether dry-run and/or JSON formatting
+    /// are requested.
+    ///
+    /// In dry-run mode, the plan steps are rendered without polling the underlying work future.
+    /// In normal mode, the underlying work future is executed and the result is rendered.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if plan execution or serialization fails.
+    pub fn format_outcome(self, is_dry_run: bool, is_json: bool) -> Result<String, Failure>
+    where
+        T: OutcomePayload + 'a,
+    {
+        use auto_wire_json::FallbackFormatOutcome as _;
+
+        if is_dry_run {
+            let steps = self.plan.describe();
+            #[cfg(feature = "serde")]
+            if is_json {
+                return serde_json::to_string_pretty(&serde_json::json!({
+                    "dry_run": true,
+                    "steps": self.plan.steps_slice(),
+                }))
+                .map_err(|e| Failure::execution(format!("cannot format dry-run JSON: {e}")));
+            }
+            #[cfg(not(feature = "serde"))]
+            let _ = is_json;
+            Ok(steps)
+        } else {
+            let res = block_on(self.plan.execute())?;
+            res.into_displayed().format_outcome(is_dry_run, is_json)
+        }
+    }
+
+    /// Formats the planned outcome asynchronously depending on whether dry-run and/or JSON formatting
+    /// are requested.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if plan execution or serialization fails.
+    pub async fn format_outcome_async(
+        self,
+        is_dry_run: bool,
+        is_json: bool,
+    ) -> Result<String, Failure>
+    where
+        T: OutcomePayload + 'a,
+    {
+        use auto_wire_json::FallbackFormatOutcome as _;
+
+        if is_dry_run {
+            let steps = self.plan.describe();
+            #[cfg(feature = "serde")]
+            if is_json {
+                return serde_json::to_string_pretty(&serde_json::json!({
+                    "dry_run": true,
+                    "steps": self.plan.steps_slice(),
+                }))
+                .map_err(|e| Failure::execution(format!("cannot format dry-run JSON: {e}")));
+            }
+            #[cfg(not(feature = "serde"))]
+            let _ = is_json;
+            Ok(steps)
+        } else {
+            let res = self.plan.execute().await?;
+            res.into_displayed().format_outcome(is_dry_run, is_json)
+        }
+    }
+}
+
+#[cfg(feature = "async")]
+impl<T> std::fmt::Display for AsyncPlannedOutcome<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.plan.describe())
+    }
+}
+
+#[cfg(feature = "async")]
+impl<'a, T: OutcomePayload + 'a, E: IntoFailure> IntoOutcome
+    for Result<crate::r#async::AsyncPlan<'a, T>, E>
+{
+    type Output = AsyncPlannedOutcome<'a, T>;
+
+    fn into_outcome(self) -> Result<Self::Output, Failure> {
+        self.map(AsyncPlannedOutcome::new)
+            .map_err(IntoFailure::into_failure)
+    }
+}
+
+#[cfg(feature = "async")]
+impl<'a, T: OutcomePayload + 'a> IntoOutcome for crate::r#async::AsyncPlan<'a, T> {
+    type Output = AsyncPlannedOutcome<'a, T>;
+
+    fn into_outcome(self) -> Result<Self::Output, Failure> {
+        Ok(AsyncPlannedOutcome::new(self))
     }
 }
 

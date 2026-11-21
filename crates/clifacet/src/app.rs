@@ -1463,7 +1463,38 @@ where
             .as_ref()
             .and_then(|runner| runner(command, cx, &run_cx));
 
-        let outcome = if globals.dry_run {
+        let outcome = if let Some(fut) = async_fut {
+            #[cfg(feature = "tokio")]
+            let cancel = run_cx.cancel().clone();
+            #[cfg(feature = "tokio")]
+            let res = crate::r#async::run_with_cancellation(
+                fut,
+                cancel,
+                self.grace_period,
+                globals.timeout,
+            )
+            .await;
+            #[cfg(not(feature = "tokio"))]
+            let res = fut.await;
+
+            match res {
+                Ok(boxed) => {
+                    let output = *boxed
+                        .downcast::<<C as Handler<Cx>>::Output>()
+                        .expect("clifacet: async runner output type mismatch");
+                    if globals.json {
+                        self.render.render_json(output, out).map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    } else {
+                        self.render.render(output, out).map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    }
+                }
+                Err(err) => Err(err),
+            }
+        } else if globals.dry_run {
             match Handler::<Cx>::preview(command, input, cx) {
                 Ok(plan) => {
                     let steps = plan.describe();
@@ -1491,37 +1522,6 @@ where
                         }
                     } else {
                         writeln!(out, "{steps}").map_err(|error| {
-                            Failure::execution(format!("cannot write the output: {error}"))
-                        })
-                    }
-                }
-                Err(err) => Err(err),
-            }
-        } else if let Some(fut) = async_fut {
-            #[cfg(feature = "tokio")]
-            let cancel = run_cx.cancel().clone();
-            #[cfg(feature = "tokio")]
-            let res = crate::r#async::run_with_cancellation(
-                fut,
-                cancel,
-                self.grace_period,
-                globals.timeout,
-            )
-            .await;
-            #[cfg(not(feature = "tokio"))]
-            let res = fut.await;
-
-            match res {
-                Ok(boxed) => {
-                    let output = *boxed
-                        .downcast::<<C as Handler<Cx>>::Output>()
-                        .expect("clifacet: async runner output type mismatch");
-                    if globals.json {
-                        self.render.render_json(output, out).map_err(|error| {
-                            Failure::execution(format!("cannot write the output: {error}"))
-                        })
-                    } else {
-                        self.render.render(output, out).map_err(|error| {
                             Failure::execution(format!("cannot write the output: {error}"))
                         })
                     }

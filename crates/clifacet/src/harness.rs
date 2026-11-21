@@ -72,6 +72,27 @@ impl Outcome {
         }
     }
 
+    /// Runs an asynchronous `run` future against captured streams and records what it produced.
+    #[cfg(feature = "async")]
+    pub async fn measured_async<F>(run: F) -> Self
+    where
+        F: for<'a> FnOnce(
+            &'a mut Vec<u8>,
+            &'a mut Vec<u8>,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = i32> + 'a>>,
+    {
+        let (mut data, mut diagnostic) = (Vec::new(), Vec::new());
+        let exit = run(&mut data, &mut diagnostic).await;
+
+        Self {
+            exit,
+            data: String::from_utf8_lossy(&data).into_owned(),
+            diagnostic: String::from_utf8_lossy(&diagnostic).into_owned(),
+            effects: Vec::new(),
+        }
+    }
+
     /// Attaches what the run's command received.
     ///
     /// An [`Effects`] handle belongs to one run, so this takes the recorded values
@@ -331,5 +352,92 @@ where
             .borrow_mut()
             .push((self.describe)(&input));
         self.inner.execute(input)
+    }
+}
+
+/// What an asynchronous recorded run received, in order.
+#[cfg(feature = "async")]
+#[derive(Debug, Clone, Default)]
+pub struct AsyncEffects {
+    recorded: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+#[cfg(feature = "async")]
+impl AsyncEffects {
+    /// What the command received, in the order it received it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
+    #[must_use]
+    pub fn recorded(&self) -> Vec<String> {
+        self.recorded.lock().unwrap().clone()
+    }
+
+    /// Whether the command was never reached.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.recorded.lock().unwrap().is_empty()
+    }
+}
+
+/// An asynchronous command that records what it is asked to run, then runs it.
+#[cfg(feature = "async")]
+#[derive(Debug, Clone)]
+pub struct AsyncRecording<C, F> {
+    inner: C,
+    effects: AsyncEffects,
+    describe: F,
+}
+
+#[cfg(feature = "async")]
+impl<C, F> AsyncRecording<C, F>
+where
+    C: crate::r#async::AsyncCommand,
+    F: Fn(&C::Input) -> String + Send + Sync,
+{
+    /// Wraps `command`, describing each input with `describe`.
+    pub fn new(command: C, describe: F) -> (Self, AsyncEffects) {
+        let effects = AsyncEffects::default();
+        let recording = Self {
+            inner: command,
+            effects: effects.clone(),
+            describe,
+        };
+        (recording, effects)
+    }
+}
+
+#[cfg(feature = "async")]
+impl<C, F> crate::r#async::AsyncCommand for AsyncRecording<C, F>
+where
+    C: crate::r#async::AsyncCommand,
+    F: Fn(&C::Input) -> String + Send + Sync,
+{
+    type Input = C::Input;
+    type Output = C::Output;
+
+    async fn execute(
+        &self,
+        input: Self::Input,
+        run: &crate::r#async::RunCx,
+    ) -> Result<Self::Output, crate::failure::Failure> {
+        self.effects
+            .recorded
+            .lock()
+            .unwrap()
+            .push((self.describe)(&input));
+        self.inner.execute(input, run).await
+    }
+
+    async fn preview(
+        &self,
+        input: Self::Input,
+    ) -> Result<crate::r#async::AsyncPlan<'_, Self::Output>, crate::failure::Failure> {
+        self.inner.preview(input).await
     }
 }
