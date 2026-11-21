@@ -12,8 +12,10 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* implement cancellation contract Ctrl-C grace period and timeout (CLI-82)
+([1d7fef7](https://github.com/Archont561/clifacet/commit/1d7fef730017a86306d43058055892dd82d48cb6))
 * support async methods in commands macro and lazy async context (CLI-81)
-([90b1b77](https://github.com/Archont561/clifacet/commit/90b1b7778e1b53e73b4e1554ba53e23933c5dbb6))
+([25a8b06](https://github.com/Archont561/clifacet/commit/25a8b066e4e180dc7fbceece3ca9d2e61355a37c))
 
 ## [0.9.0] - 2026-11-21
 
