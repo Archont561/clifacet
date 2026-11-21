@@ -1,7 +1,7 @@
 ---
 id: CLI-80
 title: Implement Executor trait TokioExecutor and async run entrypoints
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 19:00'
 labels: []
@@ -19,8 +19,8 @@ Define the pluggable `Executor` trait to drive async commands from synchronous p
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Executor trait is defined to execute async commands synchronously through a chosen runtime
-- [ ] #2 tokio feature provides TokioExecutor supporting current-thread and multi-thread configurations
-- [ ] #3 App::run_async and App::run_with_async execute natively in existing async runtimes
-- [ ] #4 Invoking synchronous App::run inside an existing runtime returns Failure::execution with a helpful diagnostic
+- [x] #1 Executor trait is defined to execute async commands synchronously through a chosen runtime
+- [x] #2 tokio feature provides TokioExecutor supporting current-thread and multi-thread configurations
+- [x] #3 App::run_async and App::run_with_async execute natively in existing async runtimes
+- [x] #4 Invoking synchronous App::run inside an existing runtime returns Failure::execution with a helpful diagnostic
 <!-- AC:END -->

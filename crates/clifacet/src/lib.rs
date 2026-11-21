@@ -224,10 +224,14 @@ pub use completions::Shell;
 #[cfg(feature = "async")]
 pub mod r#async;
 #[cfg(feature = "async")]
+pub use app::run_cli_async;
+#[cfg(feature = "tokio")]
+pub use r#async::TokioExecutor;
+#[cfg(feature = "async")]
 pub use r#async::{
     AsyncCommand, AsyncHandler, AsyncPlan, AsyncPlanned, AsyncPlannedWith, BoxFuture, Cancel,
-    CancelledFuture, LocalAsyncHandler, NoopProgressSink, ProgressEvent, ProgressSink,
-    RecordingProgressSink, RunCx,
+    CancelledFuture, Executor, LocalAsyncHandler, NoopProgressSink, ProgressEvent, ProgressSink,
+    RecordingProgressSink, RunCx, StdExecutor,
 };
 
 /// `clap`, re-exported so a caller can name the version this crate was built against.

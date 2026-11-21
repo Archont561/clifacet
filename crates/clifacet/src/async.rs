@@ -614,6 +614,133 @@ pub trait AsyncPlannedWith<Cx: ?Sized>: Send + Sync {
     ) -> impl Future<Output = Result<AsyncPlan<'a, Self::Output>, Failure>> + Send + 'a;
 }
 
+/// A pluggable executor that drives asynchronous commands to completion.
+///
+/// Synchronous entry points such as [`App::run`](crate::App::run) or
+/// [`App::run_with`](crate::App::run_with) drive asynchronous handlers via an
+/// implementation of this trait.
+pub trait Executor: Send + Sync {
+    /// Executes the future to completion within the executor's runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure`] if execution fails or is cancelled.
+    fn run<T: Send + 'static>(
+        &self,
+        fut: BoxFuture<'static, Result<T, Failure>>,
+        cancel: Cancel,
+    ) -> Result<T, Failure>;
+}
+
+impl<E: Executor> Executor for std::sync::Arc<E> {
+    fn run<T: Send + 'static>(
+        &self,
+        fut: BoxFuture<'static, Result<T, Failure>>,
+        cancel: Cancel,
+    ) -> Result<T, Failure> {
+        (**self).run(fut, cancel)
+    }
+}
+
+/// A minimal synchronous executor using standard library wakers and thread parking.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct StdExecutor;
+
+impl Executor for StdExecutor {
+    fn run<T: Send + 'static>(
+        &self,
+        fut: BoxFuture<'static, Result<T, Failure>>,
+        _cancel: Cancel,
+    ) -> Result<T, Failure> {
+        crate::cli::block_on(fut)
+    }
+}
+
+/// A Tokio-backed runtime executor supporting current-thread, multi-thread, or custom handles.
+#[cfg(feature = "tokio")]
+#[derive(Debug, Clone)]
+pub struct TokioExecutor {
+    runtime: TokioRuntimeConfig,
+}
+
+#[cfg(feature = "tokio")]
+#[derive(Debug, Clone)]
+enum TokioRuntimeConfig {
+    CurrentThread,
+    MultiThread,
+    Handle(tokio::runtime::Handle),
+}
+
+#[cfg(feature = "tokio")]
+impl TokioExecutor {
+    /// Creates a default `TokioExecutor` configured for a current-thread runtime.
+    #[must_use]
+    pub fn current_thread() -> Self {
+        Self {
+            runtime: TokioRuntimeConfig::CurrentThread,
+        }
+    }
+
+    /// Creates a `TokioExecutor` configured for a multi-thread runtime.
+    #[must_use]
+    pub fn multi_thread() -> Self {
+        Self {
+            runtime: TokioRuntimeConfig::MultiThread,
+        }
+    }
+
+    /// Creates a `TokioExecutor` using an existing Tokio runtime handle.
+    #[must_use]
+    pub fn from_handle(handle: tokio::runtime::Handle) -> Self {
+        Self {
+            runtime: TokioRuntimeConfig::Handle(handle),
+        }
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl Default for TokioExecutor {
+    fn default() -> Self {
+        Self::current_thread()
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl Executor for TokioExecutor {
+    fn run<T: Send + 'static>(
+        &self,
+        fut: BoxFuture<'static, Result<T, Failure>>,
+        _cancel: Cancel,
+    ) -> Result<T, Failure> {
+        if tokio::runtime::Handle::try_current().is_ok() {
+            return Err(Failure::execution(
+                "invoking synchronous App::run() inside an active Tokio runtime is not \
+                 supported; use App::run_async() instead",
+            ));
+        }
+
+        match &self.runtime {
+            TokioRuntimeConfig::CurrentThread => {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .build()
+                    .map_err(|e| {
+                        Failure::execution(format!(
+                            "cannot create Tokio current-thread runtime: {e}"
+                        ))
+                    })?;
+                rt.block_on(fut)
+            }
+            TokioRuntimeConfig::MultiThread => {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .build()
+                    .map_err(|e| Failure::execution(format!("cannot create Tokio runtime: {e}")))?;
+                rt.block_on(fut)
+            }
+            TokioRuntimeConfig::Handle(handle) => handle.block_on(fut),
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unused_async_trait_impl, clippy::manual_let_else)]
 mod tests {
@@ -896,5 +1023,55 @@ mod tests {
             &mut Context::from_waker(Waker::noop()),
         );
         assert!(ready_imm.is_ready());
+    }
+
+    #[test]
+    fn run_cx_and_cancel_helpers_coverage() {
+        struct DummySink;
+        impl ProgressSink for DummySink {}
+
+        let cancel = Cancel::new();
+        assert!(format!("{cancel:?}").contains("Cancel"));
+
+        let run_cx = RunCx::default();
+        assert!(format!("{run_cx:?}").contains("RunCx"));
+        let _ = run_cx.progress();
+        let _ = run_cx.progress_arc();
+        run_cx.message("status");
+
+        let dummy = DummySink;
+        dummy.total(Some(10));
+        dummy.advance(5);
+        dummy.message("test");
+
+        let std_exec = StdExecutor;
+        let res = std_exec.run(
+            Box::pin(async { Ok::<_, Failure>("ok".to_string()) }),
+            Cancel::new(),
+        );
+        assert_eq!(res.unwrap(), "ok");
+
+        let arc_exec = std::sync::Arc::new(StdExecutor);
+        let res_arc = arc_exec.run(Box::pin(async { Ok::<_, Failure>(123) }), Cancel::new());
+        assert_eq!(res_arc.unwrap(), 123);
+    }
+
+    #[cfg(feature = "tokio")]
+    #[test]
+    fn tokio_executor_unit_coverage() {
+        let def = TokioExecutor::default();
+        let res = def.run(Box::pin(async { Ok::<_, Failure>(1) }), Cancel::new());
+        assert_eq!(res.unwrap(), 1);
+
+        let multi = TokioExecutor::multi_thread();
+        let res_multi = multi.run(Box::pin(async { Ok::<_, Failure>(2) }), Cancel::new());
+        assert_eq!(res_multi.unwrap(), 2);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let handle_exec = TokioExecutor::from_handle(rt.handle().clone());
+        let res_handle = handle_exec.run(Box::pin(async { Ok::<_, Failure>(3) }), Cancel::new());
+        assert_eq!(res_handle.unwrap(), 3);
     }
 }
