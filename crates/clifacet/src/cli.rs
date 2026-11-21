@@ -46,6 +46,68 @@ pub trait Cli: Sized {
     fn after_failure(&self, _cmd: &str, _err: &Failure, _cx: Option<&Self::Context>) {
         // Default: no-op
     }
+
+    /// Asynchronously constructs the application context.
+    ///
+    /// By default, delegates to [`init_context`](Self::init_context).
+    #[cfg(feature = "async")]
+    fn init_context_async(
+        &self,
+    ) -> crate::r#async::LocalBoxFuture<'_, Result<Self::Context, Failure>> {
+        let res = self.init_context();
+        Box::pin(async move { res })
+    }
+
+    /// Hook: Runs asynchronously immediately before command execution starts.
+    ///
+    /// By default, delegates to [`before_run`](Self::before_run).
+    #[cfg(feature = "async")]
+    fn before_run_async<'a>(
+        &'a self,
+        cmd: &'a str,
+        cx: &'a Self::Context,
+    ) -> crate::r#async::LocalBoxFuture<'a, Result<(), Failure>> {
+        let res = self.before_run(cmd, cx);
+        Box::pin(async move { res })
+    }
+
+    /// Hook: Runs asynchronously after a command successfully finishes.
+    ///
+    /// By default, delegates to [`after_success`](Self::after_success).
+    #[cfg(feature = "async")]
+    fn after_success_async<'a>(
+        &'a self,
+        cmd: &'a str,
+        cx: &'a Self::Context,
+    ) -> crate::r#async::LocalBoxFuture<'a, Result<(), Failure>> {
+        let res = self.after_success(cmd, cx);
+        Box::pin(async move { res })
+    }
+
+    /// Hook: Runs asynchronously if a command returns an error, `before_run` fails, or context creation fails.
+    ///
+    /// By default, delegates to [`after_failure`](Self::after_failure).
+    #[cfg(feature = "async")]
+    fn after_failure_async<'a>(
+        &'a self,
+        cmd: &'a str,
+        err: &'a Failure,
+        cx: Option<&'a Self::Context>,
+    ) -> crate::r#async::LocalBoxFuture<'a, ()> {
+        self.after_failure(cmd, err, cx);
+        Box::pin(async move {})
+    }
+
+    /// Asynchronously dispatches command execution when this CLI supports async subcommands.
+    #[cfg(feature = "async")]
+    #[doc(hidden)]
+    fn async_dispatch<'a>(
+        &'a self,
+        _cx: &'a Self::Context,
+        _run: &'a crate::r#async::RunCx,
+    ) -> Option<crate::r#async::LocalBoxFuture<'a, Result<Box<dyn std::any::Any>, Failure>>> {
+        None
+    }
 }
 
 /// Constructs an application context or component from parsed CLI root options.
@@ -56,6 +118,17 @@ pub trait FromCli<C: Cli>: Sized {
     ///
     /// Returns a [`Failure`] if the context cannot be constructed.
     fn from_cli(cli: &C) -> Result<Self, Failure>;
+}
+
+/// Constructs an application context or component asynchronously from parsed CLI root options.
+#[cfg(feature = "async")]
+pub trait AsyncFromCli<C: Cli>: Sized {
+    /// Constructs the context from `cli` asynchronously.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if the context cannot be constructed.
+    fn from_cli_async(cli: &C) -> impl std::future::Future<Output = Result<Self, Failure>> + Send;
 }
 
 /// Thread-safe cell for lazily initialized application context.
@@ -156,6 +229,234 @@ pub mod auto_wire {
     }
 
     impl<T: FromCli<C>, C: Cli> AutoWireFromCli<T, C> for &AutoWire<T> {}
+}
+
+#[doc(hidden)]
+#[cfg(feature = "async")]
+pub mod auto_wire_async {
+    use super::{AsyncFromCli, Cli, FromCli};
+    use crate::r#async::LocalBoxFuture;
+    use crate::failure::Failure;
+    use std::marker::PhantomData;
+
+    pub struct AutoWireAsync<T>(pub PhantomData<T>);
+
+    pub trait AutoWireAsyncDefault<T: Default + 'static> {
+        fn init_ctx_async<'a, C>(&self, _cli: &'a C) -> LocalBoxFuture<'a, Result<T, Failure>> {
+            Box::pin(async move { Ok(T::default()) })
+        }
+    }
+
+    impl<T: Default + 'static> AutoWireAsyncDefault<T> for AutoWireAsync<T> {}
+
+    pub trait AutoWireAsyncFromCli<T: FromCli<C> + 'static, C: Cli> {
+        fn init_ctx_async<'a>(&self, cli: &'a C) -> LocalBoxFuture<'a, Result<T, Failure>> {
+            let res = <T as FromCli<C>>::from_cli(cli);
+            Box::pin(async move { res })
+        }
+    }
+
+    impl<T: FromCli<C> + 'static, C: Cli> AutoWireAsyncFromCli<T, C> for &AutoWireAsync<T> {}
+
+    pub trait AutoWireAsyncFromCliAsync<T: AsyncFromCli<C> + 'static, C: Cli> {
+        fn init_ctx_async<'a>(&self, cli: &'a C) -> LocalBoxFuture<'a, Result<T, Failure>> {
+            Box::pin(<T as AsyncFromCli<C>>::from_cli_async(cli))
+        }
+    }
+
+    impl<T: AsyncFromCli<C> + 'static, C: Cli> AutoWireAsyncFromCliAsync<T, C> for &&AutoWireAsync<T> {}
+}
+
+#[doc(hidden)]
+pub mod auto_wire_factory {
+    #[cfg(feature = "async")]
+    use crate::r#async::LocalBoxFuture;
+    use crate::failure::Failure;
+    #[cfg(feature = "async")]
+    use std::future::Future;
+
+    pub struct FactoryWrap<T>(pub T);
+
+    impl<T> FactoryWrap<T> {
+        #[must_use]
+        pub fn new(val: T) -> Self {
+            Self(val)
+        }
+    }
+
+    pub trait CallSyncFactoryResult<Cx> {
+        fn call_sync_result(self) -> Result<Cx, Failure>;
+        #[cfg(feature = "async")]
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, Result<Cx, Failure>>
+        where
+            Self: 'a;
+    }
+
+    impl<Cx> CallSyncFactoryResult<Cx> for FactoryWrap<Result<Cx, Failure>> {
+        fn call_sync_result(self) -> Result<Cx, Failure> {
+            self.0
+        }
+
+        #[cfg(feature = "async")]
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, Result<Cx, Failure>>
+        where
+            Self: 'a,
+        {
+            Box::pin(async move { self.0 })
+        }
+    }
+
+    #[cfg(feature = "async")]
+    pub trait CallAsyncFactoryResult<Cx> {
+        fn call_sync_result(self) -> Result<Cx, Failure>;
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, Result<Cx, Failure>>
+        where
+            Self: 'a;
+    }
+
+    #[cfg(feature = "async")]
+    impl<Fut, Cx> CallAsyncFactoryResult<Cx> for FactoryWrap<Fut>
+    where
+        Fut: Future<Output = Result<Cx, Failure>>,
+    {
+        fn call_sync_result(self) -> Result<Cx, Failure> {
+            crate::cli::block_on(self.0)
+        }
+
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, Result<Cx, Failure>>
+        where
+            Self: 'a,
+        {
+            Box::pin(self.0)
+        }
+    }
+}
+
+#[doc(hidden)]
+pub mod auto_wire_hook {
+    #[cfg(feature = "async")]
+    use crate::r#async::LocalBoxFuture;
+    use crate::failure::Failure;
+    #[cfg(feature = "async")]
+    use std::future::Future;
+
+    pub struct HookWrap<T>(pub T);
+
+    impl<T> HookWrap<T> {
+        #[must_use]
+        pub fn new(val: T) -> Self {
+            Self(val)
+        }
+    }
+
+    pub trait CallSyncHookResult {
+        fn call_sync_result(self) -> Result<(), Failure>;
+        #[cfg(feature = "async")]
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, Result<(), Failure>>
+        where
+            Self: 'a;
+    }
+
+    impl CallSyncHookResult for HookWrap<Result<(), Failure>> {
+        fn call_sync_result(self) -> Result<(), Failure> {
+            self.0
+        }
+
+        #[cfg(feature = "async")]
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, Result<(), Failure>>
+        where
+            Self: 'a,
+        {
+            Box::pin(async move { self.0 })
+        }
+    }
+
+    #[cfg(feature = "async")]
+    pub trait CallAsyncHookResult {
+        fn call_sync_result(self) -> Result<(), Failure>;
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, Result<(), Failure>>
+        where
+            Self: 'a;
+    }
+
+    #[cfg(feature = "async")]
+    impl<Fut> CallAsyncHookResult for HookWrap<Fut>
+    where
+        Fut: Future<Output = Result<(), Failure>>,
+    {
+        fn call_sync_result(self) -> Result<(), Failure> {
+            crate::cli::block_on(self.0)
+        }
+
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, Result<(), Failure>>
+        where
+            Self: 'a,
+        {
+            Box::pin(self.0)
+        }
+    }
+}
+
+#[doc(hidden)]
+pub mod auto_wire_fail_hook {
+    #[cfg(feature = "async")]
+    use crate::r#async::LocalBoxFuture;
+    #[cfg(feature = "async")]
+    use std::future::Future;
+
+    pub struct FailHookWrap<T>(pub T);
+
+    impl<T> FailHookWrap<T> {
+        #[must_use]
+        pub fn new(val: T) -> Self {
+            Self(val)
+        }
+    }
+
+    pub trait CallSyncFailHookResult {
+        fn call_sync_result(self);
+        #[cfg(feature = "async")]
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, ()>
+        where
+            Self: 'a;
+    }
+
+    impl CallSyncFailHookResult for FailHookWrap<()> {
+        fn call_sync_result(self) {}
+
+        #[cfg(feature = "async")]
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, ()>
+        where
+            Self: 'a,
+        {
+            Box::pin(async move {})
+        }
+    }
+
+    #[cfg(feature = "async")]
+    pub trait CallAsyncFailHookResult {
+        fn call_sync_result(self);
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, ()>
+        where
+            Self: 'a;
+    }
+
+    #[cfg(feature = "async")]
+    impl<Fut> CallAsyncFailHookResult for FailHookWrap<Fut>
+    where
+        Fut: Future<Output = ()>,
+    {
+        fn call_sync_result(self) {
+            let () = crate::cli::block_on(self.0);
+        }
+
+        fn call_async_result<'a>(self) -> LocalBoxFuture<'a, ()>
+        where
+            Self: 'a,
+        {
+            Box::pin(self.0)
+        }
+    }
 }
 
 #[doc(hidden)]

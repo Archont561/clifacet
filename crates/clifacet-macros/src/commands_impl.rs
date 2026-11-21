@@ -6,6 +6,7 @@ use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, FnArg, Ident, ItemImpl, Meta, Pat, Token, Type};
 
+#[allow(clippy::similar_names)]
 pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
     let mut item_impl = syn::parse2::<ItemImpl>(item)?;
     let struct_ident = match &*item_impl.self_ty {
@@ -32,6 +33,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
 
     let mut variants = Vec::new();
     let mut dispatch_arms = Vec::new();
+    let mut dispatch_arms_async = Vec::new();
     let mut complete_providers = Vec::new();
 
     for impl_item in &mut item_impl.items {
@@ -102,7 +104,8 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         let cmd_name = fn_name.to_kebab_case();
 
         let mut variant_fields = Vec::new();
-        let mut call_args = Vec::new();
+        let mut call_args_sync = Vec::new();
+        let mut call_args_async = Vec::new();
         let mut field_names = Vec::new();
         let mut subcommand_tuple_param = None;
 
@@ -117,6 +120,13 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 }
             };
             let ty = &param.ty;
+
+            if is_run_cx_type(ty) {
+                call_args_sync.push(quote!(&::clifacet::r#async::RunCx::empty()));
+                call_args_async.push(quote!(_run));
+                continue;
+            }
+
             let mut field_attrs = Vec::new();
             let mut is_subcmd = false;
             let mut complete_fn = None;
@@ -165,7 +175,10 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 #(#field_attrs)*
                 #pat_ident: #ty
             });
-            call_args.push(quote! {
+            call_args_sync.push(quote! {
+                ::std::clone::Clone::clone(#pat_ident)
+            });
+            call_args_async.push(quote! {
                 ::std::clone::Clone::clone(#pat_ident)
             });
             field_names.push(pat_ident);
@@ -177,7 +190,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 #(#doc_attrs)*
                 #variant_ident(#sub_ty),
             });
-            let call_outcome = if is_async {
+            let call_outcome_sync = if is_async {
                 quote! {
                     ::clifacet::cli::block_on(
                         self.#method_ident(::std::clone::Clone::clone(#sub_ident))
@@ -186,9 +199,34 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
             } else {
                 quote!(self.#method_ident(::std::clone::Clone::clone(#sub_ident)))
             };
+            let call_outcome_async = if is_async {
+                quote! {
+                    self.#method_ident(::std::clone::Clone::clone(#sub_ident)).await
+                }
+            } else {
+                quote!(self.#method_ident(::std::clone::Clone::clone(#sub_ident)))
+            };
             dispatch_arms.push(quote! {
                 ::core::option::Option::Some(#enum_ident::#variant_ident(#sub_ident)) => {
-                    let outcome = #call_outcome;
+                    let outcome = #call_outcome_sync;
+                    let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
+                    let is_dry_run = {
+                        use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
+                        self.__clifacet_is_dry_run()
+                    };
+                    let is_json = {
+                        use ::clifacet::cli::check_json::FallbackIsJson as _;
+                        self.__clifacet_is_json()
+                    };
+                    {
+                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
+                        res.format_outcome(is_dry_run, is_json)
+                    }
+                }
+            });
+            dispatch_arms_async.push(quote! {
+                ::core::option::Option::Some(#enum_ident::#variant_ident(#sub_ident)) => {
+                    let outcome = #call_outcome_async;
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
                     let is_dry_run = {
                         use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
@@ -210,14 +248,37 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 #(#doc_attrs)*
                 #variant_ident,
             });
-            let call_outcome = if is_async {
-                quote!(::clifacet::cli::block_on(self.#method_ident()))
+            let call_outcome_sync = if is_async {
+                quote!(::clifacet::cli::block_on(self.#method_ident(#(#call_args_sync),*)))
             } else {
-                quote!(self.#method_ident())
+                quote!(self.#method_ident(#(#call_args_sync),*))
+            };
+            let call_outcome_async = if is_async {
+                quote!(self.#method_ident(#(#call_args_async),*).await)
+            } else {
+                quote!(self.#method_ident(#(#call_args_async),*))
             };
             dispatch_arms.push(quote! {
                 ::core::option::Option::Some(#enum_ident::#variant_ident) => {
-                    let outcome = #call_outcome;
+                    let outcome = #call_outcome_sync;
+                    let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
+                    let is_dry_run = {
+                        use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
+                        self.__clifacet_is_dry_run()
+                    };
+                    let is_json = {
+                        use ::clifacet::cli::check_json::FallbackIsJson as _;
+                        self.__clifacet_is_json()
+                    };
+                    {
+                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
+                        res.format_outcome(is_dry_run, is_json)
+                    }
+                }
+            });
+            dispatch_arms_async.push(quote! {
+                ::core::option::Option::Some(#enum_ident::#variant_ident) => {
+                    let outcome = #call_outcome_async;
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
                     let is_dry_run = {
                         use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
@@ -241,16 +302,41 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     #(#variant_fields),*
                 },
             });
-            let call_outcome = if is_async {
+            let call_outcome_sync = if is_async {
                 quote! {
-                    ::clifacet::cli::block_on(self.#method_ident(#(#call_args),*))
+                    ::clifacet::cli::block_on(self.#method_ident(#(#call_args_sync),*))
                 }
             } else {
-                quote!(self.#method_ident(#(#call_args),*))
+                quote!(self.#method_ident(#(#call_args_sync),*))
+            };
+            let call_outcome_async = if is_async {
+                quote! {
+                    self.#method_ident(#(#call_args_async),*).await
+                }
+            } else {
+                quote!(self.#method_ident(#(#call_args_async),*))
             };
             dispatch_arms.push(quote! {
                 ::core::option::Option::Some(#enum_ident::#variant_ident { #(#field_names),* }) => {
-                    let outcome = #call_outcome;
+                    let outcome = #call_outcome_sync;
+                    let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
+                    let is_dry_run = {
+                        use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
+                        self.__clifacet_is_dry_run()
+                    };
+                    let is_json = {
+                        use ::clifacet::cli::check_json::FallbackIsJson as _;
+                        self.__clifacet_is_json()
+                    };
+                    {
+                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
+                        res.format_outcome(is_dry_run, is_json)
+                    }
+                }
+            });
+            dispatch_arms_async.push(quote! {
+                ::core::option::Option::Some(#enum_ident::#variant_ident { #(#field_names),* }) => {
+                    let outcome = #call_outcome_async;
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
                     let is_dry_run = {
                         use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
@@ -283,7 +369,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
             #[command(name = "schema", about = "Print the machine-readable CLI JSON schema")]
             Schema,
         });
-        dispatch_arms.push(quote! {
+        let schema_arm = quote! {
             #[cfg(feature = "schema")]
             ::core::option::Option::Some(#enum_ident::Schema) => {
                 let cmd = <Self as ::clifacet::Facet>::command();
@@ -292,7 +378,9 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     .map_err(|e| ::clifacet::Failure::execution(format!("cannot generate schema: {e}")))?;
                 ::core::result::Result::Ok(json)
             }
-        });
+        };
+        dispatch_arms.push(schema_arm.clone());
+        dispatch_arms_async.push(schema_arm);
     }
 
     let has_user_write_skill = item_impl.items.iter().any(|item| {
@@ -321,7 +409,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 check: bool,
             },
         });
-        dispatch_arms.push(quote! {
+        let write_skill_arm = quote! {
             #[cfg(feature = "skill")]
             ::core::option::Option::Some(#enum_ident::WriteSkill { stdout, output, check }) => {
                 let options = ::clifacet::skill::WriteSkillOptions {
@@ -336,7 +424,9 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     ::core::result::Result::Ok(res)
                 }
             }
-        });
+        };
+        dispatch_arms.push(write_skill_arm.clone());
+        dispatch_arms_async.push(write_skill_arm);
     }
 
     let has_user_mcp = item_impl.items.iter().any(|item| {
@@ -353,12 +443,14 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
             #[command(name = "mcp", about = "Run Model Context Protocol (MCP) stdio tool server")]
             Mcp,
         });
-        dispatch_arms.push(quote! {
+        let mcp_arm = quote! {
             #[cfg(feature = "mcp")]
             ::core::option::Option::Some(#enum_ident::Mcp) => {
                 Self::run_mcp_server()
             }
-        });
+        };
+        dispatch_arms.push(mcp_arm.clone());
+        dispatch_arms_async.push(mcp_arm);
     }
 
     let has_user_completions = item_impl.items.iter().any(|item| {
@@ -383,7 +475,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 args: Vec<String>,
             },
         });
-        dispatch_arms.push(quote! {
+        let completions_arm = quote! {
             #[cfg(feature = "completions")]
             ::core::option::Option::Some(#enum_ident::Completions { complete, args }) => {
                 if *complete {
@@ -407,7 +499,9 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     ::core::result::Result::Err(::clifacet::Failure::validation("missing shell argument: specify bash, zsh, fish, or PowerShell"))
                 }
             }
-        });
+        };
+        dispatch_arms.push(completions_arm.clone());
+        dispatch_arms_async.push(completions_arm);
     }
 
     let enum_def = quote! {
@@ -445,6 +539,21 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                         }
                     }
                 }
+
+                #[cfg(feature = "async")]
+                /// Executes the chosen subcommand on this controller or group asynchronously.
+                #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+                pub async fn execute_async(
+                    &self,
+                    _run: &::clifacet::r#async::RunCx,
+                ) -> ::core::result::Result<String, ::clifacet::Failure> {
+                    match &self.#subcmd_field {
+                        #(#dispatch_arms_async)*
+                        ::core::option::Option::None => {
+                            ::core::result::Result::Ok(String::new())
+                        }
+                    }
+                }
             }
         }
     } else {
@@ -454,6 +563,21 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 pub fn execute(&self) -> ::core::result::Result<String, ::clifacet::Failure> {
                     match &self.#subcmd_field {
                         #(#dispatch_arms)*
+                        ::core::option::Option::None => {
+                            ::core::result::Result::Ok(String::new())
+                        }
+                    }
+                }
+
+                #[cfg(feature = "async")]
+                /// Executes the chosen subcommand on this controller or group asynchronously.
+                #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+                pub async fn execute_async(
+                    &self,
+                    _run: &::clifacet::r#async::RunCx,
+                ) -> ::core::result::Result<String, ::clifacet::Failure> {
+                    match &self.#subcmd_field {
+                        #(#dispatch_arms_async)*
                         ::core::option::Option::None => {
                             ::core::result::Result::Ok(String::new())
                         }
@@ -471,6 +595,23 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     _cx: &<#struct_ident as ::clifacet::Cli>::Context,
                 ) -> ::core::result::Result<Self::Output, ::clifacet::Failure> {
                     self.execute()
+                }
+            }
+
+            #[cfg(feature = "async")]
+            #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+            impl #impl_generics ::clifacet::r#async::LocalAsyncHandler<<#struct_ident as ::clifacet::Cli>::Context> for #struct_ident #type_generics #where_clause {
+                type Input = Self;
+                type Output = String;
+
+                #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+                fn handle_local(
+                    &self,
+                    _input: Self::Input,
+                    _cx: &<#struct_ident as ::clifacet::Cli>::Context,
+                    run: &::clifacet::r#async::RunCx,
+                ) -> impl ::core::future::Future<Output = ::core::result::Result<Self::Output, ::clifacet::Failure>> {
+                    self.execute_async(run)
                 }
             }
         }
@@ -568,4 +709,16 @@ fn parse_commands_args(
     }
 
     Ok((custom_enum, custom_field, is_group))
+}
+
+fn is_run_cx_type(ty: &Type) -> bool {
+    let check_path = |p: &syn::Path| p.segments.last().is_some_and(|seg| seg.ident == "RunCx");
+    match ty {
+        Type::Reference(tr) => match &*tr.elem {
+            Type::Path(tp) => check_path(&tp.path),
+            _ => false,
+        },
+        Type::Path(tp) => check_path(&tp.path),
+        _ => false,
+    }
 }
