@@ -641,6 +641,36 @@ impl<C: Cli> FromCli<C> for ActionLog {
     }
 }
 
+/// Drives a future to completion synchronously using thread parking.
+///
+/// Used by code emitted by `#[clifacet::commands]` to automatically execute `async fn`
+/// controller methods without requiring manual runtime setup.
+#[must_use]
+pub fn block_on<F: std::future::Future>(fut: F) -> F::Output {
+    struct ThreadWaker(std::thread::Thread);
+
+    impl std::task::Wake for ThreadWaker {
+        fn wake(self: std::sync::Arc<Self>) {
+            self.0.unpark();
+        }
+
+        fn wake_by_ref(self: &std::sync::Arc<Self>) {
+            self.0.unpark();
+        }
+    }
+
+    let mut pinned = std::pin::pin!(fut);
+    let waker = std::task::Waker::from(std::sync::Arc::new(ThreadWaker(std::thread::current())));
+    let mut cx = std::task::Context::from_waker(&waker);
+
+    loop {
+        match pinned.as_mut().poll(&mut cx) {
+            std::task::Poll::Ready(output) => return output,
+            std::task::Poll::Pending => std::thread::park(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -784,5 +814,58 @@ mod tests {
         });
         assert_eq!(res_real.unwrap(), Some("done"));
         assert!(executed.load(Ordering::SeqCst));
+    }
+
+    struct YieldWakeRef(AtomicBool);
+
+    impl std::future::Future for YieldWakeRef {
+        type Output = usize;
+
+        fn poll(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Self::Output> {
+            if self.0.swap(true, Ordering::SeqCst) {
+                std::task::Poll::Ready(42)
+            } else {
+                cx.waker().wake_by_ref();
+                std::task::Poll::Pending
+            }
+        }
+    }
+
+    struct YieldWakeOwn(AtomicBool);
+
+    impl std::future::Future for YieldWakeOwn {
+        type Output = usize;
+
+        #[allow(clippy::all, clippy::pedantic)]
+        fn poll(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Self::Output> {
+            if self.0.swap(true, Ordering::SeqCst) {
+                std::task::Poll::Ready(99)
+            } else {
+                cx.waker().clone().wake();
+                std::task::Poll::Pending
+            }
+        }
+    }
+
+    #[test]
+    fn block_on_executes_async_future() {
+        let fut = async {
+            let a = 10;
+            let b = 20;
+            a + b
+        };
+        assert_eq!(block_on(fut), 30);
+    }
+
+    #[test]
+    fn block_on_executes_yielding_future() {
+        assert_eq!(block_on(YieldWakeRef(AtomicBool::new(false))), 42);
+        assert_eq!(block_on(YieldWakeOwn(AtomicBool::new(false))), 99);
     }
 }

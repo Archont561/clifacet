@@ -96,6 +96,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
             .cloned()
             .collect();
 
+        let is_async = method.sig.asyncness.is_some();
         let method_ident = &method.sig.ident;
         let variant_ident = quote::format_ident!("{}", fn_name.to_upper_camel_case());
         let cmd_name = fn_name.to_kebab_case();
@@ -176,9 +177,18 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 #(#doc_attrs)*
                 #variant_ident(#sub_ty),
             });
+            let call_outcome = if is_async {
+                quote! {
+                    ::clifacet::cli::block_on(
+                        self.#method_ident(::std::clone::Clone::clone(#sub_ident))
+                    )
+                }
+            } else {
+                quote!(self.#method_ident(::std::clone::Clone::clone(#sub_ident)))
+            };
             dispatch_arms.push(quote! {
                 ::core::option::Option::Some(#enum_ident::#variant_ident(#sub_ident)) => {
-                    let outcome = self.#method_ident(::std::clone::Clone::clone(#sub_ident));
+                    let outcome = #call_outcome;
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
                     let is_dry_run = {
                         use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
@@ -200,9 +210,14 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 #(#doc_attrs)*
                 #variant_ident,
             });
+            let call_outcome = if is_async {
+                quote!(::clifacet::cli::block_on(self.#method_ident()))
+            } else {
+                quote!(self.#method_ident())
+            };
             dispatch_arms.push(quote! {
                 ::core::option::Option::Some(#enum_ident::#variant_ident) => {
-                    let outcome = self.#method_ident();
+                    let outcome = #call_outcome;
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
                     let is_dry_run = {
                         use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
@@ -226,9 +241,16 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                     #(#variant_fields),*
                 },
             });
+            let call_outcome = if is_async {
+                quote! {
+                    ::clifacet::cli::block_on(self.#method_ident(#(#call_args),*))
+                }
+            } else {
+                quote!(self.#method_ident(#(#call_args),*))
+            };
             dispatch_arms.push(quote! {
                 ::core::option::Option::Some(#enum_ident::#variant_ident { #(#field_names),* }) => {
-                    let outcome = self.#method_ident(#(#call_args),*);
+                    let outcome = #call_outcome;
                     let res = ::clifacet::IntoOutcome::into_outcome(outcome)?;
                     let is_dry_run = {
                         use ::clifacet::cli::check_dry_run::FallbackIsDryRun as _;
