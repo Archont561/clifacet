@@ -193,49 +193,157 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
-    let (context_type, init_body) = if let Some(cx) = &context_field {
+    let (context_type, init_body, init_async_body) = if let Some(cx) = &context_field {
         let cx_ident = &cx.ident;
         let cx_ty = &cx.ty;
-        let init = if let Some(factory) = &cx.custom_factory {
-            quote! {
-                let cx = #factory(self)?;
-                let _ = self.#cx_ident.set(::std::clone::Clone::clone(&cx));
-                ::core::result::Result::Ok(cx)
-            }
+        let (init, init_async) = if let Some(factory) = &cx.custom_factory {
+            (
+                quote! {
+                    #[cfg(feature = "async")]
+                    use ::clifacet::cli::auto_wire_factory::CallAsyncFactoryResult as _;
+                    use ::clifacet::cli::auto_wire_factory::CallSyncFactoryResult as _;
+                    let wrap = ::clifacet::cli::auto_wire_factory::FactoryWrap::new(#factory(self));
+                    let cx = wrap.call_sync_result()?;
+                    let _ = self.#cx_ident.set(::std::clone::Clone::clone(&cx));
+                    ::core::result::Result::Ok(cx)
+                },
+                quote! {
+                    use ::clifacet::cli::auto_wire_factory::{CallAsyncFactoryResult as _, CallSyncFactoryResult as _};
+                    let wrap = ::clifacet::cli::auto_wire_factory::FactoryWrap::new(#factory(self));
+                    let cx = wrap.call_async_result().await?;
+                    let _ = self.#cx_ident.set(::std::clone::Clone::clone(&cx));
+                    ::core::result::Result::Ok(cx)
+                },
+            )
         } else {
-            quote! {
-                use ::clifacet::cli::auto_wire::{AutoWireDefault as _, AutoWireFromCli as _};
-                let cx = (&&::clifacet::cli::auto_wire::AutoWire::<#cx_ty>(::std::marker::PhantomData)).init_ctx(self)?;
-                let _ = self.#cx_ident.set(::std::clone::Clone::clone(&cx));
-                ::core::result::Result::Ok(cx)
-            }
+            (
+                quote! {
+                    use ::clifacet::cli::auto_wire::{AutoWireDefault as _, AutoWireFromCli as _};
+                    let cx = (&&::clifacet::cli::auto_wire::AutoWire::<#cx_ty>(::std::marker::PhantomData)).init_ctx(self)?;
+                    let _ = self.#cx_ident.set(::std::clone::Clone::clone(&cx));
+                    ::core::result::Result::Ok(cx)
+                },
+                quote! {
+                    use ::clifacet::cli::auto_wire_async::{AutoWireAsyncDefault as _, AutoWireAsyncFromCli as _, AutoWireAsyncFromCliAsync as _};
+                    let cx = (&&&::clifacet::cli::auto_wire_async::AutoWireAsync::<#cx_ty>(::std::marker::PhantomData)).init_ctx_async(self).await?;
+                    let _ = self.#cx_ident.set(::std::clone::Clone::clone(&cx));
+                    ::core::result::Result::Ok(cx)
+                },
+            )
         };
-        (quote!(#cx_ty), init)
+        (quote!(#cx_ty), init, init_async)
     } else {
-        (quote!(()), quote!(::core::result::Result::Ok(())))
+        (
+            quote!(()),
+            quote!(::core::result::Result::Ok(())),
+            quote!(::core::result::Result::Ok(())),
+        )
     };
 
-    let before_run_impl = app_args.before_run.as_ref().map(|path| {
+    let (before_run_impl, before_run_async_impl) = if let Some(path) = &app_args.before_run {
+        (
+            Some(quote! {
+                fn before_run(&self, cmd: &str, cx: &Self::Context) -> ::core::result::Result<(), ::clifacet::Failure> {
+                    #[cfg(feature = "async")]
+                    use ::clifacet::cli::auto_wire_hook::CallAsyncHookResult as _;
+                    use ::clifacet::cli::auto_wire_hook::CallSyncHookResult as _;
+                    let wrap = ::clifacet::cli::auto_wire_hook::HookWrap::new(#path(self, cmd, cx));
+                    wrap.call_sync_result()
+                }
+            }),
+            Some(quote! {
+                #[cfg(feature = "async")]
+                fn before_run_async<'__a>(
+                    &'__a self,
+                    cmd: &'__a str,
+                    cx: &'__a Self::Context,
+                ) -> ::clifacet::r#async::LocalBoxFuture<'__a, ::core::result::Result<(), ::clifacet::Failure>> {
+                    use ::clifacet::cli::auto_wire_hook::{CallAsyncHookResult as _, CallSyncHookResult as _};
+                    let wrap = ::clifacet::cli::auto_wire_hook::HookWrap::new(#path(self, cmd, cx));
+                    wrap.call_async_result()
+                }
+            }),
+        )
+    } else {
+        (None, None)
+    };
+
+    let (after_success_impl, after_success_async_impl) = if let Some(path) = &app_args.after_success
+    {
+        (
+            Some(quote! {
+                fn after_success(&self, cmd: &str, cx: &Self::Context) -> ::core::result::Result<(), ::clifacet::Failure> {
+                    #[cfg(feature = "async")]
+                    use ::clifacet::cli::auto_wire_hook::CallAsyncHookResult as _;
+                    use ::clifacet::cli::auto_wire_hook::CallSyncHookResult as _;
+                    let wrap = ::clifacet::cli::auto_wire_hook::HookWrap::new(#path(self, cmd, cx));
+                    wrap.call_sync_result()
+                }
+            }),
+            Some(quote! {
+                #[cfg(feature = "async")]
+                fn after_success_async<'__a>(
+                    &'__a self,
+                    cmd: &'__a str,
+                    cx: &'__a Self::Context,
+                ) -> ::clifacet::r#async::LocalBoxFuture<'__a, ::core::result::Result<(), ::clifacet::Failure>> {
+                    use ::clifacet::cli::auto_wire_hook::{CallAsyncHookResult as _, CallSyncHookResult as _};
+                    let wrap = ::clifacet::cli::auto_wire_hook::HookWrap::new(#path(self, cmd, cx));
+                    wrap.call_async_result()
+                }
+            }),
+        )
+    } else {
+        (None, None)
+    };
+
+    let (after_failure_impl, after_failure_async_impl) = if let Some(path) = &app_args.after_failure
+    {
+        (
+            Some(quote! {
+                fn after_failure(&self, cmd: &str, err: &::clifacet::Failure, cx: ::core::option::Option<&Self::Context>) {
+                    #[cfg(feature = "async")]
+                    use ::clifacet::cli::auto_wire_fail_hook::CallAsyncFailHookResult as _;
+                    use ::clifacet::cli::auto_wire_fail_hook::CallSyncFailHookResult as _;
+                    let wrap = ::clifacet::cli::auto_wire_fail_hook::FailHookWrap::new(#path(self, cmd, err, cx));
+                    wrap.call_sync_result();
+                }
+            }),
+            Some(quote! {
+                #[cfg(feature = "async")]
+                fn after_failure_async<'__a>(
+                    &'__a self,
+                    cmd: &'__a str,
+                    err: &'__a ::clifacet::Failure,
+                    cx: ::core::option::Option<&'__a Self::Context>,
+                ) -> ::clifacet::r#async::LocalBoxFuture<'__a, ()> {
+                    use ::clifacet::cli::auto_wire_fail_hook::{CallAsyncFailHookResult as _, CallSyncFailHookResult as _};
+                    let wrap = ::clifacet::cli::auto_wire_fail_hook::FailHookWrap::new(#path(self, cmd, err, cx));
+                    wrap.call_async_result()
+                }
+            }),
+        )
+    } else {
+        (None, None)
+    };
+
+    let async_dispatch_impl = if app_args.commands.is_some() {
         quote! {
-            fn before_run(&self, cmd: &str, cx: &Self::Context) -> ::core::result::Result<(), ::clifacet::Failure> {
-                #path(self, cmd, cx)
+            #[cfg(feature = "async")]
+            fn async_dispatch<'__a>(
+                &'__a self,
+                _cx: &'__a Self::Context,
+                run: &'__a ::clifacet::r#async::RunCx,
+            ) -> ::core::option::Option<::clifacet::r#async::LocalBoxFuture<'__a, ::core::result::Result<::std::boxed::Box<dyn ::core::any::Any>, ::clifacet::Failure>>> {
+                ::core::option::Option::Some(::std::boxed::Box::pin(async move {
+                    let res = self.execute_async(run).await?;
+                    ::core::result::Result::Ok(::std::boxed::Box::new(res) as ::std::boxed::Box<dyn ::core::any::Any>)
+                }))
             }
         }
-    });
-    let after_success_impl = app_args.after_success.as_ref().map(|path| {
-        quote! {
-            fn after_success(&self, cmd: &str, cx: &Self::Context) -> ::core::result::Result<(), ::clifacet::Failure> {
-                #path(self, cmd, cx)
-            }
-        }
-    });
-    let after_failure_impl = app_args.after_failure.as_ref().map(|path| {
-        quote! {
-            fn after_failure(&self, cmd: &str, err: &::clifacet::Failure, cx: ::core::option::Option<&Self::Context>) {
-                #path(self, cmd, err, cx);
-            }
-        }
-    });
+    } else {
+        quote!()
+    };
 
     let cli_impl = quote! {
         impl #impl_generics ::clifacet::Cli for #name #type_generics #where_clause {
@@ -245,9 +353,20 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                 #init_body
             }
 
+            #[cfg(feature = "async")]
+            fn init_context_async<'__a>(&'__a self) -> ::clifacet::r#async::LocalBoxFuture<'__a, ::core::result::Result<Self::Context, ::clifacet::Failure>> {
+                ::std::boxed::Box::pin(async move {
+                    #init_async_body
+                })
+            }
+
             #before_run_impl
+            #before_run_async_impl
             #after_success_impl
+            #after_success_async_impl
             #after_failure_impl
+            #after_failure_async_impl
+            #async_dispatch_impl
         }
     };
 

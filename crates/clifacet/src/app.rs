@@ -291,6 +291,57 @@ pub struct App<'c, Cli, C = Cli, R = Plain, Cx = ()> {
             + Send
             + Sync,
     >,
+    #[cfg(feature = "async")]
+    #[allow(clippy::type_complexity)]
+    context_async:
+        Option<Rc<dyn Fn(&Cli) -> crate::r#async::LocalBoxFuture<'static, Result<Cx, Failure>>>>,
+    #[cfg(feature = "async")]
+    #[allow(clippy::type_complexity)]
+    before_run_async: Option<
+        Rc<
+            dyn for<'a> Fn(
+                &'a Cli,
+                &'a str,
+                &'a Cx,
+            ) -> crate::r#async::LocalBoxFuture<'a, Result<(), Failure>>,
+        >,
+    >,
+    #[cfg(feature = "async")]
+    #[allow(clippy::type_complexity)]
+    after_success_async: Option<
+        Rc<
+            dyn for<'a> Fn(
+                &'a Cli,
+                &'a str,
+                &'a Cx,
+            ) -> crate::r#async::LocalBoxFuture<'a, Result<(), Failure>>,
+        >,
+    >,
+    #[cfg(feature = "async")]
+    #[allow(clippy::type_complexity)]
+    after_failure_async: Option<
+        Rc<
+            dyn for<'a> Fn(
+                &'a Cli,
+                &'a str,
+                &'a Failure,
+                Option<&'a Cx>,
+            ) -> crate::r#async::LocalBoxFuture<'a, ()>,
+        >,
+    >,
+    #[cfg(feature = "async")]
+    #[allow(clippy::type_complexity)]
+    async_runner: Option<
+        Rc<
+            dyn for<'a> Fn(
+                &'a C,
+                &'a Cx,
+                &'a crate::r#async::RunCx,
+            ) -> Option<
+                crate::r#async::LocalBoxFuture<'a, Result<Box<dyn std::any::Any>, Failure>>,
+            >,
+        >,
+    >,
 }
 
 /// Reads the settings file for a given argument list.
@@ -331,13 +382,24 @@ impl<Cli: Clone> App<'_, Cli> {
                     })
                 }
             },
+            #[cfg(feature = "async")]
+            context_async: None,
+            #[cfg(feature = "async")]
+            before_run_async: None,
+            #[cfg(feature = "async")]
+            after_success_async: None,
+            #[cfg(feature = "async")]
+            after_failure_async: None,
+            #[cfg(feature = "async")]
+            async_runner: None,
         }
     }
 }
 
 impl<C> App<'static, C, C, Plain, C::Context>
 where
-    C: crate::cli::Cli + Clone,
+    C: crate::cli::Cli + Clone + 'static,
+    C::Context: 'static,
 {
     /// The pipeline for an application implementing [`Cli`](crate::cli::Cli).
     ///
@@ -376,6 +438,29 @@ where
                     })
                 }
             },
+            #[cfg(feature = "async")]
+            context_async: Some(Rc::new(|cli: &C| {
+                let cli = cli.clone();
+                Box::pin(async move { cli.init_context_async().await })
+            })),
+            #[cfg(feature = "async")]
+            before_run_async: Some(Rc::new(|cli: &C, cmd: &str, cx: &C::Context| {
+                cli.before_run_async(cmd, cx)
+            })),
+            #[cfg(feature = "async")]
+            after_success_async: Some(Rc::new(|cli: &C, cmd: &str, cx: &C::Context| {
+                cli.after_success_async(cmd, cx)
+            })),
+            #[cfg(feature = "async")]
+            after_failure_async: Some(Rc::new(
+                |cli: &C, cmd: &str, err: &Failure, cx: Option<&C::Context>| {
+                    cli.after_failure_async(cmd, err, cx)
+                },
+            )),
+            #[cfg(feature = "async")]
+            async_runner: Some(Rc::new(
+                |cli: &C, cx: &C::Context, run: &crate::r#async::RunCx| cli.async_dispatch(cx, run),
+            )),
         }
     }
 }
@@ -431,6 +516,16 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             settings: self.settings,
             #[cfg(feature = "async")]
             executor: self.executor,
+            #[cfg(feature = "async")]
+            context_async: self.context_async,
+            #[cfg(feature = "async")]
+            before_run_async: self.before_run_async,
+            #[cfg(feature = "async")]
+            after_success_async: self.after_success_async,
+            #[cfg(feature = "async")]
+            after_failure_async: self.after_failure_async,
+            #[cfg(feature = "async")]
+            async_runner: None,
         }
     }
 
@@ -450,6 +545,16 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             settings: self.settings,
             #[cfg(feature = "async")]
             executor: self.executor,
+            #[cfg(feature = "async")]
+            context_async: self.context_async,
+            #[cfg(feature = "async")]
+            before_run_async: self.before_run_async,
+            #[cfg(feature = "async")]
+            after_success_async: self.after_success_async,
+            #[cfg(feature = "async")]
+            after_failure_async: self.after_failure_async,
+            #[cfg(feature = "async")]
+            async_runner: self.async_runner,
         }
     }
 
@@ -484,6 +589,16 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             settings: self.settings,
             #[cfg(feature = "async")]
             executor: self.executor,
+            #[cfg(feature = "async")]
+            context_async: None,
+            #[cfg(feature = "async")]
+            before_run_async: None,
+            #[cfg(feature = "async")]
+            after_success_async: None,
+            #[cfg(feature = "async")]
+            after_failure_async: None,
+            #[cfg(feature = "async")]
+            async_runner: None,
         }
     }
 
@@ -511,6 +626,59 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             settings: self.settings,
             #[cfg(feature = "async")]
             executor: self.executor,
+            #[cfg(feature = "async")]
+            context_async: None,
+            #[cfg(feature = "async")]
+            before_run_async: None,
+            #[cfg(feature = "async")]
+            after_success_async: None,
+            #[cfg(feature = "async")]
+            after_failure_async: None,
+            #[cfg(feature = "async")]
+            async_runner: None,
+        }
+    }
+
+    /// How to build the application's context asynchronously from the parsed command line.
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn context_from_async<D: 'static, E, F, Fut>(self, build: F) -> App<'c, Cli, C, R, D>
+    where
+        F: Fn(&Cli) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<D, E>> + Send + 'static,
+        E: Display + 'static,
+    {
+        let build = std::sync::Arc::new(build);
+        let build_sync = build.clone();
+        App {
+            policy: self.policy,
+            exit: self.exit,
+            mode_from: self.mode_from,
+            command: self.command,
+            render: self.render,
+            context: Rc::new(move |cli: &Cli| {
+                let fut = build_sync(cli);
+                crate::cli::block_on(fut).map_err(|error| {
+                    Failure::execution(format!("cannot prepare the application: {error}"))
+                })
+            }),
+            before_run: None,
+            after_success: None,
+            after_failure: None,
+            settings: self.settings,
+            executor: self.executor,
+            context_async: Some(Rc::new(move |cli: &Cli| {
+                let fut = build(cli);
+                Box::pin(async move {
+                    fut.await.map_err(|error| {
+                        Failure::execution(format!("cannot prepare the application: {error}"))
+                    })
+                })
+            })),
+            before_run_async: None,
+            after_success_async: None,
+            after_failure_async: None,
+            async_runner: None,
         }
     }
 
@@ -538,6 +706,19 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
         self
     }
 
+    /// Asynchronous hook executed immediately before command execution starts.
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn before_run_async<F>(mut self, hook: F) -> Self
+    where
+        F: for<'a> Fn(&'a str, &'a Cx) -> crate::r#async::LocalBoxFuture<'a, Result<(), Failure>>
+            + 'static,
+    {
+        let hook = Rc::new(hook);
+        self.before_run_async = Some(Rc::new(move |_cli, cmd, cx| hook(cmd, cx)));
+        self
+    }
+
     /// Hook executed after successful command execution.
     #[must_use]
     pub fn after_success<F>(mut self, hook: F) -> Self
@@ -551,6 +732,19 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             }
             hook(cmd, cx)
         }));
+        self
+    }
+
+    /// Asynchronous hook executed after successful command execution.
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn after_success_async<F>(mut self, hook: F) -> Self
+    where
+        F: for<'a> Fn(&'a str, &'a Cx) -> crate::r#async::LocalBoxFuture<'a, Result<(), Failure>>
+            + 'static,
+    {
+        let hook = Rc::new(hook);
+        self.after_success_async = Some(Rc::new(move |_cli, cmd, cx| hook(cmd, cx)));
         self
     }
 
@@ -569,6 +763,43 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
         }));
         self
     }
+
+    /// Asynchronous hook executed when command execution, `before_run`, or context initialization fails.
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn after_failure_async<F>(mut self, hook: F) -> Self
+    where
+        F: for<'a> Fn(
+                &'a str,
+                &'a Failure,
+                Option<&'a Cx>,
+            ) -> crate::r#async::LocalBoxFuture<'a, ()>
+            + 'static,
+    {
+        let hook = Rc::new(hook);
+        self.after_failure_async = Some(Rc::new(move |_cli, cmd, err, cx| hook(cmd, err, cx)));
+        self
+    }
+
+    /// Asynchronously dispatches command execution via `runner`.
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn async_runner<F, Fut>(mut self, runner: F) -> Self
+    where
+        C: Handler<Cx>,
+        <C as Handler<Cx>>::Output: 'static,
+        F: Fn(&C, &Cx, &crate::r#async::RunCx) -> Fut + 'static,
+        Fut: std::future::Future<Output = Result<<C as Handler<Cx>>::Output, Failure>> + 'static,
+    {
+        self.async_runner = Some(Rc::new(move |c, cx, run| {
+            let fut = runner(c, cx, run);
+            Some(Box::pin(async move {
+                let out = fut.await?;
+                Ok(Box::new(out) as Box<dyn std::any::Any>)
+            }))
+        }));
+        self
+    }
 }
 
 impl<Cli, C, R, Cx> App<'_, Cli, C, R, Cx>
@@ -576,6 +807,7 @@ where
     Cli: Parser + Facet + Collect + Clone + 'static,
     C: Handler<Cx, Input = <Cli as Facet>::Input>,
     R: Render<<C as Handler<Cx>>::Output>,
+    <C as Handler<Cx>>::Output: 'static,
     Cx: 'static,
 {
     /// Runs the process's own invocation and answers with its exit status.
@@ -954,7 +1186,7 @@ where
 
     /// Asynchronously settles the run after collection.
     #[cfg(feature = "async")]
-    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
+    #[allow(clippy::too_many_lines)]
     async fn settle_async(
         &self,
         cli: Cli,
@@ -962,7 +1194,198 @@ where
         context: &Lazy<Cx>,
         out: &mut dyn Write,
     ) -> Result<(), Failure> {
-        self.settle(cli, globals, context, out)
+        #[cfg(feature = "schema")]
+        if globals.schema {
+            let cmd = <Cli as Facet>::command();
+            let meta = crate::schema::CliMetadata::from_command(&cmd);
+            let json = crate::schema::to_json_schema_pretty(&meta)?;
+            writeln!(out, "{json}")
+                .map_err(|e| Failure::execution(format!("cannot write the output: {e}")))?;
+            return Ok(());
+        }
+
+        let cmd = program::<Cli>();
+        let parsed;
+        let command = match &self.command {
+            Chosen::Parsed(build) => {
+                parsed = build(&cli);
+                &parsed
+            }
+            Chosen::Given(command) => *command,
+        };
+        let cli_ref = cli.clone();
+
+        let input = match cli.validate() {
+            Ok(input) => input,
+            Err(failure) => {
+                if let Some(fail_hook) = &self.after_failure_async {
+                    fail_hook(&cli_ref, &cmd, &failure, None).await;
+                } else if let Some(fail_hook) = &self.after_failure {
+                    fail_hook(&cli_ref, &cmd, &failure, None);
+                }
+                return Err(failure);
+            }
+        };
+
+        let cx_val;
+        let cx_rc;
+        let cx = if let Some(builder) = &self.context_async {
+            match builder(&cli_ref).await {
+                Ok(cx) => {
+                    cx_val = cx;
+                    &cx_val
+                }
+                Err(err) => {
+                    if let Some(fail_hook) = &self.after_failure_async {
+                        fail_hook(&cli_ref, &cmd, &err, None).await;
+                    } else if let Some(fail_hook) = &self.after_failure {
+                        fail_hook(&cli_ref, &cmd, &err, None);
+                    }
+                    return Err(err);
+                }
+            }
+        } else {
+            match context.get() {
+                Ok(cx) => {
+                    cx_rc = cx;
+                    &*cx_rc
+                }
+                Err(err) => {
+                    if let Some(fail_hook) = &self.after_failure_async {
+                        fail_hook(&cli_ref, &cmd, &err, None).await;
+                    } else if let Some(fail_hook) = &self.after_failure {
+                        fail_hook(&cli_ref, &cmd, &err, None);
+                    }
+                    return Err(err);
+                }
+            }
+        };
+
+        if let Some(hook) = &self.before_run_async
+            && let Err(err) = hook(&cli_ref, &cmd, cx).await
+        {
+            if let Some(fail_hook) = &self.after_failure_async {
+                fail_hook(&cli_ref, &cmd, &err, Some(cx)).await;
+            } else if let Some(fail_hook) = &self.after_failure {
+                fail_hook(&cli_ref, &cmd, &err, Some(cx));
+            }
+            return Err(err);
+        } else if let Some(hook) = &self.before_run
+            && let Err(err) = hook(&cli_ref, &cmd, cx)
+        {
+            if let Some(fail_hook) = &self.after_failure_async {
+                fail_hook(&cli_ref, &cmd, &err, Some(cx)).await;
+            } else if let Some(fail_hook) = &self.after_failure {
+                fail_hook(&cli_ref, &cmd, &err, Some(cx));
+            }
+            return Err(err);
+        }
+
+        let run_cx = crate::r#async::RunCx::empty();
+
+        let async_fut = self
+            .async_runner
+            .as_ref()
+            .and_then(|runner| runner(command, cx, &run_cx));
+
+        let outcome = if globals.dry_run {
+            match Handler::<Cx>::preview(command, input, cx) {
+                Ok(plan) => {
+                    let steps = plan.describe();
+                    if steps.is_empty() {
+                        Ok(())
+                    } else if globals.json {
+                        #[cfg(feature = "serde")]
+                        {
+                            let payload = serde_json::json!({
+                                "dry_run": true,
+                                "steps": plan.steps(),
+                            });
+                            serde_json::to_writer_pretty(&mut *out, &payload)
+                                .map_err(std::io::Error::other)
+                                .and_then(|()| writeln!(out))
+                                .map_err(|error| {
+                                    Failure::execution(format!("cannot write the output: {error}"))
+                                })
+                        }
+                        #[cfg(not(feature = "serde"))]
+                        {
+                            writeln!(out, "{steps}").map_err(|error| {
+                                Failure::execution(format!("cannot write the output: {error}"))
+                            })
+                        }
+                    } else {
+                        writeln!(out, "{steps}").map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    }
+                }
+                Err(err) => Err(err),
+            }
+        } else if let Some(fut) = async_fut {
+            match fut.await {
+                Ok(boxed) => {
+                    let output = *boxed
+                        .downcast::<<C as Handler<Cx>>::Output>()
+                        .expect("clifacet: async runner output type mismatch");
+                    if globals.json {
+                        self.render.render_json(output, out).map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    } else {
+                        self.render.render(output, out).map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    }
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            match Handler::<Cx>::handle(command, input, cx) {
+                Ok(output) => {
+                    if globals.json {
+                        self.render.render_json(output, out).map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    } else {
+                        self.render.render(output, out).map_err(|error| {
+                            Failure::execution(format!("cannot write the output: {error}"))
+                        })
+                    }
+                }
+                Err(err) => Err(err),
+            }
+        };
+
+        if let Ok(()) = &outcome {
+            if let Some(hook) = &self.after_success_async
+                && let Err(err) = hook(&cli_ref, &cmd, cx).await
+            {
+                if let Some(fail_hook) = &self.after_failure_async {
+                    fail_hook(&cli_ref, &cmd, &err, Some(cx)).await;
+                } else if let Some(fail_hook) = &self.after_failure {
+                    fail_hook(&cli_ref, &cmd, &err, Some(cx));
+                }
+                return Err(err);
+            } else if let Some(hook) = &self.after_success
+                && let Err(err) = hook(&cli_ref, &cmd, cx)
+            {
+                if let Some(fail_hook) = &self.after_failure_async {
+                    fail_hook(&cli_ref, &cmd, &err, Some(cx)).await;
+                } else if let Some(fail_hook) = &self.after_failure {
+                    fail_hook(&cli_ref, &cmd, &err, Some(cx));
+                }
+                return Err(err);
+            }
+        } else if let Err(err) = &outcome {
+            if let Some(fail_hook) = &self.after_failure_async {
+                fail_hook(&cli_ref, &cmd, err, Some(cx)).await;
+            } else if let Some(fail_hook) = &self.after_failure {
+                fail_hook(&cli_ref, &cmd, err, Some(cx));
+            }
+        }
+
+        outcome
     }
 
     /// Hosts the form generated from `Cli`'s `form` fields, drawn on the diagnostic stream.

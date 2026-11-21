@@ -27,6 +27,9 @@ use crate::failure::Failure;
 /// A boxed future used by asynchronous plans.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// A local boxed future that does not require [`Send`].
+pub type LocalBoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
+
 /// A thread-safe, cloneable cancellation token.
 ///
 /// Commands receive a cancellation token via [`RunCx::cancel`]. When an interrupt
