@@ -1,7 +1,7 @@
 ---
 id: CLI-81
 title: Support async methods in commands macro and lazy async context
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 19:00'
 labels: []
@@ -19,8 +19,8 @@ Enhance procedural macros `#[clifacet::commands]` and `#[clifacet::app]` to dete
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 #[clifacet::commands] detects async fn methods and synthesizes AsyncHandler implementations
-- [ ] #2 Command trees cleanly mix synchronous and asynchronous handler leaves
-- [ ] #3 Lazy async context construction (FromCli and factory functions) builds only when a command runs
-- [ ] #4 Async lifecycle hooks (before_run, after_success, after_failure) execute at appropriate stages
+- [x] #1 #[clifacet::commands] detects async fn methods and synthesizes AsyncHandler implementations
+- [x] #2 Command trees cleanly mix synchronous and asynchronous handler leaves
+- [x] #3 Lazy async context construction (FromCli and factory functions) builds only when a command runs
+- [x] #4 Async lifecycle hooks (before_run, after_success, after_failure) execute at appropriate stages
 <!-- AC:END -->
