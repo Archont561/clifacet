@@ -75,13 +75,11 @@ pub fn group(attribute: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 ///
 /// Expands to the item exactly as written, preceded by
-/// `#[derive(::clap::Parser, ::clifacet::Facet)]` and `#[facet(…)]`. It takes the same
+/// `#[derive(::clifacet::clap::Parser, ::clifacet::Facet)]` and `#[facet(…)]`. It takes the same
 /// keys as `#[facet(…)]` — `input`, `bridge`, `check`, `collect` — and exists because a derive cannot add
 /// another derive to the same item.
 ///
-/// `clap` still has to be a direct dependency of the calling crate: `clap`'s derive
-/// expands to code naming `clap::…`, which an attribute cannot redirect. `clifacet`
-/// re-exports `clap`, so the version is the one this macro was built against.
+/// `clifacet` re-exports `clap` as `clifacet::clap`, and all emitted derives route through it.
 ///
 /// # Panics
 ///
@@ -105,7 +103,7 @@ pub fn command(attribute: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// Each variant is `Name(Leaf)`, where `Leaf` is a `#[clifacet::command(input = …)]`
 /// struct; inline fields and unit variants are compile errors that say so. Expands to the
-/// enum with `#[derive(::clap::Subcommand)]`, plus:
+/// enum with `#[derive(::clifacet::clap::Subcommand)]`, plus:
 ///
 /// - `TryFrom<Tree> for Request`: the chosen leaf validated by its own `Facet`, wrapped in
 ///   the `Request` variant of the same name — so a missing, extra or mistyped `Request`

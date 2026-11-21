@@ -65,7 +65,7 @@ pub(crate) fn expand(attribute: &TokenStream, item: TokenStream) -> syn::Result<
     // `#[arg(..)]`, `#[doc]` and any derive of theirs are clap's and Rust's business.
     attributes.insert(
         0,
-        syn::parse_quote!(#[derive(::clap::Parser, ::clifacet::Facet)]),
+        syn::parse_quote!(#[derive(::clifacet::clap::Parser, ::clifacet::Facet)]),
     );
     attributes.insert(1, syn::parse_quote!(#[facet(#attribute)]));
 

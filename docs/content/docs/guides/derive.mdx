@@ -8,7 +8,7 @@ adds no parser and no second grammar: `clap` stays the authority, and the derive
 names the one function that turns a parsed struct into an input the command can run.
 
 ```rust
-use clap::Parser;
+use clifacet::clap::Parser;
 use clifacet::{Facet, Failure};
 
 /// The command as it already exists.
@@ -255,3 +255,74 @@ impl MyCli {
 
 </Accordion>
 </Accordions>
+
+## Dry-Run Plans and Action Logging
+
+Declarative controllers (`#[clifacet::app]` and `#[clifacet::commands]`) support previewing side effects in dry-run mode and logging actions across streams without interfering with stdout.
+
+### Returning Plans from Controller Commands
+
+Controller methods can return `Result<Plan<'_, T>, Failure>`. Clifacet automatically detects whether `--dry-run` was supplied:
+
+- In **`--dry-run` mode**: The plan closure is never run. Clifacet formats and prints the declared steps (`plan.describe()`). When `--json` is also supplied, it formats the steps into structured JSON (`{"dry_run": true, "steps": [...]}`).
+- In **real execution**: Clifacet executes the plan's closure and formats the returned payload.
+
+```rust ignore
+use clifacet::command::Plan;
+use clifacet::{Failure, Globals};
+
+#[clifacet::app(name = "tasks", commands)]
+struct TaskApp {
+    #[command(flatten)]
+    #[clifacet(skip)]
+    globals: Globals,
+}
+
+#[clifacet::commands]
+impl TaskApp {
+    /// Archive a task by identifier.
+    pub fn archive(&self, task: String) -> Result<Plan<'_, String>, Failure> {
+        let step = format!("archive task {task}");
+        Ok(Plan::new(move || {
+            // Real mutation only runs when --dry-run is absent
+            Ok(format!("task {task} archived"))
+        })
+        .step(step))
+    }
+}
+```
+
+### ActionLog Context Helper
+
+For commands that perform incremental steps, use `ActionLog` as an application context field (`#[clifacet(context)]`). Clifacet automatically initializes it with the application's dry-run setting via `FromCli`:
+
+- **`ctx.log(message)`**: Emits messages to `stderr`. In dry-run mode, lines are prefixed with `[DRY-RUN]`.
+- **`ctx.action(desc, closure)`**: Emits `desc` to `stderr`, executing the mutation only when `--dry-run` is not active. In dry-run mode, it returns `Ok(None)`.
+- **Stream separation**: Diagnostic logging remains on `stderr` so `stdout` remains dedicated to structured data and clean command outcomes.
+
+```rust ignore
+use clifacet::{ActionLog, Failure, Globals};
+
+#[clifacet::app(name = "deployer", commands)]
+struct DeployApp {
+    #[command(flatten)]
+    #[clifacet(skip)]
+    globals: Globals,
+
+    #[clifacet(context)]
+    ctx: ActionLog,
+}
+
+#[clifacet::commands]
+impl DeployApp {
+    /// Deploy service to target environment.
+    pub fn deploy(&self, target: String) -> Result<String, Failure> {
+        self.ctx.log(format!("preparing deployment to {target}"));
+        self.ctx.action(format!("upload artifacts to {target}"), || {
+            // Real network operation
+            Ok(())
+        })?;
+        Ok(format!("successfully deployed to {target}"))
+    }
+}
+```

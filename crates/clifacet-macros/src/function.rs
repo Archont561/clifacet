@@ -61,7 +61,8 @@ use crate::field;
 /// `Debug` and `Clone` are what `commands!` asks of a leaf, `Parser` is clap's grammar, and
 /// `Facet` is what writes `validate` — from the same field declarations the struct form uses,
 /// so this attribute cannot drift from the derive.
-const DERIVES: &str = "::core::fmt::Debug, ::core::clone::Clone, ::clap::Parser, ::clifacet::Facet";
+const DERIVES: &str =
+    "::core::fmt::Debug, ::core::clone::Clone, ::clifacet::clap::Parser, ::clifacet::Facet";
 
 /// The same as [`DERIVES`], as an attribute, because a derive takes paths and not a string.
 fn derives() -> TokenStream {

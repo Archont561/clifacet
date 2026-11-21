@@ -265,8 +265,8 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         impl #impl_generics ::clifacet::Facet for #name #type_generics #where_clause {
             type Input = #input_type;
 
-            fn command() -> ::clap::Command {
-                <Self as ::clap::CommandFactory>::command()
+            fn command() -> ::clifacet::clap::Command {
+                <Self as ::clifacet::clap::CommandFactory>::command()
             }
 
             fn validate(self) -> ::core::result::Result<Self::Input, ::clifacet::Failure> {
@@ -321,6 +321,21 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         }
     };
 
+    let is_dry_run_expr = if has_globals {
+        quote!(self.globals.dry_run)
+    } else {
+        quote!(false)
+    };
+
+    let dry_run_inherent_impl = quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            #[doc(hidden)]
+            pub fn __clifacet_is_dry_run(&self) -> bool {
+                #is_dry_run_expr
+            }
+        }
+    };
+
     let schema_inherent_impl = if app_args.schema == Some(false) {
         quote!()
     } else {
@@ -329,7 +344,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
             impl #impl_generics #name #type_generics #where_clause {
                 /// Returns machine-readable metadata describing this CLI command hierarchy.
                 pub fn cli_metadata() -> ::clifacet::schema::CliMetadata {
-                    ::clifacet::schema::CliMetadata::from_command(&<Self as ::clap::CommandFactory>::command())
+                    ::clifacet::schema::CliMetadata::from_command(&<Self as ::clifacet::clap::CommandFactory>::command())
                 }
 
                 /// Emits the JSON Schema for this CLI hierarchy as a formatted string.
@@ -840,7 +855,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
 
     parsed.attrs.insert(
         0,
-        syn::parse_quote!(#[derive(::clap::Parser, ::std::clone::Clone)]),
+        syn::parse_quote!(#[derive(::clifacet::clap::Parser, ::std::clone::Clone)]),
     );
     if !command_attr.is_empty() {
         parsed.attrs.insert(1, syn::parse_quote!(#command_attr));
@@ -853,6 +868,7 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         #facet_impl
         #collect_impl
         #json_inherent_impl
+        #dry_run_inherent_impl
         #schema_inherent_impl
         #skill_inherent_impl
         #mcp_inherent_impl

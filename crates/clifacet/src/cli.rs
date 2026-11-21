@@ -3,6 +3,7 @@
 use std::ops::Deref;
 use std::sync::{Arc, OnceLock};
 
+use crate::command::Plan;
 use crate::failure::Failure;
 
 /// The application lifecycle contract: context initialization and execution hooks.
@@ -158,6 +159,17 @@ pub mod auto_wire {
 }
 
 #[doc(hidden)]
+pub mod check_dry_run {
+    pub trait FallbackIsDryRun {
+        fn __clifacet_is_dry_run(&self) -> bool {
+            false
+        }
+    }
+
+    impl<T: ?Sized> FallbackIsDryRun for T {}
+}
+
+#[doc(hidden)]
 pub mod check_json {
     pub trait FallbackIsJson {
         fn __clifacet_is_json(&self) -> bool {
@@ -173,11 +185,11 @@ pub mod auto_wire_json {
     use crate::failure::Failure;
 
     pub trait FallbackFormatOutcome {
-        fn format_outcome(self, _is_json: bool) -> Result<String, Failure>;
+        fn format_outcome(self, _is_dry_run: bool, _is_json: bool) -> Result<String, Failure>;
     }
 
     impl<T: std::fmt::Display> FallbackFormatOutcome for T {
-        fn format_outcome(self, _is_json: bool) -> Result<String, Failure> {
+        fn format_outcome(self, _is_dry_run: bool, _is_json: bool) -> Result<String, Failure> {
             Ok(self.to_string())
         }
     }
@@ -363,7 +375,7 @@ impl<T> Json<T> {
     ///
     /// Returns a [`Failure`] if serialization fails.
     #[cfg(feature = "serde")]
-    pub fn format_outcome(self, _is_json: bool) -> Result<String, Failure>
+    pub fn format_outcome(self, _is_dry_run: bool, _is_json: bool) -> Result<String, Failure>
     where
         T: serde::Serialize,
     {
@@ -428,7 +440,7 @@ impl<T> Structured<T> {
     ///
     /// Returns a [`Failure`] if serialization fails.
     #[cfg(feature = "serde")]
-    pub fn format_outcome(self, is_json: bool) -> Result<String, Failure>
+    pub fn format_outcome(self, _is_dry_run: bool, is_json: bool) -> Result<String, Failure>
     where
         T: serde::Serialize,
     {
@@ -446,7 +458,7 @@ impl<T> Structured<T> {
     ///
     /// Always succeeds.
     #[cfg(not(feature = "serde"))]
-    pub fn format_outcome(self, _is_json: bool) -> Result<String, Failure> {
+    pub fn format_outcome(self, _is_dry_run: bool, _is_json: bool) -> Result<String, Failure> {
         Ok(self.display)
     }
 }
@@ -475,10 +487,165 @@ impl<T: serde::Serialize> OutcomePayload for Structured<T> {
     }
 }
 
+/// A planned outcome for commands returning [`Plan`].
+pub struct PlannedOutcome<'a, T> {
+    plan: Plan<'a, T>,
+}
+
+impl<'a, T> PlannedOutcome<'a, T> {
+    /// Wraps a [`Plan`] into a [`PlannedOutcome`].
+    #[must_use]
+    pub fn new(plan: Plan<'a, T>) -> Self {
+        Self { plan }
+    }
+
+    /// Formats the planned outcome depending on whether dry-run and/or JSON formatting
+    /// are requested.
+    ///
+    /// In dry-run mode, the plan steps are rendered without executing the underlying work closure.
+    /// In normal mode, the underlying work closure is executed and the result is rendered.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Failure`] if plan execution or serialization fails.
+    pub fn format_outcome(self, is_dry_run: bool, is_json: bool) -> Result<String, Failure>
+    where
+        T: OutcomePayload,
+    {
+        use auto_wire_json::FallbackFormatOutcome as _;
+
+        if is_dry_run {
+            let steps = self.plan.describe();
+            #[cfg(feature = "serde")]
+            if is_json {
+                return serde_json::to_string_pretty(&serde_json::json!({
+                    "dry_run": true,
+                    "steps": self.plan.steps(),
+                }))
+                .map_err(|e| Failure::execution(format!("cannot format dry-run JSON: {e}")));
+            }
+            #[cfg(not(feature = "serde"))]
+            let _ = is_json;
+            Ok(steps)
+        } else {
+            let res = self.plan.execute()?;
+            res.into_displayed().format_outcome(is_dry_run, is_json)
+        }
+    }
+}
+
+impl<T> std::fmt::Display for PlannedOutcome<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.plan.describe())
+    }
+}
+
+impl<'a, T: OutcomePayload, E: IntoFailure> IntoOutcome for Result<Plan<'a, T>, E> {
+    type Output = PlannedOutcome<'a, T>;
+
+    fn into_outcome(self) -> Result<Self::Output, Failure> {
+        self.map(PlannedOutcome::new)
+            .map_err(IntoFailure::into_failure)
+    }
+}
+
+impl<'a, T: OutcomePayload> IntoOutcome for Plan<'a, T> {
+    type Output = PlannedOutcome<'a, T>;
+
+    fn into_outcome(self) -> Result<Self::Output, Failure> {
+        Ok(PlannedOutcome::new(self))
+    }
+}
+
+/// Context helper for logging and dry-run action dispatching to `stderr`.
+///
+/// Can be included directly as a context field in `#[clifacet::app]` controllers:
+///
+/// ```rust,ignore
+/// use clifacet::{app, commands, ActionLog, Failure, Globals};
+///
+/// #[app(name = "demo", commands)]
+/// struct DemoApp {
+///     #[command(flatten)]
+///     #[clifacet(skip)]
+///     globals: Globals,
+///
+///     #[clifacet(context)]
+///     ctx: ActionLog,
+/// }
+///
+/// #[commands]
+/// impl DemoApp {
+///     pub fn deploy(&self, target: String) -> Result<String, Failure> {
+///         self.ctx.log(format!("deploying to {target}"));
+///         self.ctx.action(format!("upload artifacts to {target}"), || {
+///             // real side-effect
+///             Ok(())
+///         })?;
+///         Ok(format!("deployed to {target}"))
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ActionLog {
+    dry_run: bool,
+}
+
+impl ActionLog {
+    /// Creates an `ActionLog` with explicit dry-run state.
+    #[must_use]
+    pub const fn new(dry_run: bool) -> Self {
+        Self { dry_run }
+    }
+
+    /// Returns `true` if dry-run mode is active.
+    #[must_use]
+    pub const fn is_dry_run(&self) -> bool {
+        self.dry_run
+    }
+
+    /// Writes a log message to `stderr`, prefixed with `[DRY-RUN]` when dry-run is active.
+    pub fn log(&self, message: impl std::fmt::Display) {
+        if self.dry_run {
+            eprintln!("[DRY-RUN] {message}");
+        } else {
+            eprintln!("{message}");
+        }
+    }
+
+    /// Logs `description` to `stderr`, and executes `action` only when dry-run is not active.
+    ///
+    /// Returns `Ok(Some(T))` on real execution, or `Ok(None)` when dry-run is active.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`Failure`] returned by `action`.
+    pub fn action<T>(
+        &self,
+        description: impl std::fmt::Display,
+        action: impl FnOnce() -> Result<T, Failure>,
+    ) -> Result<Option<T>, Failure> {
+        self.log(description);
+        if self.dry_run {
+            Ok(None)
+        } else {
+            action().map(Some)
+        }
+    }
+}
+
+impl<C: Cli> FromCli<C> for ActionLog {
+    fn from_cli(cli: &C) -> Result<Self, Failure> {
+        use crate::cli::check_dry_run::FallbackIsDryRun as _;
+        Ok(ActionLog::new(cli.__clifacet_is_dry_run()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
     fn context_cell_operations() {
@@ -558,5 +725,64 @@ mod tests {
 
         let wrap_ref = ExtractWrap::<usize>(std::marker::PhantomData);
         assert_eq!(ExtractFrom::extract(&&wrap_ref, &p), 5);
+    }
+
+    #[test]
+    fn planned_outcome_dry_run_and_execution() {
+        let executed = Arc::new(AtomicBool::new(false));
+        let executed_clone = Arc::clone(&executed);
+
+        let plan = Plan::new(move || {
+            executed_clone.store(true, Ordering::SeqCst);
+            Ok("task completed".to_string())
+        })
+        .step("step 1: validate")
+        .step("step 2: mutate");
+
+        let outcome = PlannedOutcome::new(plan);
+        // Dry-run mode: does not execute closure
+        let dry_run_text = outcome.format_outcome(true, false).unwrap();
+        assert!(!executed.load(Ordering::SeqCst));
+        assert!(dry_run_text.contains("step 1: validate"));
+        assert!(dry_run_text.contains("step 2: mutate"));
+
+        // Real mode: executes closure
+        let executed_clone2 = Arc::clone(&executed);
+        let real_plan = Plan::new(move || {
+            executed_clone2.store(true, Ordering::SeqCst);
+            Ok("task completed".to_string())
+        })
+        .step("step 1: validate");
+
+        let real_outcome = PlannedOutcome::new(real_plan);
+        let real_text = real_outcome.format_outcome(false, false).unwrap();
+        assert!(executed.load(Ordering::SeqCst));
+        assert_eq!(real_text, "task completed");
+    }
+
+    #[test]
+    fn action_log_operations() {
+        let dry_log = ActionLog::new(true);
+        assert!(dry_log.is_dry_run());
+
+        let executed = Arc::new(AtomicBool::new(false));
+        let exec_clone = Arc::clone(&executed);
+
+        let res = dry_log.action("dry action", || {
+            exec_clone.store(true, Ordering::SeqCst);
+            Ok("done")
+        });
+        assert_eq!(res.unwrap(), None);
+        assert!(!executed.load(Ordering::SeqCst));
+
+        let real_log = ActionLog::new(false);
+        assert!(!real_log.is_dry_run());
+
+        let res_real = real_log.action("real action", || {
+            executed.store(true, Ordering::SeqCst);
+            Ok("done")
+        });
+        assert_eq!(res_real.unwrap(), Some("done"));
+        assert!(executed.load(Ordering::SeqCst));
     }
 }

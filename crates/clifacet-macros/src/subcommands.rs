@@ -140,9 +140,10 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
         });
     }
 
-    parsed
-        .attrs
-        .insert(0, syn::parse_quote!(#[derive(::clap::Subcommand)]));
+    parsed.attrs.insert(
+        0,
+        syn::parse_quote!(#[derive(::clifacet::clap::Subcommand)]),
+    );
     let name = &parsed.ident;
     let conversion = conversion(name, &declared.input, &leaves);
     let collect = collect(name, &leaves);

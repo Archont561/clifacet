@@ -19,20 +19,18 @@ Because the command core is decoupled from presentation, commands do not inspect
 
 ## Add Dependencies
 
-Configure your package manager to include `clifacet` and `clap`:
+Configure your package manager to include `clifacet`. Clap is re-exported and routed automatically through `clifacet::clap`, so your application only requires one direct dependency:
 
 <Tabs items={["Cargo.toml", "cargo add"]}>
   <Tab value="Cargo.toml">
     ```toml
     [dependencies]
     clifacet = { version = "0.8.0", features = ["tui", "interactive"] }
-    clap = "4.6.7"
     ```
   </Tab>
   <Tab value="cargo add">
     ```sh
     cargo add clifacet --features tui,interactive
-    cargo add clap --features derive
     ```
   </Tab>
 </Tabs>
@@ -43,7 +41,7 @@ Every optional feature is off by default, and each one is a dependency boundary:
 
 | Feature | Description | Dependencies |
 | --- | --- | --- |
-| *(default)* | Commands, companion derive, interaction policy, secrets, provenance | `clap`, `thiserror`, `clifacet-macros` |
+| *(default)* | Commands, companion derive, interaction policy, secrets, provenance | `thiserror`, `clifacet-macros` |
 | `interactive` | Terminal dialogs powered by `inquire` | `inquire` |
 | `tui` | Full-screen terminal forms powered by `ratatui` | `ratatui`, `crossterm` |
 | `serde` | Serializes `Failure`, `FailureKind`, `Secret`, and `--json` mode | `serde`, `serde_json` |

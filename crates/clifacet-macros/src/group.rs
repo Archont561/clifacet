@@ -147,7 +147,9 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
 
     parsed.attrs.insert(
         0,
-        syn::parse_quote!(#[derive(::clap::Args, ::std::clone::Clone, ::std::fmt::Debug)]),
+        syn::parse_quote!(
+            #[derive(::clifacet::clap::Args, ::std::clone::Clone, ::std::fmt::Debug)]
+        ),
     );
 
     Ok(quote! {
