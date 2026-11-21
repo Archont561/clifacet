@@ -18,7 +18,7 @@
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
@@ -57,7 +57,9 @@ pub struct Cancel {
 #[derive(Default)]
 struct CancelInner {
     cancelled: AtomicBool,
+    interrupt_count: AtomicUsize,
     wakers: Mutex<Vec<Waker>>,
+    abort_wakers: Mutex<Vec<Waker>>,
 }
 
 impl Cancel {
@@ -83,10 +85,57 @@ impl Cancel {
         }
     }
 
+    /// Signals an interrupt (Ctrl-C) event.
+    ///
+    /// The first invocation trips the cancellation token (requesting cooperative cancellation).
+    /// The second (or subsequent) invocation requests immediate abort, waking tasks
+    /// awaiting [`aborted`](Self::aborted).
+    pub fn interrupt(&self) {
+        let prev = self.inner.interrupt_count.fetch_add(1, Ordering::SeqCst);
+        if prev == 0 {
+            self.cancel();
+        } else {
+            let mut wakers = self
+                .inner
+                .abort_wakers
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for waker in wakers.drain(..) {
+                waker.wake();
+            }
+        }
+    }
+
+    /// Requests an immediate hard abort, waking both cancellation and abort listeners.
+    pub fn abort(&self) {
+        self.cancel();
+        self.inner.interrupt_count.store(2, Ordering::SeqCst);
+        let mut wakers = self
+            .inner
+            .abort_wakers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for waker in wakers.drain(..) {
+            waker.wake();
+        }
+    }
+
     /// Returns `true` if cancellation has been requested.
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
         self.inner.cancelled.load(Ordering::SeqCst)
+    }
+
+    /// Returns `true` if an immediate hard abort has been requested.
+    #[must_use]
+    pub fn is_aborted(&self) -> bool {
+        self.inner.interrupt_count.load(Ordering::SeqCst) >= 2
+    }
+
+    /// Returns the number of registered interrupt signals.
+    #[must_use]
+    pub fn interrupt_count(&self) -> usize {
+        self.inner.interrupt_count.load(Ordering::SeqCst)
     }
 
     /// Returns a future that resolves when cancellation is requested.
@@ -96,19 +145,31 @@ impl Cancel {
             cancel: self.clone(),
         }
     }
+
+    /// Returns a future that resolves when an immediate hard abort is requested.
+    #[must_use]
+    pub fn aborted(&self) -> AbortedFuture {
+        AbortedFuture {
+            cancel: self.clone(),
+        }
+    }
 }
 
 impl fmt::Debug for Cancel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Cancel")
             .field("is_cancelled", &self.is_cancelled())
+            .field("is_aborted", &self.is_aborted())
+            .field("interrupt_count", &self.interrupt_count())
             .finish()
     }
 }
 
 impl fmt::Display for Cancel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_cancelled() {
+        if self.is_aborted() {
+            write!(f, "aborted")
+        } else if self.is_cancelled() {
             write!(f, "cancelled")
         } else {
             write!(f, "active")
@@ -136,6 +197,38 @@ impl Future for CancelledFuture {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if self.cancel.is_cancelled() {
+                Poll::Ready(())
+            } else {
+                let current_waker = cx.waker();
+                if !wakers.iter().any(|w| w.will_wake(current_waker)) {
+                    wakers.push(current_waker.clone());
+                }
+                Poll::Pending
+            }
+        }
+    }
+}
+
+/// A future that resolves when its associated [`Cancel`] token signals hard abort.
+#[derive(Debug, Clone)]
+pub struct AbortedFuture {
+    cancel: Cancel,
+}
+
+impl Future for AbortedFuture {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.cancel.is_aborted() {
+            Poll::Ready(())
+        } else {
+            let mut wakers = self
+                .cancel
+                .inner
+                .abort_wakers
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if self.cancel.is_aborted() {
                 Poll::Ready(())
             } else {
                 let current_waker = cx.waker();
@@ -332,9 +425,25 @@ impl RunCx {
         self.cancel.is_cancelled()
     }
 
+    /// Returns `true` if an immediate hard abort has been requested.
+    #[must_use]
+    pub fn is_aborted(&self) -> bool {
+        self.cancel.is_aborted()
+    }
+
     /// Requests cooperative cancellation.
     pub fn request_cancel(&self) {
         self.cancel.cancel();
+    }
+
+    /// Signals an interrupt (e.g. Ctrl-C), requesting cancellation on first call and abort on second.
+    pub fn request_interrupt(&self) {
+        self.cancel.interrupt();
+    }
+
+    /// Requests an immediate hard abort.
+    pub fn request_abort(&self) {
+        self.cancel.abort();
     }
 
     /// Returns a reference to the active progress sink.
@@ -664,6 +773,7 @@ impl Executor for StdExecutor {
 #[derive(Debug, Clone)]
 pub struct TokioExecutor {
     runtime: TokioRuntimeConfig,
+    grace_period: std::time::Duration,
 }
 
 #[cfg(feature = "tokio")]
@@ -681,6 +791,7 @@ impl TokioExecutor {
     pub fn current_thread() -> Self {
         Self {
             runtime: TokioRuntimeConfig::CurrentThread,
+            grace_period: std::time::Duration::from_secs(5),
         }
     }
 
@@ -689,6 +800,7 @@ impl TokioExecutor {
     pub fn multi_thread() -> Self {
         Self {
             runtime: TokioRuntimeConfig::MultiThread,
+            grace_period: std::time::Duration::from_secs(5),
         }
     }
 
@@ -697,7 +809,15 @@ impl TokioExecutor {
     pub fn from_handle(handle: tokio::runtime::Handle) -> Self {
         Self {
             runtime: TokioRuntimeConfig::Handle(handle),
+            grace_period: std::time::Duration::from_secs(5),
         }
+    }
+
+    /// Sets the grace period to wait between first cancellation signal and hard abort (default 5s).
+    #[must_use]
+    pub fn grace_period(mut self, period: std::time::Duration) -> Self {
+        self.grace_period = period;
+        self
     }
 }
 
@@ -713,7 +833,7 @@ impl Executor for TokioExecutor {
     fn run<T: Send + 'static>(
         &self,
         fut: BoxFuture<'static, Result<T, Failure>>,
-        _cancel: Cancel,
+        cancel: Cancel,
     ) -> Result<T, Failure> {
         if tokio::runtime::Handle::try_current().is_ok() {
             return Err(Failure::execution(
@@ -722,25 +842,205 @@ impl Executor for TokioExecutor {
             ));
         }
 
+        let cancellable = run_with_cancellation(fut, cancel, self.grace_period, None);
+
         match &self.runtime {
             TokioRuntimeConfig::CurrentThread => {
                 let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
                     .build()
                     .map_err(|e| {
                         Failure::execution(format!(
                             "cannot create Tokio current-thread runtime: {e}"
                         ))
                     })?;
-                rt.block_on(fut)
+                rt.block_on(cancellable)
             }
             TokioRuntimeConfig::MultiThread => {
-                let rt = tokio::runtime::Builder::new_current_thread()
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
                     .build()
                     .map_err(|e| Failure::execution(format!("cannot create Tokio runtime: {e}")))?;
-                rt.block_on(fut)
+                rt.block_on(cancellable)
             }
-            TokioRuntimeConfig::Handle(handle) => handle.block_on(fut),
+            TokioRuntimeConfig::Handle(handle) => handle.block_on(cancellable),
         }
+    }
+}
+
+#[cfg(feature = "tokio")]
+struct SafeFuture<F> {
+    inner: Option<Pin<Box<F>>>,
+}
+
+#[cfg(feature = "tokio")]
+impl<F: Future> SafeFuture<F> {
+    fn new(fut: F) -> Self {
+        Self {
+            inner: Some(Box::pin(fut)),
+        }
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl<F: Future> Future for SafeFuture<F> {
+    type Output = F::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let Some(inner) = self.inner.as_mut() else {
+            return Poll::Pending;
+        };
+        let waker = cx.waker().clone();
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut cx2 = Context::from_waker(&waker);
+            inner.as_mut().poll(&mut cx2)
+        }));
+        if let Ok(poll) = res {
+            poll
+        } else {
+            self.inner = None;
+            Poll::Pending
+        }
+    }
+}
+
+/// Runs `fut` under cooperative cancellation, grace period, and optional timeout.
+///
+/// 1. A first Ctrl-C signal (or external cancellation request) trips the [`Cancel`] token.
+///    The future is awaited during the `grace_period` to allow cooperative cleanup.
+/// 2. A second Ctrl-C signal (or expiration of the `grace_period`) immediately aborts
+///    the future and returns `Err(Failure::cancelled("operation aborted by interrupt"))`.
+/// 3. If `timeout` is specified and expires before completion, the future is immediately
+///    aborted and returns `Err(Failure::execution(format!("timed out after ...")))`.
+///
+/// # Errors
+///
+/// Returns the future's failure, or an execution/cancelled failure on timeout or interrupt abort.
+#[cfg(feature = "tokio")]
+#[allow(clippy::too_many_lines)]
+pub async fn run_with_cancellation<T>(
+    fut: impl Future<Output = Result<T, Failure>>,
+    cancel: Cancel,
+    grace_period: std::time::Duration,
+    timeout: Option<std::time::Duration>,
+) -> Result<T, Failure> {
+    if cancel.is_aborted() {
+        return Err(Failure::cancelled("operation aborted by interrupt"));
+    }
+
+    let cancel_for_signal = cancel.clone();
+    let signal_listener = async move {
+        let first_signal = SafeFuture::new(async {
+            let ctrl_c =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(tokio::signal::ctrl_c));
+            if let Ok(fut) = ctrl_c {
+                SafeFuture::new(fut).await
+            } else {
+                std::future::pending::<std::io::Result<()>>().await
+            }
+        });
+        if first_signal.await.is_ok() {
+            cancel_for_signal.interrupt();
+            let second_signal = SafeFuture::new(async {
+                let ctrl_c =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(tokio::signal::ctrl_c));
+                if let Ok(fut) = ctrl_c {
+                    SafeFuture::new(fut).await
+                } else {
+                    std::future::pending::<std::io::Result<()>>().await
+                }
+            });
+            if second_signal.await.is_ok() {
+                cancel_for_signal.interrupt();
+            }
+        }
+        std::future::pending::<()>().await;
+    };
+    tokio::pin!(signal_listener);
+    tokio::pin!(fut);
+
+    let timeout_sleep = async {
+        if let Some(dur) = timeout {
+            let sleep_res =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tokio::time::sleep(dur)));
+            if let Ok(fut) = sleep_res {
+                SafeFuture::new(fut).await;
+                true
+            } else {
+                std::future::pending::<()>().await;
+                false
+            }
+        } else {
+            std::future::pending::<()>().await;
+            false
+        }
+    };
+    tokio::pin!(timeout_sleep);
+
+    let cancelled_fut = cancel.cancelled();
+    tokio::pin!(cancelled_fut);
+
+    let cancelled = if cancel.is_cancelled() {
+        true
+    } else {
+        tokio::select! {
+            res = &mut fut => {
+                return res;
+            }
+            () = &mut signal_listener => {
+                unreachable!("signal_listener never returns Ok(())");
+            }
+            timed_out = &mut timeout_sleep => {
+                if timed_out {
+                    let formatted = crate::app::format_duration(timeout.unwrap_or(std::time::Duration::ZERO));
+                    return Err(Failure::execution(format!("timed out after {formatted}")));
+                }
+                false
+            }
+            () = &mut cancelled_fut => {
+                true
+            }
+        }
+    };
+
+    if cancelled {
+        let grace_sleep = async {
+            let sleep_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                tokio::time::sleep(grace_period)
+            }));
+            if let Ok(fut) = sleep_res {
+                SafeFuture::new(fut).await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        };
+        tokio::pin!(grace_sleep);
+        let aborted_fut = cancel.aborted();
+        tokio::pin!(aborted_fut);
+
+        tokio::select! {
+            res = &mut fut => {
+                res
+            }
+            () = &mut signal_listener => {
+                unreachable!("signal_listener never returns Ok(())");
+            }
+            timed_out = &mut timeout_sleep => {
+                if timed_out {
+                    let formatted = crate::app::format_duration(timeout.unwrap_or(std::time::Duration::ZERO));
+                    return Err(Failure::execution(format!("timed out after {formatted}")));
+                }
+                Err(Failure::cancelled("operation aborted by interrupt"))
+            }
+            () = &mut aborted_fut => {
+                Err(Failure::cancelled("operation aborted by interrupt"))
+            }
+            () = &mut grace_sleep => {
+                Err(Failure::cancelled("operation aborted by interrupt"))
+            }
+        }
+    } else {
+        unreachable!("phase 1 handles non-cancelled completion")
     }
 }
 
@@ -1073,8 +1373,266 @@ mod tests {
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();
-        let handle_exec = TokioExecutor::from_handle(rt.handle().clone());
+        let handle_exec = TokioExecutor::from_handle(rt.handle().clone())
+            .grace_period(std::time::Duration::from_millis(50));
         let res_handle = handle_exec.run(Box::pin(async { Ok::<_, Failure>(3) }), Cancel::new());
         assert_eq!(res_handle.unwrap(), 3);
+    }
+
+    #[test]
+    fn cancel_interrupt_and_abort_state_machine() {
+        let cancel = Cancel::new();
+        assert!(!cancel.is_cancelled());
+        assert!(!cancel.is_aborted());
+        assert_eq!(cancel.interrupt_count(), 0);
+        assert_eq!(cancel.to_string(), "active");
+
+        // First interrupt trips cancel (cooperative cancellation)
+        cancel.interrupt();
+        assert!(cancel.is_cancelled());
+        assert!(!cancel.is_aborted());
+        assert_eq!(cancel.interrupt_count(), 1);
+        assert_eq!(cancel.to_string(), "cancelled");
+
+        // Second interrupt trips abort (hard abort)
+        cancel.interrupt();
+        assert!(cancel.is_cancelled());
+        assert!(cancel.is_aborted());
+        assert_eq!(cancel.interrupt_count(), 2);
+        assert_eq!(cancel.to_string(), "aborted");
+
+        // Third interrupt increments count
+        cancel.interrupt();
+        assert_eq!(cancel.interrupt_count(), 3);
+
+        // Abort method sets aborted directly
+        let cancel2 = Cancel::new();
+        cancel2.abort();
+        assert!(cancel2.is_cancelled());
+        assert!(cancel2.is_aborted());
+        assert_eq!(cancel2.to_string(), "aborted");
+
+        let debug_str = format!("{cancel2:?}");
+        assert!(debug_str.contains("is_cancelled: true"));
+        assert!(debug_str.contains("is_aborted: true"));
+
+        let (cx, _) = RunCx::for_test();
+        assert!(!cx.is_aborted());
+        cx.request_interrupt();
+        assert!(cx.is_cancelled());
+        assert!(!cx.is_aborted());
+        cx.request_interrupt();
+        assert!(cx.is_aborted());
+
+        let (cx2, _) = RunCx::for_test();
+        cx2.request_abort();
+        assert!(cx2.is_aborted());
+    }
+
+    #[test]
+    fn aborted_future_polling_behavior() {
+        let cancel = Cancel::new();
+        let mut fut = cancel.aborted();
+
+        let pending = std::future::Future::poll(
+            std::pin::pin!(&mut fut),
+            &mut Context::from_waker(Waker::noop()),
+        );
+        assert!(pending.is_pending());
+
+        // First interrupt only trips cancel, not abort
+        cancel.interrupt();
+        let still_pending = std::future::Future::poll(
+            std::pin::pin!(&mut fut),
+            &mut Context::from_waker(Waker::noop()),
+        );
+        assert!(still_pending.is_pending());
+
+        // Second interrupt trips abort
+        cancel.interrupt();
+        let ready = std::future::Future::poll(
+            std::pin::pin!(&mut fut),
+            &mut Context::from_waker(Waker::noop()),
+        );
+        assert!(ready.is_ready());
+
+        let mut immediate = cancel.aborted();
+        let ready_imm = std::future::Future::poll(
+            std::pin::pin!(&mut immediate),
+            &mut Context::from_waker(Waker::noop()),
+        );
+        assert!(ready_imm.is_ready());
+    }
+
+    #[cfg(feature = "tokio")]
+    #[tokio::test(start_paused = true)]
+    async fn run_with_cancellation_normal_success_and_failure() {
+        let cancel = Cancel::new();
+        let ok_res = run_with_cancellation(
+            async { Ok::<_, Failure>("success") },
+            cancel.clone(),
+            std::time::Duration::from_millis(50),
+            None,
+        )
+        .await;
+        assert_eq!(ok_res.unwrap(), "success");
+
+        let err_res = run_with_cancellation(
+            async { Err::<String, _>(Failure::validation("invalid input")) },
+            cancel,
+            std::time::Duration::from_millis(50),
+            None,
+        )
+        .await;
+        assert!(err_res.is_err());
+        assert_eq!(err_res.unwrap_err().message(), "invalid input");
+    }
+
+    #[cfg(feature = "tokio")]
+    #[tokio::test(start_paused = true)]
+    async fn run_with_cancellation_cooperative_cancel_preserves_message() {
+        let cancel = Cancel::new();
+        let cancel_clone = cancel.clone();
+
+        let res = run_with_cancellation(
+            async move {
+                cancel_clone.interrupt(); // First Ctrl-C
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                Err::<String, _>(Failure::cancelled("custom clean exit message"))
+            },
+            cancel,
+            std::time::Duration::from_millis(100),
+            None,
+        )
+        .await;
+
+        assert!(res.is_err());
+        let failure = res.unwrap_err();
+        assert_eq!(failure.kind(), crate::failure::FailureKind::Cancelled);
+        assert_eq!(failure.message(), "custom clean exit message");
+    }
+
+    #[cfg(feature = "tokio")]
+    #[tokio::test(start_paused = true)]
+    async fn run_with_cancellation_second_interrupt_hard_aborts() {
+        let cancel = Cancel::new();
+        let cancel_clone = cancel.clone();
+
+        let res = run_with_cancellation(
+            async move {
+                cancel_clone.interrupt(); // 1st Ctrl-C
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                cancel_clone.interrupt(); // 2nd Ctrl-C -> immediate hard abort
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                Ok::<_, Failure>("unreachable")
+            },
+            cancel,
+            std::time::Duration::from_millis(1000),
+            None,
+        )
+        .await;
+
+        assert!(res.is_err());
+        let failure = res.unwrap_err();
+        assert_eq!(failure.kind(), crate::failure::FailureKind::Cancelled);
+        assert_eq!(failure.message(), "operation aborted by interrupt");
+    }
+
+    #[cfg(feature = "tokio")]
+    #[tokio::test(start_paused = true)]
+    async fn run_with_cancellation_grace_period_expiration_hard_aborts() {
+        let cancel = Cancel::new();
+        let cancel_clone = cancel.clone();
+
+        let res = run_with_cancellation(
+            async move {
+                cancel_clone.interrupt(); // 1st Ctrl-C
+                // Task hangs longer than the 50ms grace period without second interrupt
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                Ok::<_, Failure>("unreachable")
+            },
+            cancel,
+            std::time::Duration::from_millis(50),
+            None,
+        )
+        .await;
+
+        assert!(res.is_err());
+        let failure = res.unwrap_err();
+        assert_eq!(failure.kind(), crate::failure::FailureKind::Cancelled);
+        assert_eq!(failure.message(), "operation aborted by interrupt");
+    }
+
+    #[cfg(feature = "tokio")]
+    #[tokio::test(start_paused = true)]
+    async fn run_with_cancellation_timeout_expiration_aborts_with_execution_failure() {
+        let cancel = Cancel::new();
+
+        let res = run_with_cancellation(
+            async {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                Ok::<_, Failure>("finished")
+            },
+            cancel,
+            std::time::Duration::from_millis(50),
+            Some(std::time::Duration::from_millis(20)),
+        )
+        .await;
+
+        assert!(res.is_err());
+        let failure = res.unwrap_err();
+        assert_eq!(failure.kind(), crate::failure::FailureKind::Execution);
+        assert_eq!(failure.message(), "timed out after 20ms");
+    }
+
+    #[cfg(feature = "tokio")]
+    #[tokio::test(start_paused = true)]
+    async fn run_with_cancellation_completes_before_timeout() {
+        let cancel = Cancel::new();
+
+        let res = run_with_cancellation(
+            async {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                Ok::<_, Failure>("in time")
+            },
+            cancel,
+            std::time::Duration::from_millis(50),
+            Some(std::time::Duration::from_millis(100)),
+        )
+        .await;
+
+        assert_eq!(res.unwrap(), "in time");
+    }
+
+    #[cfg(feature = "tokio")]
+    #[tokio::test(start_paused = true)]
+    async fn run_with_cancellation_pre_cancelled_and_pre_aborted() {
+        let pre_aborted = Cancel::new();
+        pre_aborted.abort();
+        let res_aborted = run_with_cancellation(
+            async { Ok::<_, Failure>("never") },
+            pre_aborted,
+            std::time::Duration::from_millis(50),
+            None,
+        )
+        .await;
+        assert_eq!(
+            res_aborted.unwrap_err().message(),
+            "operation aborted by interrupt"
+        );
+
+        let pre_cancelled = Cancel::new();
+        pre_cancelled.cancel();
+        let res_cancelled = run_with_cancellation(
+            async {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                Err::<String, _>(Failure::cancelled("saved"))
+            },
+            pre_cancelled,
+            std::time::Duration::from_millis(50),
+            None,
+        )
+        .await;
+        assert_eq!(res_cancelled.unwrap_err().message(), "saved");
     }
 }

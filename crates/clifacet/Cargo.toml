@@ -54,7 +54,7 @@ inquire = { workspace = true, optional = true }
 ratatui = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }
 minijinja = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "signal", "time", "macros", "sync"] }
 
 [dev-dependencies]
 assert_cmd.workspace = true
@@ -64,7 +64,7 @@ rstest-bdd.workspace = true
 rstest-bdd-macros.workspace = true
 # What an application would build a JSON failure body with; the tests read it back.
 serde_json.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "macros", "test-util"] }
 
 [lints]
 workspace = true

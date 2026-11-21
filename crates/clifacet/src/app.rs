@@ -72,6 +72,147 @@ use crate::prompt::{Collect, Lazy, Prompter, Session};
 use crate::report;
 use crate::settings;
 
+/// Parses a human-readable duration string into a [`std::time::Duration`].
+///
+/// Supported units include `ns`, `us` / `µs`, `ms`, `s` / `sec` / `secs`, `m` / `min` / `mins`,
+/// `h` / `hr` / `hrs`, and `d` / `day` / `days`.
+///
+/// # Errors
+///
+/// Returns an error message if the duration string is empty, missing a unit, or invalid.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::missing_panics_doc
+)]
+pub fn parse_duration(input: &str) -> Result<std::time::Duration, String> {
+    let s = input.trim();
+    if s.is_empty() {
+        return Err("duration cannot be empty".to_string());
+    }
+
+    let mut total_nanos: u128 = 0;
+    let mut chars = s.char_indices().peekable();
+
+    while chars.peek().is_some() {
+        while let Some(&(_, c)) = chars.peek() {
+            if c.is_whitespace() {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        let Some(&(num_start, _)) = chars.peek() else {
+            break;
+        };
+
+        let mut has_digits = false;
+        let mut has_dot = false;
+        while let Some(&(_, c)) = chars.peek() {
+            if c.is_ascii_digit() {
+                has_digits = true;
+                chars.next();
+            } else if c == '.' && !has_dot {
+                has_dot = true;
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        if !has_digits {
+            return Err(format!("invalid duration '{input}': expected a number"));
+        }
+
+        let num_end = chars.peek().map_or(s.len(), |&(i, _)| i);
+        let num_str = &s[num_start..num_end];
+        let val: f64 = num_str
+            .parse()
+            .map_err(|_| format!("invalid number '{num_str}' in duration '{input}'"))?;
+
+        if val < 0.0 {
+            return Err("duration cannot be negative".to_string());
+        }
+
+        while let Some(&(_, c)) = chars.peek() {
+            if c.is_whitespace() {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        let unit_start = chars.peek().map_or(s.len(), |&(i, _)| i);
+        while let Some(&(_, c)) = chars.peek() {
+            if c.is_alphabetic() || c == 'µ' {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        let unit_end = chars.peek().map_or(s.len(), |&(i, _)| i);
+        let unit_str = &s[unit_start..unit_end];
+
+        if unit_str.is_empty() {
+            return Err(format!(
+                "invalid duration '{input}': missing unit (e.g. '30s', '500ms', '1m')"
+            ));
+        }
+
+        let nanos_per_unit: f64 = match unit_str.to_ascii_lowercase().as_str() {
+            "ns" => 1.0,
+            "us" | "µs" => 1_000.0,
+            "ms" => 1_000_000.0,
+            "s" | "sec" | "secs" | "second" | "seconds" => 1_000_000_000.0,
+            "m" | "min" | "mins" | "minute" | "minutes" => 60.0 * 1_000_000_000.0,
+            "h" | "hr" | "hrs" | "hour" | "hours" => 3_600.0 * 1_000_000_000.0,
+            "d" | "day" | "days" => 86_400.0 * 1_000_000_000.0,
+            _ => {
+                return Err(format!(
+                    "invalid duration unit '{unit_str}' in '{input}': expected 'ns', 'us', 'ms', 's', 'm', 'h', or 'd'"
+                ));
+            }
+        };
+
+        let component_nanos = val * nanos_per_unit;
+        total_nanos = total_nanos
+            .checked_add(component_nanos as u128)
+            .ok_or_else(|| format!("duration '{input}' is too large"))?;
+    }
+
+    let secs = (total_nanos / 1_000_000_000) as u64;
+    let nanos = (total_nanos % 1_000_000_000) as u32;
+    Ok(std::time::Duration::new(secs, nanos))
+}
+
+/// Formats a [`std::time::Duration`] into a concise human-readable string (e.g. `30s`, `500ms`, `1m`).
+#[must_use]
+pub fn format_duration(d: std::time::Duration) -> String {
+    let nanos = d.as_nanos();
+    if nanos == 0 {
+        return "0s".to_string();
+    }
+    if d.subsec_nanos() == 0 {
+        let secs = d.as_secs();
+        if secs.is_multiple_of(86_400) {
+            format!("{}d", secs / 86_400)
+        } else if secs.is_multiple_of(3_600) {
+            format!("{}h", secs / 3_600)
+        } else if secs.is_multiple_of(60) {
+            format!("{}m", secs / 60)
+        } else {
+            format!("{secs}s")
+        }
+    } else if d.subsec_nanos().is_multiple_of(1_000_000) {
+        format!("{}ms", d.as_millis())
+    } else if d.subsec_nanos().is_multiple_of(1_000) {
+        format!("{}us", d.as_micros())
+    } else {
+        format!("{}ns", d.as_nanos())
+    }
+}
+
 /// The options every application gets: `--yes` and `--dry-run`.
 ///
 /// Flatten it into the root command, beside the application's own options:
@@ -128,6 +269,11 @@ pub struct Globals {
     /// location.
     #[arg(long, global = true, conflicts_with = "config")]
     pub no_config: bool,
+
+    /// Automatically abort execution after the specified duration (e.g. `30s`, `1m`, `500ms`).
+    #[cfg(feature = "async")]
+    #[arg(long, global = true, value_name = "DURATION", value_parser = parse_duration)]
+    pub timeout: Option<std::time::Duration>,
 }
 
 impl Globals {
@@ -146,6 +292,12 @@ impl Globals {
                 .flatten()
                 .cloned(),
             no_config: on("no_config"),
+            #[cfg(feature = "async")]
+            timeout: matches
+                .try_get_one::<std::time::Duration>("timeout")
+                .ok()
+                .flatten()
+                .copied(),
         }
     }
 }
@@ -342,6 +494,8 @@ pub struct App<'c, Cli, C = Cli, R = Plain, Cx = ()> {
             >,
         >,
     >,
+    #[cfg(feature = "async")]
+    grace_period: std::time::Duration,
 }
 
 /// Reads the settings file for a given argument list.
@@ -392,6 +546,8 @@ impl<Cli: Clone> App<'_, Cli> {
             after_failure_async: None,
             #[cfg(feature = "async")]
             async_runner: None,
+            #[cfg(feature = "async")]
+            grace_period: std::time::Duration::from_secs(5),
         }
     }
 }
@@ -461,6 +617,8 @@ where
             async_runner: Some(Rc::new(
                 |cli: &C, cx: &C::Context, run: &crate::r#async::RunCx| cli.async_dispatch(cx, run),
             )),
+            #[cfg(feature = "async")]
+            grace_period: std::time::Duration::from_secs(5),
         }
     }
 }
@@ -526,6 +684,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_failure_async: self.after_failure_async,
             #[cfg(feature = "async")]
             async_runner: None,
+            #[cfg(feature = "async")]
+            grace_period: self.grace_period,
         }
     }
 
@@ -555,6 +715,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_failure_async: self.after_failure_async,
             #[cfg(feature = "async")]
             async_runner: self.async_runner,
+            #[cfg(feature = "async")]
+            grace_period: self.grace_period,
         }
     }
 
@@ -599,6 +761,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_failure_async: None,
             #[cfg(feature = "async")]
             async_runner: None,
+            #[cfg(feature = "async")]
+            grace_period: self.grace_period,
         }
     }
 
@@ -636,6 +800,8 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_failure_async: None,
             #[cfg(feature = "async")]
             async_runner: None,
+            #[cfg(feature = "async")]
+            grace_period: self.grace_period,
         }
     }
 
@@ -679,6 +845,7 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
             after_success_async: None,
             after_failure_async: None,
             async_runner: None,
+            grace_period: self.grace_period,
         }
     }
 
@@ -687,6 +854,14 @@ impl<'c, Cli: 'static, C, R, Cx: 'static> App<'c, Cli, C, R, Cx> {
     #[must_use]
     pub fn executor(mut self, executor: impl crate::r#async::Executor + 'static) -> Self {
         self.executor = std::sync::Arc::new(move |fut, cancel| executor.run(fut, cancel));
+        self
+    }
+
+    /// Sets the grace period to wait for graceful cleanup after a cancellation request (default 5s).
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn grace_period(mut self, period: std::time::Duration) -> Self {
+        self.grace_period = period;
         self
     }
 
@@ -1323,7 +1498,20 @@ where
                 Err(err) => Err(err),
             }
         } else if let Some(fut) = async_fut {
-            match fut.await {
+            #[cfg(feature = "tokio")]
+            let cancel = run_cx.cancel().clone();
+            #[cfg(feature = "tokio")]
+            let res = crate::r#async::run_with_cancellation(
+                fut,
+                cancel,
+                self.grace_period,
+                globals.timeout,
+            )
+            .await;
+            #[cfg(not(feature = "tokio"))]
+            let res = fut.await;
+
+            match res {
                 Ok(boxed) => {
                     let output = *boxed
                         .downcast::<<C as Handler<Cx>>::Output>()
@@ -1770,6 +1958,9 @@ mod tests {
     struct UnitCli {
         #[arg(long)]
         flag: bool,
+
+        #[command(flatten)]
+        globals: Globals,
     }
 
     impl Facet for UnitCli {
@@ -1848,7 +2039,10 @@ mod tests {
             let mut err = Vec::new();
             let code = app
                 .run_parsed_async(
-                    UnitCli { flag: true },
+                    UnitCli {
+                        flag: true,
+                        globals: Globals::default(),
+                    },
                     Globals::default(),
                     Capabilities::headless(),
                     process_frontend,
@@ -2015,6 +2209,237 @@ mod tests {
                 )
                 .await;
             assert_ne!(code, 0);
+        });
+    }
+
+    #[test]
+    fn parse_and_format_duration_unit_tests() {
+        assert_eq!(
+            parse_duration("30s").unwrap(),
+            std::time::Duration::from_secs(30)
+        );
+        assert_eq!(
+            parse_duration("500ms").unwrap(),
+            std::time::Duration::from_millis(500)
+        );
+        assert_eq!(
+            parse_duration("100us").unwrap(),
+            std::time::Duration::from_micros(100)
+        );
+        assert_eq!(
+            parse_duration("100µs").unwrap(),
+            std::time::Duration::from_micros(100)
+        );
+        assert_eq!(
+            parse_duration("50ns").unwrap(),
+            std::time::Duration::from_nanos(50)
+        );
+        assert_eq!(
+            parse_duration("1m").unwrap(),
+            std::time::Duration::from_secs(60)
+        );
+        assert_eq!(
+            parse_duration("2min").unwrap(),
+            std::time::Duration::from_secs(120)
+        );
+        assert_eq!(
+            parse_duration("3mins").unwrap(),
+            std::time::Duration::from_secs(180)
+        );
+        assert_eq!(
+            parse_duration("1h").unwrap(),
+            std::time::Duration::from_secs(3600)
+        );
+        assert_eq!(
+            parse_duration("2hrs").unwrap(),
+            std::time::Duration::from_secs(7200)
+        );
+        assert_eq!(
+            parse_duration("1d").unwrap(),
+            std::time::Duration::from_secs(86400)
+        );
+        assert_eq!(
+            parse_duration("2days").unwrap(),
+            std::time::Duration::from_secs(172_800)
+        );
+        assert_eq!(
+            parse_duration("1.5s").unwrap(),
+            std::time::Duration::from_millis(1500)
+        );
+        assert_eq!(
+            parse_duration("1m30s").unwrap(),
+            std::time::Duration::from_secs(90)
+        );
+        assert_eq!(
+            parse_duration("  30  s  ").unwrap(),
+            std::time::Duration::from_secs(30)
+        );
+
+        // Invalid cases
+        assert!(parse_duration("").is_err());
+        assert!(parse_duration("   ").is_err());
+        assert!(parse_duration("abc").is_err());
+        assert!(parse_duration("30").is_err());
+        assert!(parse_duration("30unknown").is_err());
+        assert!(parse_duration("-5s").is_err());
+
+        // Format duration
+        assert_eq!(format_duration(std::time::Duration::ZERO), "0s");
+        assert_eq!(format_duration(std::time::Duration::from_nanos(50)), "50ns");
+        assert_eq!(
+            format_duration(std::time::Duration::from_micros(100)),
+            "100us"
+        );
+        assert_eq!(
+            format_duration(std::time::Duration::from_millis(500)),
+            "500ms"
+        );
+        assert_eq!(format_duration(std::time::Duration::from_secs(30)), "30s");
+        assert_eq!(format_duration(std::time::Duration::from_secs(60)), "1m");
+        assert_eq!(format_duration(std::time::Duration::from_secs(7200)), "2h");
+        assert_eq!(
+            format_duration(std::time::Duration::from_secs(86400 * 3)),
+            "3d"
+        );
+    }
+
+    #[cfg(all(feature = "async", feature = "tokio"))]
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn app_timeout_flag_and_grace_period_execution() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            // Test timeout auto-abort in App::run_with_async
+            let app = App::<UnitCli>::new()
+                .grace_period(std::time::Duration::from_millis(20))
+                .async_runner(|_, (), _| async {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    Ok("finished".to_string())
+                });
+
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app
+                .run_with_async(
+                    ["unitapp", "--timeout", "10ms"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+
+            assert_ne!(code, 0);
+            let err_str = String::from_utf8(err).unwrap();
+            assert!(
+                err_str.contains("timed out after 10ms"),
+                "Unexpected error message: {err_str}"
+            );
+
+            // Test timeout in JSON mode
+            let mut out_json = Vec::new();
+            let mut err_json = Vec::new();
+            let code_json = app
+                .run_with_async(
+                    ["unitapp", "--timeout", "10ms", "--json"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out_json,
+                    &mut err_json,
+                )
+                .await;
+
+            assert_ne!(code_json, 0);
+            let err_json_str = String::from_utf8(err_json).unwrap();
+            assert!(
+                err_json_str.contains("\"kind\": \"execution\""),
+                "Unexpected JSON error: {err_json_str}"
+            );
+            assert!(
+                err_json_str.contains("timed out after 10ms"),
+                "Unexpected JSON error: {err_json_str}"
+            );
+
+            // Test cooperative cancel mapping to exit code 130
+            let app_cancel = App::<UnitCli>::new().async_runner(|_, (), run| {
+                run.request_interrupt();
+                async { Err::<String, _>(Failure::cancelled("user declined operation")) }
+            });
+
+            let mut out_c = Vec::new();
+            let mut err_c = Vec::new();
+            let code_c = app_cancel
+                .run_with_async(
+                    ["unitapp"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out_c,
+                    &mut err_c,
+                )
+                .await;
+
+            assert_eq!(code_c, 130);
+            let err_cancel_str = String::from_utf8(err_c).unwrap();
+            assert!(
+                err_cancel_str.contains("user declined operation"),
+                "Unexpected error message: {err_cancel_str}"
+            );
+
+            // Test cooperative cancel in JSON mode
+            let mut out_cj = Vec::new();
+            let mut err_cj = Vec::new();
+            let code_cj = app_cancel
+                .run_with_async(
+                    ["unitapp", "--json"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out_cj,
+                    &mut err_cj,
+                )
+                .await;
+
+            assert_eq!(code_cj, 130);
+            let err_cancel_json_str = String::from_utf8(err_cj).unwrap();
+            assert!(
+                err_cancel_json_str.contains("\"kind\": \"cancelled\""),
+                "Unexpected JSON: {err_cancel_json_str}"
+            );
+            assert!(
+                err_cancel_json_str.contains("\"code\": 130"),
+                "Unexpected JSON: {err_cancel_json_str}"
+            );
+
+            // Test hard-abort on second interrupt mapping to exit code 130
+            let app_abort = App::<UnitCli>::new().async_runner(|_, (), run| {
+                run.request_interrupt();
+                run.request_interrupt();
+                async {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    Ok("unreachable".to_string())
+                }
+            });
+
+            let mut out_a = Vec::new();
+            let mut err_a = Vec::new();
+            let code_a = app_abort
+                .run_with_async(
+                    ["unitapp"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out_a,
+                    &mut err_a,
+                )
+                .await;
+
+            assert_eq!(code_a, 130);
+            let err_abort_str = String::from_utf8(err_a).unwrap();
+            assert!(
+                err_abort_str.contains("operation aborted by interrupt"),
+                "Unexpected error message: {err_abort_str}"
+            );
         });
     }
 }

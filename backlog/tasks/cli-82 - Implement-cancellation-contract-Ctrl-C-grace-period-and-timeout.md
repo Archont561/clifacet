@@ -1,7 +1,7 @@
 ---
 id: CLI-82
 title: Implement cancellation contract Ctrl-C grace period and timeout
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 19:00'
 labels: []
@@ -19,8 +19,8 @@ Implement the cooperative cancellation contract (decision-26). The first Ctrl-C 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 First Ctrl-C signal trips Cancel token and awaits configurable graceful cleanup period
-- [ ] #2 Second Ctrl-C or timeout expiration immediately aborts the active task
-- [ ] #3 Cooperative cancellation maps to exit code 130 and preserves caller-facing failure messages
-- [ ] #4 Optional --timeout global flag automatically aborts execution after the specified duration
+- [x] #1 First Ctrl-C signal trips Cancel token and awaits configurable graceful cleanup period
+- [x] #2 Second Ctrl-C or timeout expiration immediately aborts the active task
+- [x] #3 Cooperative cancellation maps to exit code 130 and preserves caller-facing failure messages
+- [x] #4 Optional --timeout global flag automatically aborts execution after the specified duration
 <!-- AC:END -->
