@@ -237,8 +237,8 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                         self.__clifacet_is_json()
                     };
                     {
-                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
-                        res.format_outcome(is_dry_run, is_json)
+                        use ::clifacet::cli::auto_wire_json_async::FallbackFormatOutcomeAsync as _;
+                        res.format_outcome_async(is_dry_run, is_json).await
                     }
                 }
             });
@@ -289,8 +289,8 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                         self.__clifacet_is_json()
                     };
                     {
-                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
-                        res.format_outcome(is_dry_run, is_json)
+                        use ::clifacet::cli::auto_wire_json_async::FallbackFormatOutcomeAsync as _;
+                        res.format_outcome_async(is_dry_run, is_json).await
                     }
                 }
             });
@@ -347,8 +347,8 @@ pub(crate) fn expand(attribute: TokenStream, item: TokenStream) -> syn::Result<T
                         self.__clifacet_is_json()
                     };
                     {
-                        use ::clifacet::cli::auto_wire_json::FallbackFormatOutcome as _;
-                        res.format_outcome(is_dry_run, is_json)
+                        use ::clifacet::cli::auto_wire_json_async::FallbackFormatOutcomeAsync as _;
+                        res.format_outcome_async(is_dry_run, is_json).await
                     }
                 }
             });

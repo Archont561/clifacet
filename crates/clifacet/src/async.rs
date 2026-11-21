@@ -511,6 +511,24 @@ pub trait AsyncHandler<Cx: ?Sized>: Send + Sync {
         cx: &Cx,
         run: &RunCx,
     ) -> impl Future<Output = Result<Self::Output, Failure>> + Send;
+
+    /// What the command would do with `input` and context without executing mutating side effects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::validation`] by default when the command cannot be previewed.
+    fn preview<'a>(
+        &'a self,
+        input: Self::Input,
+        cx: &'a Cx,
+    ) -> impl Future<Output = Result<AsyncPlan<'a, Self::Output>, Failure>> + Send + 'a {
+        let _ = (input, cx);
+        async {
+            Err(Failure::validation(
+                "this command cannot describe what it would do, so it cannot be run with --dry-run",
+            ))
+        }
+    }
 }
 
 /// An asynchronous command that runs on single-threaded or WebAssembly targets without `Send` constraints.
@@ -534,6 +552,24 @@ pub trait LocalAsyncHandler<Cx: ?Sized> {
         cx: &Cx,
         run: &RunCx,
     ) -> impl Future<Output = Result<Self::Output, Failure>>;
+
+    /// What the command would do with `input` and context without executing mutating side effects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::validation`] by default when the command cannot be previewed.
+    fn preview_local<'a>(
+        &'a self,
+        input: Self::Input,
+        cx: &'a Cx,
+    ) -> impl Future<Output = Result<AsyncPlan<'a, Self::Output>, Failure>> + 'a {
+        let _ = (input, cx);
+        async {
+            Err(Failure::validation(
+                "this command cannot describe what it would do, so it cannot be run with --dry-run",
+            ))
+        }
+    }
 }
 
 impl<H: AsyncHandler<Cx>, Cx: ?Sized> LocalAsyncHandler<Cx> for H {
@@ -547,6 +583,14 @@ impl<H: AsyncHandler<Cx>, Cx: ?Sized> LocalAsyncHandler<Cx> for H {
         run: &RunCx,
     ) -> impl Future<Output = Result<Self::Output, Failure>> {
         AsyncHandler::handle(self, input, cx, run)
+    }
+
+    fn preview_local<'a>(
+        &'a self,
+        input: Self::Input,
+        cx: &'a Cx,
+    ) -> impl Future<Output = Result<AsyncPlan<'a, Self::Output>, Failure>> + 'a {
+        AsyncHandler::preview(self, input, cx)
     }
 }
 
@@ -571,6 +615,23 @@ pub trait AsyncCommand: Send + Sync {
         input: Self::Input,
         run: &RunCx,
     ) -> impl Future<Output = Result<Self::Output, Failure>> + Send;
+
+    /// Generates an asynchronous plan describing the steps of this command without executing mutating work.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Failure::validation`] by default when the command cannot be dry-run.
+    fn preview(
+        &self,
+        input: Self::Input,
+    ) -> impl Future<Output = Result<AsyncPlan<'_, Self::Output>, Failure>> + Send + '_ {
+        let _ = input;
+        async {
+            Err(Failure::validation(
+                "this command cannot describe what it would do, so it cannot be run with --dry-run",
+            ))
+        }
+    }
 }
 
 impl<C: AsyncCommand, Cx: ?Sized> AsyncHandler<Cx> for C {
@@ -584,6 +645,14 @@ impl<C: AsyncCommand, Cx: ?Sized> AsyncHandler<Cx> for C {
         run: &RunCx,
     ) -> impl Future<Output = Result<Self::Output, Failure>> + Send {
         self.execute(input, run)
+    }
+
+    fn preview<'a>(
+        &'a self,
+        input: Self::Input,
+        _cx: &'a Cx,
+    ) -> impl Future<Output = Result<AsyncPlan<'a, Self::Output>, Failure>> + Send + 'a {
+        self.preview(input)
     }
 }
 
@@ -631,6 +700,18 @@ impl<'a, T> AsyncPlan<'a, T> {
     #[must_use]
     pub fn steps_slice(&self) -> &[String] {
         &self.steps
+    }
+
+    /// Returns `true` if this plan contains no steps.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.steps.is_empty()
+    }
+
+    /// Returns the number of steps in this plan.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.steps.len()
     }
 
     /// Returns all step descriptions joined by newlines.
@@ -703,6 +784,10 @@ impl<P: AsyncPlanned> AsyncCommand for P {
     async fn execute(&self, input: Self::Input, _run: &RunCx) -> Result<Self::Output, Failure> {
         let plan = self.plan(input).await?;
         plan.execute().await
+    }
+
+    async fn preview(&self, input: Self::Input) -> Result<AsyncPlan<'_, Self::Output>, Failure> {
+        self.plan(input).await
     }
 }
 
