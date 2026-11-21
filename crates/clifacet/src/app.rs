@@ -1860,4 +1860,161 @@ mod tests {
             assert_eq!(String::from_utf8(out).unwrap(), "flag=true\n");
         });
     }
+
+    #[cfg(all(feature = "async", feature = "tokio"))]
+    #[test]
+    #[allow(clippy::too_many_lines, clippy::ignored_unit_patterns)]
+    fn app_async_lifecycle_and_hooks_coverage() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            // 1. Test builder methods and successful async execution
+            let app = App::<UnitCli>::new()
+                .context_from_async(|_cli| async { Ok::<(), Failure>(()) })
+                .before_run_async(|_cmd, _cx| Box::pin(async { Ok(()) }))
+                .after_success_async(|_cmd, _cx| Box::pin(async { Ok(()) }))
+                .after_failure_async(|_cmd, _err, _cx| Box::pin(async {}))
+                .async_runner(|_cmd, _cx, _run| async { Ok("async_runner_out".to_string()) });
+
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app
+                .run_with_async(
+                    ["unitapp", "--flag"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+            assert_eq!(code, 0);
+            assert_eq!(String::from_utf8(out).unwrap(), "async_runner_out\n");
+
+            // 2. Test before_run_async failure path
+            let failed_before = Rc::new(std::cell::Cell::new(false));
+            let failed_before_clone = Rc::clone(&failed_before);
+            let app_fail_before = App::<UnitCli>::new()
+                .before_run_async(|_, _| Box::pin(async { Err(Failure::execution("before fail")) }))
+                .after_failure_async(move |_, _, _| {
+                    let f = Rc::clone(&failed_before_clone);
+                    Box::pin(async move {
+                        f.set(true);
+                    })
+                });
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app_fail_before
+                .run_with_async(
+                    ["unitapp", "--flag"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+            assert_ne!(code, 0);
+            assert!(failed_before.get());
+
+            // 3. Test sync before_run failure in async settle
+            let failed_sync_before = Rc::new(std::cell::Cell::new(false));
+            let failed_sync_clone = Rc::clone(&failed_sync_before);
+            let app_fail_sync_before = App::<UnitCli>::new()
+                .before_run(|_, _| Err(Failure::execution("sync before fail")))
+                .after_failure(move |_, _, _| failed_sync_clone.set(true));
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app_fail_sync_before
+                .run_with_async(
+                    ["unitapp", "--flag"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+            assert_ne!(code, 0);
+            assert!(failed_sync_before.get());
+
+            // 4. Test after_success_async failure path
+            let failed_success = Rc::new(std::cell::Cell::new(false));
+            let failed_success_clone = Rc::clone(&failed_success);
+            let app_fail_success = App::<UnitCli>::new()
+                .after_success_async(|_, _| {
+                    Box::pin(async { Err(Failure::execution("success fail")) })
+                })
+                .after_failure_async(move |_, _, _| {
+                    let f = Rc::clone(&failed_success_clone);
+                    Box::pin(async move {
+                        f.set(true);
+                    })
+                });
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app_fail_success
+                .run_with_async(
+                    ["unitapp", "--flag"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+            assert_ne!(code, 0);
+            assert!(failed_success.get());
+
+            // 5. Test after_success sync failure path in async settle
+            let failed_sync_success = Rc::new(std::cell::Cell::new(false));
+            let failed_sync_success_clone = Rc::clone(&failed_sync_success);
+            let app_fail_sync_success = App::<UnitCli>::new()
+                .after_success(|_, _| Err(Failure::execution("sync success fail")))
+                .after_failure(move |_, _, _| failed_sync_success_clone.set(true));
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app_fail_sync_success
+                .run_with_async(
+                    ["unitapp", "--flag"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+            assert_ne!(code, 0);
+            assert!(failed_sync_success.get());
+
+            // 6. Test async_runner failure
+            let app_runner_fail = App::<UnitCli>::new().async_runner(|_, _, _| async {
+                Err::<String, _>(Failure::execution("runner fail"))
+            });
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app_runner_fail
+                .run_with_async(
+                    ["unitapp", "--flag"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+            assert_ne!(code, 0);
+
+            // 7. Test context_from_async failure path
+            let app_cx_fail = App::<UnitCli>::new()
+                .context_from_async(|_| async { Err::<(), _>(Failure::execution("cx fail")) });
+            let mut out = Vec::new();
+            let mut err = Vec::new();
+            let code = app_cx_fail
+                .run_with_async(
+                    ["unitapp", "--flag"],
+                    Capabilities::headless(),
+                    process_frontend,
+                    &mut out,
+                    &mut err,
+                )
+                .await;
+            assert_ne!(code, 0);
+        });
+    }
 }
