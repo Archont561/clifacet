@@ -189,7 +189,8 @@ pub use clifacet_macros::registry;
 
 pub use app::{App, Globals, JsonRenderer, Plain, Render, run, run_cli};
 pub use cli::{
-    Cli, ContextCell, FromCli, IntoFailure, IntoOutcome, Json, OutcomePayload, Structured,
+    ActionLog, Cli, ContextCell, FromCli, IntoFailure, IntoOutcome, Json, OutcomePayload,
+    PlannedOutcome, Structured,
 };
 pub use command::{Command, Handler};
 pub use facet::Facet;
@@ -265,9 +266,8 @@ pub use clifacet_macros::app;
 /// assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
 /// ```
 ///
-/// It takes the same keys as `#[facet(…)]`. `clap` must still be a direct dependency of
-/// the calling crate, because clap's own derive expands to code naming `clap::…`; this
-/// crate re-exports [`clap`], so the version is the one this macro was built against.
+/// It takes the same keys as `#[facet(…)]`. This crate re-exports [`clap`] as
+/// `clifacet::clap`, and all emitted derives route through it.
 ///
 /// The name lives in the macro namespace, which is why it can sit beside the [`command`]
 /// module without either shadowing the other.

@@ -186,7 +186,7 @@ fn completions_and_settings_snippet_2() {
 #[test]
 fn derive_snippet_1() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clap::Parser;
+    use clifacet::clap::Parser;
     use clifacet::{Facet, Failure};
     /// The command as it already exists.
     #[derive(Debug, Parser, Facet)]
@@ -278,7 +278,7 @@ fn derive_snippet_3() {
     assert_eq!(input.name, "grace");
 }
 
-/// `getting-started.mdx`, line 67.
+/// `getting-started.mdx`, line 65.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_1() {
@@ -302,7 +302,7 @@ fn getting_started_snippet_1() {
     }
 }
 
-/// `getting-started.mdx`, line 99.
+/// `getting-started.mdx`, line 97.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_2() {
@@ -343,7 +343,7 @@ fn getting_started_snippet_2() {
     assert_eq!((code, out.as_slice()), (0, b"hello, ada x1\n".as_slice()));
 }
 
-/// `getting-started.mdx`, line 180.
+/// `getting-started.mdx`, line 178.
 #[rustfmt::skip]
 #[test]
 fn getting_started_snippet_3() {
@@ -438,7 +438,7 @@ fn structured_output_snippet_1() {
 #[test]
 fn tui_composition_snippet_1() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clap::Parser;
+    use clifacet::clap::Parser;
     use clifacet::tui::FormState;
     use clifacet::Facet;
     #[derive(Debug, Parser, Facet)]
@@ -516,7 +516,7 @@ fn command_core_snippet_1() {
 #[test]
 fn command_core_snippet_2() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clap::Parser;
+    use clifacet::clap::Parser;
     use clifacet::contract::ExitPolicy;
     use clifacet::{Failure, report};
     #[derive(Debug, Parser)]
@@ -542,7 +542,7 @@ fn command_core_snippet_2() {
 #[test]
 fn command_core_snippet_3() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clap::{CommandFactory, FromArgMatches, Parser};
+    use clifacet::clap::{CommandFactory, FromArgMatches, Parser};
     use clifacet::provenance::{Provenance, Source};
     #[derive(Debug, Parser)]
     #[command(name = "deploy")]

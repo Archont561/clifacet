@@ -84,7 +84,7 @@ assert_eq!(Archive.execute(tasks).expect("runs"), 2);
 Both failures and Clap usage diagnostics pass through `clifacet::report::render`:
 
 ```rust
-use clap::Parser;
+use clifacet::clap::Parser;
 use clifacet::contract::ExitPolicy;
 use clifacet::{Failure, report};
 
@@ -115,7 +115,7 @@ assert_eq!(out, b"", "neither reaches the data stream");
 Provenance records where each argument originated (argv, environment, defaults, or interactive prompts) without leaking secrets:
 
 ```rust
-use clap::{CommandFactory, FromArgMatches, Parser};
+use clifacet::clap::{CommandFactory, FromArgMatches, Parser};
 use clifacet::provenance::{Provenance, Source};
 
 #[derive(Debug, Parser)]

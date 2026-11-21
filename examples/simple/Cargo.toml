@@ -13,8 +13,8 @@ publish = false
 # other way round. Nothing in the library refers to this crate, which is what makes
 # the example a proof of the public API rather than part of the library it shows.
 [dependencies]
-# The derive expands to `::clap::…` paths, so a crate that parses a derived command
-# needs `clap` itself; the workspace pins one version for both.
+# clifacet derives route through `::clifacet::clap`, so downstream applications only
+# need `clifacet`. Clap can still be named directly if an application enables extra clap features.
 # The workspace leaves colour and suggestions off; an application turns them on.
 clap = { workspace = true, features = ["color", "suggestions"] }
 clifacet = { path = "../../crates/clifacet", features = ["interactive", "tui"] }

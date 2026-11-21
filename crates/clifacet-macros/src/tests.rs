@@ -279,7 +279,7 @@ fn the_command_attribute_wraps_clap_and_the_derive_together() {
     .expect("a named struct with an input type is supported");
 
     assert!(
-        tokens.contains(" [derive (:: clap :: Parser , :: clifacet :: Facet)]"),
+        tokens.contains(" [derive (:: clifacet :: clap :: Parser , :: clifacet :: Facet)]"),
         "{tokens}"
     );
     assert!(tokens.contains(" [facet (input = Greeting)]"), "{tokens}");
@@ -1002,7 +1002,7 @@ fn a_tree_is_claps_subcommand_with_its_conversion_and_collection() {
     let tokens = tree("input = Request", TWO_LEAVES).expect("a tree of leaves");
 
     assert!(
-        tokens.starts_with("# [derive (:: clap :: Subcommand)]"),
+        tokens.starts_with("# [derive (:: clifacet :: clap :: Subcommand)]"),
         "{tokens}"
     );
     assert!(
@@ -2069,5 +2069,51 @@ fn group_macro_more_options_and_errors() {
     assert!(
         tokens.contains(":: clifacet :: ContextCell < MyContext >"),
         "{tokens}"
+    );
+}
+
+#[test]
+fn commands_impl_and_app_dry_run_support() {
+    let attr_app: proc_macro2::TokenStream =
+        syn::parse_str("name = \"testapp\", commands").unwrap();
+    let item_app: proc_macro2::TokenStream = syn::parse_str(
+        r"
+        struct TestApp {
+            #[command(flatten)]
+            #[clifacet(skip)]
+            globals: Globals,
+        }
+        ",
+    )
+    .unwrap();
+    let res_app = crate::app::expand(attr_app, item_app).expect("app expands");
+    let tokens_app = res_app.to_string();
+    assert!(tokens_app.contains("__clifacet_is_dry_run"), "{tokens_app}");
+    assert!(
+        tokens_app.contains("self . globals . dry_run"),
+        "{tokens_app}"
+    );
+
+    let attr_cmd: proc_macro2::TokenStream = syn::parse_str("").unwrap();
+    let item_cmd: proc_macro2::TokenStream = syn::parse_str(
+        r"
+        impl TestApp {
+            pub fn run(&self) -> Result<Plan<'_, String>, Failure> {
+                Ok(Plan::new(|| Ok(String::new())))
+            }
+        }
+        ",
+    )
+    .unwrap();
+    let res_cmd = crate::commands_impl::expand(attr_cmd, item_cmd).expect("commands expand");
+    let tokens_cmd = res_cmd.to_string();
+    assert!(tokens_cmd.contains("check_dry_run"), "{tokens_cmd}");
+    assert!(
+        tokens_cmd.contains("self . __clifacet_is_dry_run ()"),
+        "{tokens_cmd}"
+    );
+    assert!(
+        tokens_cmd.contains("res . format_outcome (is_dry_run , is_json)"),
+        "{tokens_cmd}"
     );
 }
