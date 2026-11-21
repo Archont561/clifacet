@@ -194,3 +194,78 @@ impl Widget for Form<'_> {
         }
     }
 }
+
+/// A Ratatui widget that renders live command progress using a gauge.
+#[derive(Debug, Clone)]
+pub struct ProgressGauge<'a> {
+    current: u64,
+    total: Option<u64>,
+    message: Option<std::borrow::Cow<'a, str>>,
+    gauge_style: ratatui::style::Style,
+}
+
+impl<'a> ProgressGauge<'a> {
+    /// Creates a new progress gauge with explicit values.
+    #[must_use]
+    pub fn new(current: u64, total: Option<u64>, message: Option<&'a str>) -> Self {
+        Self {
+            current,
+            total,
+            message: message.map(std::borrow::Cow::Borrowed),
+            gauge_style: ratatui::style::Style::default(),
+        }
+    }
+
+    /// Creates a progress gauge reflecting the live state of a [`TuiProgressState`].
+    #[cfg(feature = "async")]
+    #[must_use]
+    pub fn from_state(state: &'a crate::r#async::TuiProgressState) -> Self {
+        Self {
+            current: state.current(),
+            total: state.total(),
+            message: state.message().map(std::borrow::Cow::Owned),
+            gauge_style: ratatui::style::Style::default(),
+        }
+    }
+
+    /// Configures the style applied to the gauge.
+    #[must_use]
+    pub fn style(mut self, style: ratatui::style::Style) -> Self {
+        self.gauge_style = style;
+        self
+    }
+}
+
+impl Widget for ProgressGauge<'_> {
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let (ratio, label) = match self.total {
+            Some(total) if total > 0 => {
+                let ratio = (self.current as f64 / total as f64).clamp(0.0, 1.0);
+                let percent = (ratio * 100.0) as u16;
+                let label = match &self.message {
+                    Some(msg) => format!("{msg} [{}/{}] ({}%)", self.current, total, percent),
+                    None => format!("[{}/{}] ({}%)", self.current, total, percent),
+                };
+                (ratio, label)
+            }
+            Some(_) | None => {
+                let label = match &self.message {
+                    Some(msg) => format!("{msg} [{}]", self.current),
+                    None => format!("[{}]", self.current),
+                };
+                (0.0, label)
+            }
+        };
+
+        ratatui::widgets::Gauge::default()
+            .ratio(ratio)
+            .label(label)
+            .gauge_style(self.gauge_style)
+            .render(area, buf);
+    }
+}

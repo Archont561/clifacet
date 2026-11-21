@@ -142,6 +142,12 @@ impl Capabilities {
         }
     }
 
+    /// Whether these capabilities include an interactive terminal.
+    #[must_use]
+    pub const fn is_terminal(self) -> bool {
+        self.terminal
+    }
+
     /// What this process actually has.
     ///
     /// A full-screen interface needs three things: the `tui` feature, so there is code

@@ -39,7 +39,7 @@ pub use app::{
     draw_form, keys_when_interactive, live_keys, run, run_on, run_on_with, run_with, translate,
 };
 pub use state::{FieldState, FormState, Key, Outcome};
-pub use widgets::{CustomField, Field, Form};
+pub use widgets::{CustomField, Field, Form, ProgressGauge};
 
 // The frontend library, re-exported the way `clap` is: an application drawing its
 // own screen needs the same version this crate was built against.

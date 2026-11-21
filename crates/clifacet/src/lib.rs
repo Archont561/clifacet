@@ -230,9 +230,11 @@ pub use r#async::TokioExecutor;
 #[cfg(feature = "async")]
 pub use r#async::{
     AsyncCommand, AsyncHandler, AsyncPlan, AsyncPlanned, AsyncPlannedWith, BoxFuture, Cancel,
-    CancelledFuture, Executor, LocalAsyncHandler, NoopProgressSink, ProgressEvent, ProgressSink,
-    RecordingProgressSink, RunCx, StdExecutor,
+    CancelledFuture, Executor, LocalAsyncHandler, NdjsonProgressSink, NoopProgressSink,
+    ProgressEvent, ProgressSink, RecordingProgressSink, RunCx, StdExecutor, TtyProgressSink,
 };
+#[cfg(all(feature = "async", feature = "tui"))]
+pub use r#async::{TuiProgressSink, TuiProgressState};
 
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///
