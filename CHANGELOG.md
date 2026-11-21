@@ -12,10 +12,12 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **tui:** implement EventStream select loop and async choice providers (CLI-85)
+([e3943bd](https://github.com/Archont561/clifacet/commit/e3943bd18f63b13762ecc70d24d29d3b2ef0d1c3))
 * **async:** implement frontend progress rendering across execution modes (CLI-84)
-([55ba0ff](https://github.com/Archont561/clifacet/commit/55ba0ff3a6b9191157baa67f1adabbe73363e8c8))
+([ffae546](https://github.com/Archont561/clifacet/commit/ffae54693fad7cd7f623bff43c6783694655f60c))
 * **async:** implement AsyncPlan and async dry-run preview (CLI-83)
-([5f49282](https://github.com/Archont561/clifacet/commit/5f4928295b056cb438b896499e2954177515fd61))
+([1dee8ed](https://github.com/Archont561/clifacet/commit/1dee8eddfd48aef0be64741c3de79b074524b1fb))
 * implement cancellation contract Ctrl-C grace period and timeout (CLI-82)
 ([c870235](https://github.com/Archont561/clifacet/commit/c870235add7a4df256400aa23dd7cfa97c83093a))
 * support async methods in commands macro and lazy async context (CLI-81)
