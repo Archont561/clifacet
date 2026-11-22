@@ -13,6 +13,7 @@
 **Commands as values. Four execution modes. Every presentation composed from the same declaration.**
 
 A command is declared on a controller; an application is a value built from it. The same command runs:
+
 - **noninteractive** — flags in, plain text for a person or structured JSON (`--json`) for a machine;
 - **interactive** — a conversational questionnaire on a terminal (`inquire`);
 - **TUI** — a full-screen form and interactive widgets (`ratatui`);
@@ -165,6 +166,7 @@ clifacet = "{{ version }}"
 ```
 
 Frontends and integrations are optional features, so an application pays only for what it uses:
+
 - `interactive` — conversational prompts powered by `inquire`
 - `tui` — full-screen terminal forms and widgets powered by `ratatui` and `crossterm`
 - `serde` — structured JSON execution mode (`--json`) and serialization for `Failure`, `Secret`, and reports
