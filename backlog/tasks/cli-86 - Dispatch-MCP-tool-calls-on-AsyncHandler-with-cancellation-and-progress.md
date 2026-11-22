@@ -1,7 +1,7 @@
 ---
 id: CLI-86
 title: Dispatch MCP tool calls on AsyncHandler with cancellation and progress
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 19:00'
 labels: []
@@ -20,8 +20,8 @@ Amend the MCP server implementation (CLI-77) to await `AsyncHandler` commands di
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 MCP tools/call directly awaits AsyncHandler commands without nested blocking
-- [ ] #2 Synchronous handlers execute safely via tokio::task::spawn_blocking
-- [ ] #3 MCP cancellation notifications trigger the associated call's Cancel token
-- [ ] #4 Progress sink events stream as MCP notifications/progress back to the agent client
+- [x] #1 MCP tools/call directly awaits AsyncHandler commands without nested blocking
+- [x] #2 Synchronous handlers execute safely via tokio::task::spawn_blocking
+- [x] #3 MCP cancellation notifications trigger the associated call's Cancel token
+- [x] #4 Progress sink events stream as MCP notifications/progress back to the agent client
 <!-- AC:END -->

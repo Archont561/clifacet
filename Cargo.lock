@@ -412,6 +412,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clifacet-http-lite"
+version = "0.9.0"
+dependencies = [
+ "clap",
+ "clifacet",
+ "rstest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "clifacet-macros"
 version = "0.9.0"
 dependencies = [

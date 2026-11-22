@@ -644,3 +644,212 @@ fn test_mcp_missing_method_and_missing_tool_name() {
             .contains("Missing 'name'")
     );
 }
+
+// ---------------------------------------------------------------------------
+// CLI-86: MCP Async Dispatch, Cancellation, Progress, and Concurrent Calls
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+struct AsyncDeployCmd;
+
+impl clifacet::r#async::AsyncHandler<()> for AsyncDeployCmd {
+    type Input = (String, u32);
+    type Output = String;
+
+    async fn handle(
+        &self,
+        (image, replicas): Self::Input,
+        _cx: &(),
+        run: &clifacet::r#async::RunCx,
+    ) -> Result<Self::Output, Failure> {
+        run.progress().total(Some(100));
+        run.progress().advance(50);
+        run.progress().message("deploying pods");
+        run.progress().advance(50);
+        Ok(format!(
+            "deployed {image} with {replicas} replicas asynchronously"
+        ))
+    }
+}
+
+#[tokio::test]
+async fn test_mcp_async_handler_dispatch_and_progress_streaming() {
+    let cmd = <OpsCli as clifacet::Facet>::command();
+    let meta = CliMetadata::from_command(&cmd);
+
+    let deploy_handler = AsyncDeployCmd;
+    let runner =
+        move |tool_name: &str, args: &serde_json::Value, run_cx: &clifacet::r#async::RunCx| {
+            let tool_name = tool_name.to_string();
+            let args = args.clone();
+            let run_cx = run_cx.clone();
+            async move {
+                if tool_name == "deploy" {
+                    let image = args["image"].as_str().unwrap_or("app:1").to_string();
+                    let replicas = args["replicas"].as_u64().unwrap_or(1) as u32;
+                    clifacet::mcp::dispatch_async_handler(
+                        &deploy_handler,
+                        (image, replicas),
+                        &(),
+                        &run_cx,
+                    )
+                    .await
+                } else {
+                    Err(Failure::execution("unknown tool"))
+                }
+            }
+        };
+
+    let requests = [
+        r#"{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}}"#,
+        r#"{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "deploy", "arguments": {"image": "nginx:alpine", "replicas": 3}, "_meta": {"progressToken": "token-123"}}}"#,
+    ];
+    let input_bytes = requests.join("\n") + "\n";
+    let reader = Cursor::new(input_bytes.into_bytes());
+    let mut writer = Vec::new();
+
+    clifacet::mcp::run_server_streams_async(&meta, runner, reader, &mut writer)
+        .await
+        .expect("async streams run should succeed");
+
+    let output_str = String::from_utf8(writer).expect("valid utf-8 output");
+    let lines: Vec<&str> = output_str.lines().filter(|l| !l.is_empty()).collect();
+
+    // Line 0: initialize response
+    let init_resp: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+    assert_eq!(init_resp["id"], 1);
+
+    // Should include progress notifications (AC #4)
+    let progress_lines: Vec<serde_json::Value> = lines
+        .iter()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter(|v| v.get("method").and_then(|m| m.as_str()) == Some("notifications/progress"))
+        .collect();
+
+    assert!(
+        !progress_lines.is_empty(),
+        "must have emitted progress notifications"
+    );
+    let p_last = &progress_lines[progress_lines.len() - 1];
+    assert_eq!(p_last["params"]["progressToken"], "token-123");
+    assert_eq!(p_last["params"]["progress"], 100);
+    assert_eq!(p_last["params"]["total"], 100);
+
+    // Final line should be tool call response (AC #1)
+    let call_resp: serde_json::Value = serde_json::from_str(lines.last().unwrap()).unwrap();
+    assert_eq!(call_resp["id"], 2);
+    assert_eq!(call_resp["result"]["isError"], false);
+    assert_eq!(
+        call_resp["result"]["content"][0]["text"],
+        "deployed nginx:alpine with 3 replicas asynchronously"
+    );
+}
+
+#[tokio::test]
+async fn test_mcp_async_cancellation_notification() {
+    let cmd = <OpsCli as clifacet::Facet>::command();
+    let meta = CliMetadata::from_command(&cmd);
+
+    let runner =
+        move |_tool_name: &str, _args: &serde_json::Value, run_cx: &clifacet::r#async::RunCx| {
+            let run_cx = run_cx.clone();
+            async move {
+                // Wait up to 500ms or until cancelled
+                tokio::select! {
+                    () = run_cx.cancel().cancelled() => {
+                        Err(Failure::cancelled("tool call was cancelled by client"))
+                    }
+                    () = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
+                        Ok("completed without cancel".to_string())
+                    }
+                }
+            }
+        };
+
+    let requests = [
+        r#"{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}}"#,
+        r#"{"jsonrpc": "2.0", "id": 42, "method": "tools/call", "params": {"name": "deploy", "arguments": {}}}"#,
+        r#"{"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 42}}"#,
+    ];
+    let input_bytes = requests.join("\n") + "\n";
+    let reader = Cursor::new(input_bytes.into_bytes());
+    let mut writer = Vec::new();
+
+    clifacet::mcp::run_server_streams_async(&meta, runner, reader, &mut writer)
+        .await
+        .expect("async streams run should succeed");
+
+    let output_str = String::from_utf8(writer).expect("valid utf-8");
+    let lines: Vec<&str> = output_str.lines().filter(|l| !l.is_empty()).collect();
+
+    let call_resp: serde_json::Value = serde_json::from_str(lines.last().unwrap()).unwrap();
+    assert_eq!(call_resp["id"], 42);
+    assert_eq!(call_resp["result"]["isError"], true);
+    assert!(
+        call_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("cancelled by client")
+    );
+}
+
+struct SyncComputeCmd;
+
+impl clifacet::Handler<u32> for SyncComputeCmd {
+    type Input = u32;
+    type Output = String;
+
+    fn handle(&self, input: Self::Input, cx: &u32) -> Result<Self::Output, Failure> {
+        Ok(format!("computed: {}", input * cx))
+    }
+}
+
+#[tokio::test]
+async fn test_mcp_sync_handler_spawn_blocking_dispatch() {
+    let cx = std::sync::Arc::new(10u32);
+    let handler = SyncComputeCmd;
+
+    // AC #2: Synchronous handler executed safely via tokio::task::spawn_blocking
+    let res = clifacet::mcp::dispatch_sync_handler(handler, 5, cx).await;
+    assert_eq!(res.unwrap(), "computed: 50");
+}
+
+#[tokio::test]
+async fn test_mcp_concurrent_tool_calls_sharing_context() {
+    let cmd = <OpsCli as clifacet::Facet>::command();
+    let meta = CliMetadata::from_command(&cmd);
+
+    let counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let runner_counter = counter.clone();
+
+    let runner =
+        move |_tool_name: &str, _args: &serde_json::Value, _run_cx: &clifacet::r#async::RunCx| {
+            let counter = runner_counter.clone();
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                let val = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(format!("call-{val}"))
+            }
+        };
+
+    let requests = [
+        r#"{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}}"#,
+        r#"{"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": {"name": "ping", "arguments": {}}}"#,
+        r#"{"jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": {"name": "ping", "arguments": {}}}"#,
+        r#"{"jsonrpc": "2.0", "id": 12, "method": "tools/call", "params": {"name": "ping", "arguments": {}}}"#,
+    ];
+    let input_bytes = requests.join("\n") + "\n";
+    let reader = Cursor::new(input_bytes.into_bytes());
+    let mut writer = Vec::new();
+
+    clifacet::mcp::run_server_streams_async(&meta, runner, reader, &mut writer)
+        .await
+        .expect("async streams run should succeed");
+
+    let output_str = String::from_utf8(writer).expect("valid utf-8");
+    let lines: Vec<&str> = output_str.lines().filter(|l| !l.is_empty()).collect();
+
+    // 1 init response + 3 tool call responses = 4 lines
+    assert_eq!(lines.len(), 4);
+    assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 3);
+}

@@ -434,6 +434,7 @@ rules:
       - examples/discovered
       - examples/simple
       - examples/backlog-lite
+      - examples/http-lite
     level: error
     message: Keep workspace membership explicitly reviewed.
 
