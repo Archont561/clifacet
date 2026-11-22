@@ -18,7 +18,7 @@
 
 // The name of this file is documented_snippets.rs; it is the tests/ target of the example crate.
 
-/// `README.md`, line 24.
+/// `README.md`, line 25.
 #[rustfmt::skip]
 #[test]
 fn readme_snippet_1() {
