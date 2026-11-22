@@ -123,9 +123,9 @@ impl TaskApp {
   }}
 />
 
-## Shared Context and Auto-Wiring
+## Shared Context and Automatic Wiring
 
-Stateful CLI applications frequently share services, connection pools, or API handles across commands. Clifacet auto-wires shared context onto the controller struct via `#[clifacet(context)]`.
+Stateful CLI applications frequently share services, connection pools, or API handles across commands. Clifacet automatically wires shared context onto the controller struct via `#[clifacet(context)]`.
 
 Context initialization is strictly lazy: running `--help`, `--version`, or encountering argument syntax errors **never** invokes context creation.
 
