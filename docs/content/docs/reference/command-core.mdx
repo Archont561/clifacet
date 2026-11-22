@@ -42,6 +42,18 @@ The core model connects Clap parsing, typed validation, UI-free command executio
       description: "Tracks where each parsed CLI argument originated without leaking values.",
       type: "struct Provenance",
     },
+    RunCx: {
+      description: "Runtime context for asynchronous commands carrying cancellation and progress sinks.",
+      type: "struct RunCx",
+    },
+    Cancel: {
+      description: "Cooperative cancellation token tripped on Ctrl-C signals, timeouts, or MCP notifications.",
+      type: "struct Cancel",
+    },
+    ActionLog: {
+      description: "Context helper that records executed actions or dry-run preview descriptions.",
+      type: "struct ActionLog",
+    },
   }}
 />
 
@@ -153,7 +165,7 @@ assert!(!provenance.to_string().contains("s3cret"));
 <Accordion title="Architectural Scope and Deliberate Exclusions">
 
 - **Widgets beyond forms**: Clifacet ships full-screen forms and labeled fields. Custom dashboards or tables use Ratatui directly via escape hatches.
-- **Direct JSON generation**: Clifacet writes no JSON directly. Applications enable the `serde` feature to serialize `Failure` and `Secret` with `serde_json`.
+- **Machine-readable JSON**: Structured execution mode requires the `serde` feature (`--json`), which formats standard success envelopes and failure schemas.
 - **Heuristic mode detection**: Terminal detection does not probe obscure escape sequences or locale heuristics.
 - **Line terminal secret prompting**: Dumb line terminals cannot disable terminal echo, so `Session::ask_secret` fails rather than echoing credentials to scrollback.
 

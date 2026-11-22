@@ -10,12 +10,15 @@
 <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.88%20%E2%80%93%20current-orange?style=flat-square" alt="rust 1.88 - current"></a>
 <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square" alt="MIT OR Apache-2.0"></a>
 
-**One command. Three terminal modes. Every presentation composed from the same declaration.**
+**Commands as values. Four execution modes. Every presentation composed from the same declaration.**
 
-A command is declared on a controller; an application is a value built from it. The same command runs
-**noninteractive** — flags in, plain text for a person or structured output for a machine —
-**interactive**, as a questionnaire on a terminal, or as a **TUI** full-screen interface.
-Which one runs is decided once per run, from the flags, the application's policy and what
+A command is declared on a controller; an application is a value built from it. The same command runs:
+- **noninteractive** — flags in, plain text for a person or structured JSON (`--json`) for a machine;
+- **interactive** — a conversational questionnaire on a terminal (`inquire`);
+- **TUI** — a full-screen form and interactive widgets (`ratatui`);
+- **MCP** — Model Context Protocol tool server over JSON-RPC 2.0 stdio with async cancellation and progress streaming.
+
+Which presentation runs is decided once per run, from the flags, the application's policy and what
 the terminal can offer.
 
 ```rust
@@ -72,8 +75,31 @@ fn scripted() -> i32 {
 That is the whole application. One declaration gives the flags, the validated input, the
 command and the questionnaire's fields; `main` is one line; a test is the same pipeline
 with buffers instead of a terminal. No stream, no terminal and no exit code appears in the
-command, which is why all three modes reach the same code — and why the same declaration
+command, which is why all modes reach the same code — and why the same declaration
 survives being asked `--name ada`, being prompted for it, or being drawn as a field.
+
+For asynchronous applications, declare `async fn` commands taking `&clifacet::RunCx` and launch with `clifacet::run_cli_async`:
+
+```rust,ignore
+use clifacet::r#async::RunCx;
+use clifacet::{Failure, app, commands};
+
+#[app(name = "fetcher", about = "Async downloader", commands)]
+struct FetchApp;
+
+#[commands]
+impl FetchApp {
+    pub async fn download(&self, url: String, run: &RunCx) -> Result<String, Failure> {
+        run.progress().message("connecting to remote server");
+        Ok(format!("downloaded from {url}"))
+    }
+}
+
+#[tokio::main]
+async fn main() -> std::process::ExitCode {
+    clifacet::run_cli_async::<FetchApp>().await
+}
+```
 
 ## What composes
 
@@ -82,14 +108,21 @@ here is a global or a framework: an `App` is a value, so a test builds a differe
 
 | Part | Owns | Where |
 | --- | --- | --- |
-| `#[clifacet(..)]` | one argument's flags, prompt, form field and rules | on parameter or field |
-| `#[clifacet::app]` / `#[clifacet::commands]` | declarative controller and commands in pure Rust | on struct / impl |
-| `#[clifacet::command]` | command struct and typed input bridge | on the struct |
-| `App` | the pipeline: parse, ask, validate, run, render, exit | `.run()` |
-| `App::policy` / `mode_from` | which of the three modes a run may use, and which it prefers | composed |
-| `App::settings` | a config file under the flags and the environment | composed |
+| `#[clifacet(..)]` | one argument's flags, prompt, form field, context, and validation rules | on parameter or field |
+| `#[clifacet::app]` / `#[clifacet::commands]` | declarative controller and synchronous or asynchronous commands in pure Rust | on struct / impl |
+| `#[clifacet::command]` / `#[clifacet::group]` | standalone command struct and typed input bridge | on struct / enum |
+| `App` | the execution pipeline: parse, ask, validate, preview, run, render, exit | `.run()` or `.run_async()` |
+| `clifacet::run_cli::<App>()` | standard synchronous CLI entrypoint | in `main()` |
+| `clifacet::run_cli_async::<App>()` | native asynchronous CLI entrypoint with Ctrl-C and timeout handling | in `async fn main()` |
+| `App::policy` / `mode_from` | which of the modes a run may use, and which it prefers | composed |
+| `App::settings` | layered Figment settings from config files, environment, and flags | composed |
 | `App::exit` | what each outcome costs | composed |
-| `run_with` | the capability, the frontend and the two streams | a test |
+| `Plan` / `AsyncPlan` | inspectable dry-run execution preview (`--dry-run`) | returned from command |
+| `RunCx` / `Cancel` / `ProgressSink` | cooperative cancellation tokens and progress streaming across modes | passed to `async fn` |
+| `ActionLog` | contextual action recording and dry-run plan generation | in command context |
+| `clifacet::mcp` | Model Context Protocol JSON-RPC 2.0 stdio tool server | `mcp` subcommand |
+| `clifacet::clap` | re-exported Clap derives (`Parser`, `Args`, `Subcommand`, `ValueEnum`) | single-dependency |
+| `run_with` / `run_with_async` | the capability, the frontend and the two streams | a test |
 
 The seams themselves — streams, exit codes, ownership — are the
 [command core](docs/reference/command-core.md); what each attribute accepts is
@@ -103,13 +136,17 @@ The seams themselves — streams, exit codes, ownership — are the
 | copy a working command | [`examples/simple`](examples/simple/README.md) |
 | read every `#[clifacet(..)]` declaration | [The companion derive](docs/guides/derive.md) |
 | declare controller commands and subcommands | [Nested command trees and controllers](docs/guides/derive.md) |
+| run native async commands with cancellation and progress | [Async commands](docs/guides/async-commands.md) |
+| expose tools to AI agents via Model Context Protocol | [MCP tool server](docs/guides/mcp-server.md) |
+| execute in structured JSON mode and introspect schemas | [Structured output and schema](docs/guides/structured-output.md) |
+| render agent discovery markdown skills | [Agent skills](docs/guides/agent-skills.md) |
 | layer flags, environment and a config file | [Settings from a file, under the flags](docs/guides/getting-started.md#settings-from-a-file-under-the-flags) |
 | decide which mode runs, and what it costs | [Modes and the interaction policy](docs/concepts/modes.md) |
 | draw your own field or screen | [TUI composition](docs/guides/tui-composition.md) |
 | prove a promise without a terminal | [Testing](docs/guides/testing.md) |
 | look up a seam, a stream or an exit code | [Command core](docs/reference/command-core.md) |
 
-## The three examples
+## The four examples
 
 Each is a consumer of the published API, not a part of the library:
 
@@ -118,6 +155,7 @@ Each is a consumer of the published API, not a part of the library:
 | [`examples/simple`](examples/simple/README.md) | the reference application: one command, every seam, its own suite |
 | `examples/discovered` | declarative command tree registration without build scripts |
 | [`examples/backlog-lite`](examples/backlog-lite/README.md) | a wrapper around somebody else's CLI — the acceptance case |
+| [`examples/http-lite`](examples/http-lite/README.md) | asynchronous HTTP client against wiremock demonstrating cancellation, progress, and dry-run preview |
 
 ## Install
 
@@ -126,9 +164,18 @@ Each is a consumer of the published API, not a part of the library:
 clifacet = "0.9.0"
 ```
 
-Frontends are features, so an application pays only for what it uses: `interactive`,
-`tui`, `serde` and `settings-toml`, off by default. [What each adds and
-costs](docs/guides/getting-started.md#features).
+Frontends and integrations are optional features, so an application pays only for what it uses:
+- `interactive` — conversational prompts powered by `inquire`
+- `tui` — full-screen terminal forms and widgets powered by `ratatui` and `crossterm`
+- `serde` — structured JSON execution mode (`--json`) and serialization for `Failure`, `Secret`, and reports
+- `schema` — machine-readable CLI schema introspection (`--schema`)
+- `skill` / `skill-minijinja` — agent skill markdown generation (`--write-skill`)
+- `mcp` — Model Context Protocol stdio tool server (`mcp` command) with async tool dispatch and progress
+- `completions` — context-aware dynamic shell completions (`--completions <shell>`)
+- `async` — native asynchronous command execution traits, `RunCx`, `Cancel`, and `ProgressSink`
+- `tokio` — pluggable Tokio runtime executor and signal integration
+
+See [Feature flags](docs/reference/features.md) for the complete dependency matrix.
 
 ## Documentation
 
@@ -149,14 +196,9 @@ policy](docs/concepts/documentation-policy.md) is what a change owes it.
 
 ## Status
 
-Experimental. The command core, the mode policy, the prompts, the derive, the `command`
-wrapper, the field declarations, the TUI, discovery and layered settings are implemented
-and covered. The library writes no output of its own — machine-readable output is the
-application's, built from [`Report`](docs/reference/command-core.md#known-unsupported-behavior)
-— so there is no JSON mode, and no fourth mode is planned.
-
-`0.9.0` is the version this README describes — [what each release
-changed](CHANGELOG.md). Publishing is a separate, authorized act from merging.
+`0.9.0` is the version this README describes — [what each release changed](CHANGELOG.md).
+The command core, mode policy, interactive prompts, companion derive, full-screen TUI forms, layered Figment settings, structured JSON mode (`--json`), schema introspection (`--schema`), agent skills (`--write-skill`), Model Context Protocol server (`mcp`), and native asynchronous command execution (`async`, `tokio`) are fully implemented and covered across all supported platforms.
+Publishing is a separate, authorized act from merging.
 
 ## Develop
 

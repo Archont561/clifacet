@@ -1,25 +1,31 @@
 ---
 title: Welcome to Clifacet
-description: Build a Rust CLI in every terminal mode — noninteractive, questionnaires, or a full-screen TUI.
+description: Build a Rust CLI in every execution mode — noninteractive, structured JSON, questionnaires, full-screen TUI, or MCP tool servers.
 ---
 
 ## Welcome to Clifacet
 
 Welcome to the **Clifacet** documentation site built with [Fumadocs](https://fumadocs.dev).
 
-Clifacet is a Rust CLI framework that decouples your command logic from terminal presentation. Define your command once with Clap, and execute it noninteractively, through interactive Inquire prompts, or in a full-screen Ratatui terminal UI.
+Clifacet is a Rust CLI framework that decouples your command logic from terminal presentation. Define your commands once on a declarative controller, and execute noninteractively (plain text or `--json`), through interactive Inquire prompts, in a full-screen Ratatui terminal UI, or over Model Context Protocol (MCP) stdio.
 
 <Callout type="info">
-Clifacet runs commands in three terminal modes: noninteractive (flags in, output out), interactive (a questionnaire on a terminal), and TUI (a full-screen form). A run resolves to the lowest mode that can answer, unless the user or application requests otherwise.
+Clifacet runs commands across four presentation modes: noninteractive (flags in, output out), interactive (a questionnaire on a terminal), TUI (a full-screen form), and MCP (a JSON-RPC 2.0 tool server). A run resolves to the lowest mode that can answer, unless the user or application requests otherwise.
 </Callout>
 
 ## Terminal Execution Modes
 
-<Tabs items={["Noninteractive", "Interactive Dialog", "Full-Screen TUI"]}>
+<Tabs items={["Noninteractive", "Structured JSON", "Interactive Dialog", "Full-Screen TUI", "MCP Tool Server"]}>
   <Tab value="Noninteractive">
     Provide arguments directly via flags. Standard output and error streams handle results and diagnostics.
     ```sh
     cargo run -p clifacet-example -- --name ada --repeat 2
+    ```
+  </Tab>
+  <Tab value="Structured JSON">
+    Emit valid machine-readable JSON on stdout and diagnostic failure envelopes on stderr.
+    ```sh
+    cargo run -p clifacet-example -- --name ada --repeat 2 --json
     ```
   </Tab>
   <Tab value="Interactive Dialog">
@@ -32,6 +38,12 @@ Clifacet runs commands in three terminal modes: noninteractive (flags in, output
     Presents an automated or custom Ratatui form field widget on the alternate terminal screen.
     ```sh
     cargo run -p clifacet-example -- --tui
+    ```
+  </Tab>
+  <Tab value="MCP Tool Server">
+    Runs a Model Context Protocol tool server over JSON-RPC 2.0 stdio with async tool dispatch and progress streaming.
+    ```sh
+    cargo run -p clifacet-example -- mcp
     ```
   </Tab>
 </Tabs>
@@ -53,6 +65,21 @@ Clifacet runs commands in three terminal modes: noninteractive (flags in, output
     title="Companion Derive"
     href="/docs/guides/derive"
     description="Declarative attributes for command structs, controllers, and command trees."
+  />
+  <Card
+    title="Async Commands"
+    href="/docs/guides/async-commands"
+    description="Native async execution, RunCx context, cooperative cancellation, and progress streaming."
+  />
+  <Card
+    title="MCP Tool Server"
+    href="/docs/guides/mcp-server"
+    description="Expose controller commands as Model Context Protocol tools over JSON-RPC 2.0 stdio."
+  />
+  <Card
+    title="Structured Output & Schema"
+    href="/docs/guides/structured-output"
+    description="Machine-readable --json execution, structured failure schemas, and CLI introspection."
   />
   <Card
     title="Command Reference"

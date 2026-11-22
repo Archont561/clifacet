@@ -13,12 +13,12 @@ All optional features are disabled by default.
 | --- | --- | --- |
 | `(default)` | Command core, companion derive, interaction policy, secrets, provenance | `clap`, `thiserror`, `clifacet-macros` |
 | `interactive` | Conversational terminal dialogs powered by `inquire`. | `inquire` |
-| `tui` | Full-screen terminal forms and widgets powered by `ratatui` and `crossterm`. | `ratatui`, `crossterm` |
+| `tui` | Full-screen terminal forms and widgets powered by `ratatui` and `crossterm`. | `ratatui`, `crossterm`, `futures-core` |
 | `serde` | Serialization for `Failure`, `FailureKind`, `Secret`, and structured JSON output mode `--json` (decision-25). | `serde`, `serde_json` |
 | `schema` | Machine-readable CLI schema introspection (decision-25, CLI-73). | `serde` |
 | `skill` | Pluggable skill rendering for agent documentation (decision-25, CLI-74). | `schema` |
 | `skill-minijinja` | Built-in MiniJinja skill renderer for agent documentation (decision-25, CLI-75). | `skill`, `minijinja` |
-| `mcp` | Model Context Protocol stdio tool server (decision-25, CLI-77). | `schema` |
+| `mcp` | Model Context Protocol stdio tool server (decision-25, CLI-77, CLI-86). | `schema`, `async`, `tokio` |
 | `completions` | Context-aware dynamic shell completions (decision-25, CLI-78). | `schema` |
 | `async` | Native async command execution traits, cancellation, and progress (decision-26, CLI-79). | *(none)* |
 | `tokio` | Pluggable `tokio` runtime executor and signal integration (decision-26, CLI-80). | `async`, `tokio` |

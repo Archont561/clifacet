@@ -13,9 +13,9 @@ An acceptance example demonstrating an asynchronous HTTP client CLI built on the
    - Communicates asynchronously with HTTP endpoints.
    - Tested against local HTTP mock services matching wiremock expectations.
 
-3. **Cooperative Cancellation:**
+3. **Cooperative Cancellation & Timeouts:**
    - Long-running network operations inspect `run.cancel().cancelled()` and abort cleanly.
-   - Graceful termination yielding exit code 130 on timeout.
+   - Cooperative cancellation yields exit code 130 on cancellation; `--timeout` yields exit code 1 on timeout.
 
 4. **Progress Reporting:**
    - Incremental progress reporting during chunked resource transfers via `run.progress().advance()` and `run.progress().total()`.
