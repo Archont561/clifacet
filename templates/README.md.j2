@@ -155,7 +155,7 @@ Each is a consumer of the published API, not a part of the library:
 | [`examples/simple`](examples/simple/README.md) | the reference application: one command, every seam, its own suite |
 | `examples/discovered` | declarative command tree registration without build scripts |
 | [`examples/backlog-lite`](examples/backlog-lite/README.md) | a wrapper around somebody else's CLI — the acceptance case |
-| [`examples/http-lite`](examples/http-lite/README.md) | asynchronous HTTP client against wiremock demonstrating cancellation, progress, and dry-run preview |
+| [`examples/http-lite`](examples/http-lite/README.md) | asynchronous HTTP client against `wiremock` demonstrating cancellation, progress, and dry-run preview |
 
 ## Install
 
@@ -173,7 +173,7 @@ Frontends and integrations are optional features, so an application pays only fo
 - `mcp` — Model Context Protocol stdio tool server (`mcp` command) with async tool dispatch and progress
 - `completions` — context-aware dynamic shell completions (`--completions <shell>`)
 - `async` — native asynchronous command execution traits, `RunCx`, `Cancel`, and `ProgressSink`
-- `tokio` — pluggable Tokio runtime executor and signal integration
+- `tokio` — pluggable `tokio` runtime executor and signal integration
 
 See [Feature flags](docs/reference/features.md) for the complete dependency matrix.
 
