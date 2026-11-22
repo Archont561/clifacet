@@ -14,11 +14,11 @@
 //!
 //! A controller declares its command hierarchy, global options, and shared context:
 //!
-//! ```no_run
+//! ```ignore
 //! use clifacet::{Failure, app, commands};
 //!
 //! #[app(name = "greet", about = "Say hello", commands)]
-//! struct GreetApp;
+//! struct GreetApp {}
 //!
 //! #[commands]
 //! impl GreetApp {
@@ -39,12 +39,12 @@
 //!
 //! Declare asynchronous command methods taking a reference to [`r#async::RunCx`]:
 //!
-//! ```no_run
+//! ```ignore
 //! use clifacet::r#async::RunCx;
 //! use clifacet::{Failure, app, commands};
 //!
 //! #[app(name = "downloader", about = "Async downloader", commands)]
-//! struct DownloaderApp;
+//! struct DownloaderApp {}
 //!
 //! #[commands]
 //! impl DownloaderApp {
