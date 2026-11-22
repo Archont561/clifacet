@@ -1,69 +1,86 @@
-//! Build one command-line command; run it in any of three terminal modes.
+//! Commands as values: validated input in, data or a failure out.
 //!
-//! Clifacet keeps one UI-free command core and runs it in three terminal modes:
-//! noninteractive, interactive and TUI (decision-1). This release is the first slice
-//! of that architecture: a command seam ([`Command`]), a library-owned failure type
-//! ([`Failure`]), and the modes above them.
+//! Clifacet decouples command logic from presentation, running one command core across
+//! four execution modes: **noninteractive** (human text or `--json`), **interactive**
+//! questionnaires (`inquire`), full-screen **TUI** forms (`ratatui`), and Model Context
+//! Protocol (**MCP**) tool servers over JSON-RPC 2.0 (decision-1, decision-25, decision-26).
 //!
-//! The worked reference application lives beside this crate, in
-//! `crates/clifacet-example`: it depends on `clifacet` and on nothing private, so
-//! every seam it uses is a seam a caller has.
+//! The canonical authoring paradigm is declarative controllers using [`#[clifacet::app]`](macro@app)
+//! and [`#[clifacet::commands]`](macro@commands). Hand-written commands implement [`Command`]
+//! or [`command::Planned`] for synchronous execution, or [`r#async::AsyncCommand`] / [`r#async::AsyncPlanned`]
+//! for asynchronous execution.
 //!
-//! # The seam
+//! # Declarative Controllers
 //!
-//! A command takes validated input and returns data or a failure. It never writes
-//! a stream and never reads a terminal, so the same value serves every frontend:
+//! A controller declares its command hierarchy, global options, and shared context:
 //!
 //! ```no_run
-//! use clifacet::{Command, Failure};
+//! use clifacet::{Failure, app, commands};
 //!
-//! struct Count;
+//! #[app(name = "greet", about = "Say hello", commands)]
+//! struct GreetApp;
 //!
-//! impl Command for Count {
-//!     type Input = usize;
-//!     type Output = usize;
-//!
-//!     fn execute(&self, input: Self::Input) -> Result<Self::Output, Failure> {
-//!         Ok(input * 2)
+//! #[commands]
+//! impl GreetApp {
+//!     pub fn hello(
+//!         &self,
+//!         #[clifacet(long, default_value = "world")] name: String,
+//!     ) -> Result<String, Failure> {
+//!         Ok(format!("hello, {name}"))
 //!     }
+//! }
+//!
+//! fn main() -> std::process::ExitCode {
+//!     clifacet::run_cli::<GreetApp>()
 //! }
 //! ```
 //!
-//! Everything around the seam — parsing with `clap`, asking, validation, which stream
-//! the data goes to, and which exit code a failure costs — is one pipeline, and
-//! [`app`] runs it: `main` is `clifacet::run::<Cli>()`, or an [`App`] when an
-//! application changes a default. `clifacet-example` shows that division end to end.
+//! # Native Asynchronous Execution
 //!
-//! # Four frontends, one command
+//! Declare asynchronous command methods taking a reference to [`r#async::RunCx`]:
 //!
-//! Parsing stays the application's: `clifacet-example` shows a `clap` command, its
-//! validated input ([`Facet`]), and the [`policy`] that decides how interactive a
-//! run may be. Everything after that is shared:
+//! ```no_run
+//! use clifacet::r#async::RunCx;
+//! use clifacet::{Failure, app, commands};
 //!
-//! - flags — the command line the user typed;
-//! - [`prompt`] — questions asked only for what the flags left out;
-//! - [`tui`] — a full-screen form built from public components (`tui` feature);
-//! - [`harness`] — the public way to prove the mode changed nothing else.
+//! #[app(name = "downloader", about = "Async downloader", commands)]
+//! struct DownloaderApp;
 //!
-//! [`Globals`] gives every application `--yes` and `--dry-run`; a dry run prints what a
-//! [`command::Planned`] command would do, through [`Command::preview`].
+//! #[commands]
+//! impl DownloaderApp {
+//!     pub async fn fetch(&self, url: String, run: &RunCx) -> Result<String, Failure> {
+//!         run.progress().message("connecting...");
+//!         Ok(format!("fetched {url}"))
+//!     }
+//! }
 //!
-//! [`contract`] states what a run may write where — data on the data stream, everything
-//! a person sees on the diagnostic one — and maps each outcome to an exit code;
-//! [`report`] applies that mapping, writing a failure or `clap`'s verdict where it
-//! belongs and answering with what it costs.
+//! #[tokio::main]
+//! async fn main() -> std::process::ExitCode {
+//!     clifacet::run_cli_async::<DownloaderApp>().await
+//! }
+//! ```
 //!
-//! [`secret`] wraps a credential so nothing the framework prints can show it, and
-//! [`provenance`] records where each value came from without recording the value.
+//! # Core Seams & Contracts
+//!
+//! - **Single-dependency authoring**: [`clap`] is re-exported as `clifacet::clap`, including all derive macros.
+//! - **Four execution modes**: Flags, [`prompt`] dialogs, [`tui`] forms, and [`mcp`] tool servers.
+//! - **Dry-run planning**: [`command::Plan`] and [`r#async::AsyncPlan`] preview planned side effects under `--dry-run`.
+//! - **Structured output & schema**: The `serde` and `schema` features provide `--json` execution and `--schema` introspection.
+//! - **Provenance & secrets**: [`provenance`] tracks argument sources, and [`secret::Secret`] redacts credentials.
+//! - **Progress & cancellation**: [`r#async::ProgressSink`] streams progress events, while [`r#async::Cancel`] trips cooperative cancellation on Ctrl-C or timeout.
+//! - **Contract & streams**: [`contract`] maps outcomes to standard exit codes (`0`, `1`, `2`, `130`), while [`report`] separates data and diagnostics.
 //!
 //! # Features
 //!
-//! - `interactive` — the `inquire` dialog behind [`prompt::Prompter`];
-//! - `tui` — the full-screen frontend in [`tui`];
-//! - `serde` — `Serialize` for [`Failure`] and [`FailureKind`] (a kind and a message)
-//!   and for [`secret::Secret`], which serialises redacted. The library writes no JSON
-//!   itself: output is the application's, so a JSON failure body is the application
-//!   serialising a [`Failure`] under its own flag.
+//! - `interactive` — conversational terminal prompts via `inquire`;
+//! - `tui` — full-screen terminal forms and widgets via `ratatui` and `crossterm`;
+//! - `serde` — structured JSON execution mode (`--json`) and serialization for [`Failure`] and [`secret::Secret`];
+//! - `schema` — machine-readable CLI schema introspection (`--schema`);
+//! - `skill` / `skill-minijinja` — agent skill markdown generation (`--write-skill`);
+//! - `mcp` — Model Context Protocol stdio tool server (`mcp` command) with async tool dispatch;
+//! - `completions` — context-aware dynamic shell completions;
+//! - `async` — native asynchronous command execution traits, [`r#async::RunCx`], [`r#async::Cancel`], and [`r#async::ProgressSink`];
+//! - `tokio` — pluggable Tokio runtime executor and signal integration.
 
 #![allow(
     clippy::module_name_repetitions,

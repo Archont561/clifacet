@@ -18,7 +18,7 @@
 
 // The name of this file is documented_snippets.rs; it is the tests/ target of the example crate.
 
-/// `README.md`, line 21.
+/// `README.md`, line 24.
 #[rustfmt::skip]
 #[test]
 fn readme_snippet_1() {
@@ -433,7 +433,7 @@ fn tui_composition_snippet_2() {
     assert!(outcome.is_ok(), "the form submits the answer it was given");
 }
 
-/// `command-core.mdx`, line 52.
+/// `command-core.mdx`, line 64.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_1() {
@@ -459,7 +459,7 @@ fn command_core_snippet_1() {
     assert_eq!(Archive.execute(tasks).expect("runs"), 2);
 }
 
-/// `command-core.mdx`, line 86.
+/// `command-core.mdx`, line 98.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_2() {
@@ -485,7 +485,7 @@ fn command_core_snippet_2() {
     assert_eq!(out, b"", "neither reaches the data stream");
 }
 
-/// `command-core.mdx`, line 117.
+/// `command-core.mdx`, line 129.
 #[rustfmt::skip]
 #[test]
 fn command_core_snippet_3() {
