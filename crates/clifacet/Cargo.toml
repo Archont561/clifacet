@@ -26,8 +26,8 @@ schema = ["serde"]
 skill = ["schema"]
 # Built-in MiniJinja skill renderer for agent documentation (decision-25, CLI-75).
 skill-minijinja = ["skill", "dep:minijinja"]
-# Model Context Protocol stdio tool server (decision-25, CLI-77).
-mcp = ["schema"]
+# Model Context Protocol stdio tool server (decision-25, CLI-77, CLI-86).
+mcp = ["schema", "async", "tokio"]
 # Context-aware dynamic shell completions (decision-25, CLI-78).
 completions = ["schema"]
 # Native async command execution traits, cancellation, and progress (decision-26, CLI-79).

@@ -1,0 +1,32 @@
+[package]
+name = "clifacet-http-lite"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "An async HTTP client CLI acceptance example, built on clifacet"
+publish = false
+
+[[bin]]
+name = "http-lite"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true, features = ["color", "suggestions"] }
+clifacet = { path = "../../crates/clifacet", features = ["async", "tokio", "interactive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "time", "sync"] }
+
+[features]
+default = ["async"]
+async = ["clifacet/async"]
+
+[dev-dependencies]
+rstest.workspace = true
+
+[lints]
+workspace = true

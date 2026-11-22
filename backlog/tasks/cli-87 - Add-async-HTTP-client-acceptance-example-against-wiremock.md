@@ -1,7 +1,7 @@
 ---
 id: CLI-87
 title: Add async HTTP client acceptance example against wiremock
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 19:00'
 labels: []
@@ -21,8 +21,8 @@ Create an end-to-end acceptance example crate `examples/http-lite` acting as the
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 examples/http-lite crate demonstrates async controllers, reqwest integration, and shared context
-- [ ] #2 Automated integration tests run commands against wiremock mock HTTP services
-- [ ] #3 Cancellation, --dry-run, and progress reporting are tested in realistic client workflows
-- [ ] #4 Example crate compiles cleanly and is included in workspace quality checks
+- [x] #1 examples/http-lite crate demonstrates async controllers, reqwest integration, and shared context
+- [x] #2 Automated integration tests run commands against wiremock mock HTTP services
+- [x] #3 Cancellation, --dry-run, and progress reporting are tested in realistic client workflows
+- [x] #4 Example crate compiles cleanly and is included in workspace quality checks
 <!-- AC:END -->

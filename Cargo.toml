@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/clifacet", "crates/clifacet-macros", "examples/discovered", "examples/simple", "examples/backlog-lite"]
+members = ["crates/clifacet", "crates/clifacet-macros", "examples/discovered", "examples/simple", "examples/backlog-lite", "examples/http-lite"]
 resolver = "3"
 
 [workspace.package]

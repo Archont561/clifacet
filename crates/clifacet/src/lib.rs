@@ -235,6 +235,8 @@ pub use r#async::{
 };
 #[cfg(all(feature = "async", feature = "tui"))]
 pub use r#async::{TuiProgressSink, TuiProgressState};
+#[cfg(feature = "tokio")]
+pub use tokio;
 
 /// `clap`, re-exported so a caller can name the version this crate was built against.
 ///
