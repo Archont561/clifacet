@@ -853,3 +853,75 @@ async fn test_mcp_concurrent_tool_calls_sharing_context() {
     assert_eq!(lines.len(), 4);
     assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 3);
 }
+
+#[tokio::test]
+async fn test_mcp_progress_sink_unit_methods() {
+    use clifacet::r#async::ProgressSink;
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let sink = clifacet::mcp::McpProgressSink::new(serde_json::json!("tok-1"), tx);
+
+    sink.total(None);
+    sink.total(Some(100));
+    sink.advance(25);
+    sink.message("step 1");
+
+    let mut messages = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        messages.push(msg);
+    }
+    assert_eq!(messages.len(), 4);
+    assert!(messages[0].contains("tok-1"));
+    assert!(messages[3].contains("step 1"));
+}
+
+#[tokio::test]
+async fn test_mcp_async_protocol_edge_cases() {
+    let cmd = <OpsCli as clifacet::Facet>::command();
+    let meta = CliMetadata::from_command(&cmd);
+
+    let runner =
+        |_tool_name: &str, _args: &serde_json::Value, _run_cx: &clifacet::r#async::RunCx| async {
+            Ok("done".to_string())
+        };
+
+    let requests = [
+        "not json at all\n",
+        "\n",
+        r#"{"jsonrpc": "2.0", "id": 5, "method": "unsupported/method", "params": {}}"#,
+        r#"{"jsonrpc": "2.0", "id": "custom-id", "method": "tools/call", "params": {}}"#,
+        r#"{"jsonrpc": "2.0", "id": true, "method": "tools/call", "params": {"name": "deploy", "arguments": {}}}"#,
+    ];
+    let input_bytes = requests.join("\n") + "\n";
+    let reader = Cursor::new(input_bytes.into_bytes());
+    let mut writer = Vec::new();
+
+    clifacet::mcp::run_server_streams_async(&meta, runner, reader, &mut writer)
+        .await
+        .expect("should succeed");
+
+    let output_str = String::from_utf8(writer).expect("valid utf-8");
+    assert!(output_str.contains("-32700")); // Parse error
+    assert!(output_str.contains("-32601")); // Method not found
+    assert!(output_str.contains("Missing 'name'"));
+    assert!(output_str.contains("done"));
+}
+
+#[tokio::test]
+async fn test_mcp_sync_handler_failure() {
+    struct FailCmd;
+
+    impl clifacet::Handler<()> for FailCmd {
+        type Input = ();
+        type Output = ();
+
+        fn handle(&self, _: Self::Input, _: &()) -> Result<Self::Output, Failure> {
+            Err(Failure::execution("deliberate failure"))
+        }
+    }
+
+    let cx = std::sync::Arc::new(());
+    let res = clifacet::mcp::dispatch_sync_handler(FailCmd, (), cx).await;
+    assert!(res.is_err());
+    assert!(res.unwrap_err().message().contains("deliberate failure"));
+}
