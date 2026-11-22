@@ -12,8 +12,11 @@ copy has drifted. Edit the commit messages, not the file.
 
 ### Added
 
+* **async:** dispatch MCP tool calls asynchronously and add http-lite acceptance example (CLI-86,
+CLI-87)
+([0b5e96a](https://github.com/Archont561/clifacet/commit/0b5e96a3343b504385a99e108a9d2ab21e373827))
 * **tui:** implement EventStream select loop and async choice providers (CLI-85)
-([e3943bd](https://github.com/Archont561/clifacet/commit/e3943bd18f63b13762ecc70d24d29d3b2ef0d1c3))
+([a7a80d9](https://github.com/Archont561/clifacet/commit/a7a80d9b9bf50c3b395d788c707da1393fcd84ee))
 * **async:** implement frontend progress rendering across execution modes (CLI-84)
 ([ffae546](https://github.com/Archont561/clifacet/commit/ffae54693fad7cd7f623bff43c6783694655f60c))
 * **async:** implement AsyncPlan and async dry-run preview (CLI-83)
