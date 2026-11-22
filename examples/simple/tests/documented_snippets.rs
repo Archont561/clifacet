@@ -181,101 +181,68 @@ fn completions_and_settings_snippet_2() {
     assert!(!settings.is_empty());
 }
 
-/// `derive.mdx`, line 10.
+/// `derive.mdx`, line 14.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_1() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::clap::Parser;
-    use clifacet::{Facet, Failure};
-    /// The command as it already exists.
-    #[derive(Debug, Parser, Facet)]
-    #[facet(input = Count, bridge = build_count)]
-    struct Cli {
-        /// How many times to repeat.
-        #[arg(long, default_value_t = 1)]
-        repeat: u8,
-    }
-    /// The validated input: every value of it is runnable.
-    #[derive(Debug)]
-    struct Count(u8);
-    fn build_count(cli: Cli) -> Result<Count, Failure> {
-        if cli.repeat == 0 {
-            return Err(Failure::validation("--repeat must be at least 1"));
+    use clifacet::Failure;
+    /// An application controller declares its global surface and commands.
+    #[clifacet::app(name = "greet-app", about = "Say hello", commands)]
+    struct GreetApp {}
+    #[clifacet::commands]
+    impl GreetApp {
+        /// Greet a user with customized repetitions.
+        pub fn hello(
+            &self,
+            #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+            name: String,
+            #[clifacet(long, help = "How many times to greet", default_value_t = 1)]
+            repeat: u8,
+        ) -> Result<String, Failure> {
+            if repeat == 0 {
+                return Err(Failure::validation("--repeat must be at least 1"));
+            }
+            Ok(format!("hello, {name} x{repeat}"))
         }
-        Ok(Count(cli.repeat))
     }
-    let cli = Cli::try_parse_from(["app", "--repeat", "3"]).expect("clap parses it");
-    let count = cli.validate().expect("the bridge accepts it");
-    assert_eq!(count.0, 3);
 }
 
-/// `derive.mdx`, line 43.
+/// `derive.mdx`, line 50.
 #[rustfmt::skip]
 #[test]
 fn derive_snippet_2() {
     #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::clap::Parser;
-    use clifacet::Facet;
-    #[clifacet::command(input = Greeting)]
-    #[command(name = "greet", about = "Say hello")]
-    struct Cli {
-        /// Who to greet.
-        #[arg(long, alias = "nickname")]
-        name: Option<String>,
+    use clifacet::Failure;
+    #[clifacet::app(name = "task-app", about = "Manage tasks", commands)]
+    struct TaskApp {}
+    #[clifacet::commands]
+    impl TaskApp {
+        /// Create a new task with interactive prompts and normalization.
+        pub fn create(
+            &self,
+            #[clifacet(
+                long,
+                short = 't',
+                value_name = "TITLE",
+                help = "Task title",
+                ask = "What is the task title?",
+                trim,
+                non_empty
+            )]
+            title: String,
+            #[clifacet(
+                long,
+                value_name = "PRIORITY",
+                help = "Task priority level (1 to 5)",
+                range = 1..=5,
+                default_value_t = 1
+            )]
+            priority: u8,
+        ) -> Result<String, Failure> {
+            Ok(format!("created task '{title}' with priority {priority}"))
+        }
     }
-    /// The typed input, built field by field.
-    #[derive(Debug, PartialEq)]
-    struct Greeting {
-        name: Option<String>,
-    }
-    let cli = Cli::try_parse_from(["greet", "--nickname", "ada"]).expect("clap parses it");
-    assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
-}
-
-/// `derive.mdx`, line 125.
-#[rustfmt::skip]
-#[test]
-fn derive_snippet_3() {
-    #![allow(unused_variables, unused_imports, dead_code, path_statements)]
-    use clifacet::clap::Parser as _;
-    use clifacet::policy::{Capabilities, Mode, Policy, Request};
-    use clifacet::prompt::{Answer, Collect as _, Scripted, Session};
-    use clifacet::Facet;
-    #[clifacet::command(input = Greeting)]
-    #[command(name = "greet", about = "Say hello")]
-    struct Cli {
-        /// Who to greet.
-        #[clifacet(
-            long, short = 'n', alias = "nickname", value_name = "NAME",
-            ask = "Who should I greet?", fill = "world", trim, non_empty,
-        )]
-        name: Option<String>,
-        /// How times to greet, from 1 to 8.
-        #[clifacet(long, value_name = "COUNT", range = 1..=8, default_value_t = 1)]
-        repeat: u8,
-    }
-    struct Greeting {
-        name: String,
-        repeat: u8,
-    }
-    let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
-        .expect("the forwarded grammar parses");
-    let input = cli.validate().expect("valid");
-    assert_eq!((input.name.as_str(), input.repeat), ("ada", 3));
-    assert!(<Cli as Facet>::command().render_help().to_string().contains("-n, --name <NAME>"));
-    let plan = Policy::up_to(Mode::Interactive)
-        .resolve(Request::none(), Capabilities::terminal())
-        .expect("prompts are permitted");
-    let mut session = Session::start(plan, || {
-        Box::new(Scripted::new([Answer::Text(String::from(" grace "))]))
-    });
-    let input = Cli::try_parse_from(["greet"])
-        .expect("parses")
-        .collect(&mut session)
-        .and_then(Facet::validate)
-        .expect("valid");
-    assert_eq!(input.name, "grace");
 }
 
 /// `getting-started.mdx`, line 65.

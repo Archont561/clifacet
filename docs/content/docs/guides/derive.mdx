@@ -3,177 +3,91 @@ title: The Companion Derive
 description: Declarative attributes for connecting Clap parsers to validated input, controllers, and command trees.
 ---
 
-`clifacet::Facet` connects an *existing* `clap` command to validated typed input. It
-adds no parser and no second grammar: `clap` stays the authority, and the derive
-names the one function that turns a parsed struct into an input the command can run.
+Clifacet provides a declarative, controller-centric authoring model built on pure Rust macros (decision-24). Rather than defining standalone command structs with manual bridge conversions, applications declare an application controller struct with `#[clifacet::app]` and implement command methods directly inside an `impl` block with `#[clifacet::commands]`.
+
+Under the hood, the companion derive connects Clap argument parsing, typed input validation, prompt questionnaires, subcommand routing, and context propagation without boilerplate.
+
+## The Canonical Controller Architecture
+
+In Clifacet, the application controller struct holds global flags, configuration options, and shared context. Methods on its `#[clifacet::commands]` `impl` block become runnable CLI commands:
 
 ```rust
-use clifacet::clap::Parser;
-use clifacet::{Facet, Failure};
+use clifacet::Failure;
 
-/// The command as it already exists.
-#[derive(Debug, Parser, Facet)]
-#[facet(input = Count, bridge = build_count)]
-struct Cli {
-    /// How many times to repeat.
-    #[arg(long, default_value_t = 1)]
-    repeat: u8,
-}
+/// An application controller declares its global surface and commands.
+#[clifacet::app(name = "greet-app", about = "Say hello", commands)]
+struct GreetApp {}
 
-/// The validated input: every value of it is runnable.
-#[derive(Debug)]
-struct Count(u8);
-
-fn build_count(cli: Cli) -> Result<Count, Failure> {
-    if cli.repeat == 0 {
-        return Err(Failure::validation("--repeat must be at least 1"));
-    }
-    Ok(Count(cli.repeat))
-}
-
-let cli = Cli::try_parse_from(["app", "--repeat", "3"]).expect("clap parses it");
-let count = cli.validate().expect("the bridge accepts it");
-assert_eq!(count.0, 3);
-```
-
-## Wrap Both in One Attribute
-
-The derive and `clap`'s parser are two attributes that have to agree. `#[clifacet::command(...)]` emits the pair as one:
-
-```rust
-use clifacet::clap::Parser;
-use clifacet::Facet;
-
-#[clifacet::command(input = Greeting)]
-#[command(name = "greet", about = "Say hello")]
-struct Cli {
-    /// Who to greet.
-    #[arg(long, alias = "nickname")]
-    name: Option<String>,
-}
-
-/// The typed input, built field by field.
-#[derive(Debug, PartialEq)]
-struct Greeting {
-    name: Option<String>,
-}
-
-let cli = Cli::try_parse_from(["greet", "--nickname", "ada"]).expect("clap parses it");
-assert_eq!(cli.validate().expect("valid").name.as_deref(), Some("ada"));
-```
-
-<Callout type="info">
-`#[clifacet::command]` expands to the item preceded by `#[derive(clap::Parser, clifacet::Facet)]` and `#[facet(input = Type)]`. Clap remains a direct dependency and parses all grammar attributes natively.
-</Callout>
-
-## Authoring Styles
-
-<Tabs items={["Declarative Controller", "Command as a Struct"]}>
-  <Tab value="Declarative Controller">
-    Commands can be authored declaratively as methods on a controller struct using `#[clifacet::app]` and `#[clifacet::commands]`:
-
-    ```rust
-    use clifacet::Failure;
-
-    #[clifacet::app(name = "task-app", commands)]
-    struct TaskApp {}
-
-    #[clifacet::commands]
-    impl TaskApp {
-        /// Add a task.
-        ///
-        /// The title is stored as given.
-        pub fn add_task(
-            &self,
-            #[clifacet(long, help = "The title to store")]
-            title: String,
-            #[clifacet(long, help = "Show what would happen")]
-            dry_run: bool,
-        ) -> Result<String, Failure> {
-            Ok(format!("{title} ({dry_run})"))
+#[clifacet::commands]
+impl GreetApp {
+    /// Greet a user with customized repetitions.
+    pub fn hello(
+        &self,
+        #[clifacet(long, short = 'n', help = "Who to greet", default_value = "world")]
+        name: String,
+        #[clifacet(long, help = "How many times to greet", default_value_t = 1)]
+        repeat: u8,
+    ) -> Result<String, Failure> {
+        if repeat == 0 {
+            return Err(Failure::validation("--repeat must be at least 1"));
         }
+        Ok(format!("hello, {name} x{repeat}"))
     }
-    ```
-  </Tab>
-  <Tab value="Command as a Struct">
-    When commands require custom bridge transformations, manual prompt collection, or explicit planning state, author them as structs:
+}
+```
 
-    ```rust
-    use clifacet::Failure;
+Key guarantees of the declarative controller model:
 
-    #[clifacet::command(input = AddTaskInput)]
-    #[command(name = "add-task", about = "Add a task.")]
-    struct AddTask {
-        #[clifacet(long, help = "The title to store")]
-        title: String,
-        #[clifacet(long, help = "Show what would happen")]
-        dry_run: bool,
-    }
+- **Single source of truth**: Method signatures define the command's typed inputs, documentation, argument grammar, and validation rules in one place.
+- **Zero-cost context access**: Commands receive `&self`, providing direct access to global flags and shared application context without repetitive parameter drilling.
+- **Pure command outcomes**: Methods return structured outcomes (`Result<T, Failure>`), separating core command logic from terminal rendering.
+- **Automatic help generation**: Doc comments on the method are parsed into `about` (first line) and `long_about` (full description).
 
-    struct AddTaskInput {
-        title: String,
-        dry_run: bool,
-    }
-    ```
-  </Tab>
-</Tabs>
+## Parameter and Field Attributes
 
-## Field Attribute Keys
-
-`#[clifacet(..)]` on a field defines the argument grammar, interactive questionnaire behavior, and input normalization rules in one place:
+`#[clifacet(..)]` on method parameters and controller fields configures CLI grammar, interactive questionnaire behavior, and input normalization in one place:
 
 ```rust
-use clifacet::clap::Parser as _;
-use clifacet::policy::{Capabilities, Mode, Policy, Request};
-use clifacet::prompt::{Answer, Collect as _, Scripted, Session};
-use clifacet::Facet;
+use clifacet::Failure;
 
-#[clifacet::command(input = Greeting)]
-#[command(name = "greet", about = "Say hello")]
-struct Cli {
-    /// Who to greet.
-    #[clifacet(
-        long, short = 'n', alias = "nickname", value_name = "NAME",
-        ask = "Who should I greet?", fill = "world", trim, non_empty,
-    )]
-    name: Option<String>,
+#[clifacet::app(name = "task-app", about = "Manage tasks", commands)]
+struct TaskApp {}
 
-    /// How times to greet, from 1 to 8.
-    #[clifacet(long, value_name = "COUNT", range = 1..=8, default_value_t = 1)]
-    repeat: u8,
+#[clifacet::commands]
+impl TaskApp {
+    /// Create a new task with interactive prompts and normalization.
+    pub fn create(
+        &self,
+        #[clifacet(
+            long,
+            short = 't',
+            value_name = "TITLE",
+            help = "Task title",
+            ask = "What is the task title?",
+            trim,
+            non_empty
+        )]
+        title: String,
+        #[clifacet(
+            long,
+            value_name = "PRIORITY",
+            help = "Task priority level (1 to 5)",
+            range = 1..=5,
+            default_value_t = 1
+        )]
+        priority: u8,
+    ) -> Result<String, Failure> {
+        Ok(format!("created task '{title}' with priority {priority}"))
+    }
 }
-
-struct Greeting {
-    name: String,
-    repeat: u8,
-}
-
-let cli = Cli::try_parse_from(["greet", "--nickname", "  ada  ", "--repeat", "3"])
-    .expect("the forwarded grammar parses");
-let input = cli.validate().expect("valid");
-assert_eq!((input.name.as_str(), input.repeat), ("ada", 3));
-assert!(<Cli as Facet>::command().render_help().to_string().contains("-n, --name <NAME>"));
-
-let plan = Policy::up_to(Mode::Interactive)
-    .resolve(Request::none(), Capabilities::terminal())
-    .expect("prompts are permitted");
-let mut session = Session::start(plan, || {
-    Box::new(Scripted::new([Answer::Text(String::from(" grace "))]))
-});
-let input = Cli::try_parse_from(["greet"])
-    .expect("parses")
-    .collect(&mut session)
-    .and_then(Facet::validate)
-    .expect("valid");
-assert_eq!(input.name, "grace");
 ```
 
 | Classification | Keys | Destination |
 | --- | --- | --- |
-| Grammar (with value) | `alias`, `conflicts_with`, `default_value`, `group`, `help`, `hide`, `id`, `num_args`, `required`, `requires`, `value_name` | `#[arg(key = ...)]` forwarded directly to Clap |
+| Grammar (with value) | `alias`, `conflicts_with`, `default_value`, `default_value_t`, `group`, `help`, `hide`, `id`, `num_args`, `required`, `requires`, `value_name` | Forwarded directly to Clap argument grammar |
 | Grammar (flags) | `long`, `short`, `action = ArgAction::...` | Clap flag representation |
-| Interactive Question | `ask = "prompt"`, `confirm = "prompt"`, `secret = "prompt"` | Inquire dialog prompt or TUI form field |
-| Normalization | `trim`, `non_empty`, `fill = fallback`, `range = min..=max` | Generated `TryFrom` input validation bridge |
+| Interactive Question | `ask = "prompt"`, `confirm = "prompt"`, `secret = "prompt"` | Conversational questionnaire or full-screen TUI form field |
+| Normalization | `trim`, `non_empty`, `fill = fallback`, `range = min..=max` | Generated input validation and normalization bridge |
 
 ### Field Attributes Reference
 
@@ -209,56 +123,155 @@ assert_eq!(input.name, "grace");
   }}
 />
 
-## Nested Command Trees and Controllers
+## Shared Context and Auto-Wiring
 
-### Declarative Command Trees and Controllers
+Stateful CLI applications frequently share services, connection pools, or API handles across commands. Clifacet auto-wires shared context onto the controller struct via `#[clifacet(context)]`.
 
-<Accordions>
-<Accordion title="Declarative Subcommands Enum (#[clifacet::subcommands])">
-
-Declare an enum representing command branches. Each variant wraps a command struct:
+Context initialization is strictly lazy: running `--help`, `--version`, or encountering argument syntax errors **never** invokes context creation.
 
 ```rust ignore
-#[clifacet::subcommands]
-enum Actions {
-    Add(AddTask),
-    List(ListTasks),
-    Done(DoneTask),
+use clifacet::{Failure, FromCli};
+
+struct DatabaseClient {
+    endpoint: String,
 }
-```
 
-The macro implements Clap subcommand parsing, automatic collection traversal, and handler dispatch.
+struct AppContext {
+    db: DatabaseClient,
+}
 
-</Accordion>
+impl FromCli for AppContext {
+    type Cli = ServiceApp;
 
-<Accordion title="Controller Struct and Impl Blocks (#[clifacet::app] and #[clifacet::commands])">
+    fn from_cli(cli: &ServiceApp) -> Result<Self, Failure> {
+        Ok(Self {
+            db: DatabaseClient {
+                endpoint: cli.db_url.clone(),
+            },
+        })
+    }
+}
 
-Declare root controllers and command handlers declaratively in pure Rust without `build.rs` scripts (decision-25):
+#[clifacet::app(name = "service-app", about = "Service manager", commands)]
+struct ServiceApp {
+    #[clifacet(long, default_value = "postgres://localhost/app")]
+    db_url: String,
 
-```rust ignore
-#[clifacet::app(name = "mycli", version = "1.0.0", about = "Controller app", commands)]
-struct MyCli {
-    #[clifacet(long)]
-    verbose: bool,
     #[clifacet(context)]
-    cx: MyContext,
+    cx: AppContext,
 }
 
 #[clifacet::commands]
-impl MyCli {
-    /// Deploy service.
-    pub fn deploy(&self, service: String) -> Result<(), Failure> {
-        Ok(())
+impl ServiceApp {
+    /// Inspect database connection status.
+    pub fn status(&self) -> Result<String, Failure> {
+        Ok(format!("connected to {}", self.cx.db.endpoint))
     }
 }
 ```
 
-</Accordion>
-</Accordions>
+When an application context implements `FromCli`, Clifacet synthesizes `init_context` automatically. Custom factory functions are also supported using `#[clifacet(context = build_context)]` or `#[clifacet(context = Self::build_context)]`.
+
+## Controller Lifecycle Hooks
+
+Controllers can intercept command execution lifecycle by defining hook methods directly in the `#[clifacet::commands]` `impl` block:
+
+- **`before_run`**: Runs immediately before command execution starts. Ideal for acquiring lockfiles, checking authorization, or initializing spans.
+- **`after_success`**: Runs after a command successfully finishes. Ideal for emitting audit events or persisting caches.
+- **`after_failure`**: Runs if a command returns an error or aborts. `cx` is an `Option`: if context initialization itself failed, `cx` is `None`. Ideal for rolling back scratch files, releasing locks, or logging troubleshooting guidance.
+
+```rust ignore
+use clifacet::Failure;
+
+#[clifacet::app(name = "deployer", commands)]
+struct DeployApp {
+    #[clifacet(long)]
+    environment: String,
+
+    #[clifacet(context)]
+    cx: DeployContext,
+}
+
+#[clifacet::commands]
+impl DeployApp {
+    /// Deploy service artifacts to target environment.
+    pub fn deploy(&self, service: String) -> Result<String, Failure> {
+        self.cx.push_artifacts(&service)?;
+        Ok(format!("deployed {service} to {}", self.environment))
+    }
+
+    /// Pre-execution hook.
+    fn before_run(&self, _cmd: &str, cx: &DeployContext) -> Result<(), Failure> {
+        cx.acquire_deploy_lock()?;
+        Ok(())
+    }
+
+    /// Success hook.
+    fn after_success(&self, _cmd: &str, cx: &DeployContext) -> Result<(), Failure> {
+        cx.release_deploy_lock();
+        Ok(())
+    }
+
+    /// Failure remediation hook.
+    fn after_failure(&self, _cmd: &str, _err: &Failure, cx: Option<&DeployContext>) {
+        if let Some(cx) = cx {
+            cx.rollback();
+            cx.release_deploy_lock();
+        }
+    }
+}
+```
+
+## Nested Command Groups
+
+For applications with multi-level command hierarchies (such as `mycli user add` and `mycli user list`), subcommand groups are authored as nested controllers using `#[clifacet::group(commands)]` and `#[clifacet::commands(group)]`.
+
+Mounting a group on the parent controller is declared by passing the group controller as a parameter annotated with `#[clifacet(subcommand)]`:
+
+```rust ignore
+use clifacet::Failure;
+
+#[clifacet::group(commands)]
+pub struct UserGroup {}
+
+#[clifacet::commands(group)]
+impl UserGroup {
+    /// Add a new user account.
+    pub fn add(&self, username: String) -> Result<String, Failure> {
+        Ok(format!("user '{username}' created"))
+    }
+
+    /// List all existing user accounts.
+    pub fn list(&self) -> Result<String, Failure> {
+        Ok("alice, bob".to_string())
+    }
+}
+
+#[clifacet::app(name = "mycli", about = "Fleet CLI", commands)]
+pub struct MyCli {
+    #[clifacet(long, short = 'v')]
+    pub verbose: bool,
+}
+
+#[clifacet::commands]
+impl MyCli {
+    /// Display system health.
+    pub fn health(&self) -> Result<String, Failure> {
+        Ok("all systems operational".to_string())
+    }
+
+    /// Manage user accounts.
+    pub fn user(&self, #[clifacet(subcommand)] group: UserGroup) -> Result<String, Failure> {
+        group.execute()
+    }
+}
+```
+
+If the child group declares context fields annotated with `#[clifacet(context)]` or `#[clifacet(extract)]`, Clifacet automatically forwards the initialized context from the parent controller down into the group.
 
 ## Dry-Run Plans and Action Logging
 
-Declarative controllers (`#[clifacet::app]` and `#[clifacet::commands]`) support previewing side effects in dry-run mode and logging actions across streams without interfering with stdout.
+Declarative controllers support previewing side effects in dry-run mode and logging actions across streams without interfering with stdout.
 
 ### Returning Plans from Controller Commands
 

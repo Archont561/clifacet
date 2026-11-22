@@ -7,7 +7,7 @@ Clifacet is a Rust CLI framework that decouples your command logic from terminal
 ## Documentation
 
 - [Getting Started](https://archont561.github.io/clifacet/docs/guides/getting-started): Add Clifacet to Cargo.toml, define a command, and run it across modes.
-- [Derive and Macros Guide](https://archont561.github.io/clifacet/docs/guides/derive): Declarative controllers (#[clifacet::app], #[clifacet::commands]) and struct commands.
+- [Derive and Macros Guide](https://archont561.github.io/clifacet/docs/guides/derive): Declarative controllers (#[clifacet::app], #[clifacet::commands]), field attributes, and command trees.
 - [Execution Modes](https://archont561.github.io/clifacet/docs/concepts/modes): Pure-function resolution across noninteractive, questionnaire, and TUI modes with capability detection.
 - [Structured Output (--json)](https://archont561.github.io/clifacet/docs/guides/structured-output): Machine-readable execution and failure envelope.
 - [Shell Completions and Settings](https://archont561.github.io/clifacet/docs/guides/completions-and-settings): Dynamic shell completions and layered settings.
