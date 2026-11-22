@@ -11,7 +11,7 @@ Under the hood, the companion derive connects Clap argument parsing, typed input
 
 In Clifacet, the application controller struct holds global flags, configuration options, and shared context. Methods on its `#[clifacet::commands]` `impl` block become runnable CLI commands:
 
-```rust
+```rust ignore
 use clifacet::Failure;
 
 /// An application controller declares its global surface and commands.
@@ -47,7 +47,7 @@ Key guarantees of the declarative controller model:
 
 `#[clifacet(..)]` on method parameters and controller fields configures CLI grammar, interactive questionnaire behavior, and input normalization in one place:
 
-```rust
+```rust ignore
 use clifacet::Failure;
 
 #[clifacet::app(name = "task-app", about = "Manage tasks", commands)]
