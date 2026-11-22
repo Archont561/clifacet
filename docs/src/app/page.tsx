@@ -9,18 +9,18 @@ export default function HomePage() {
         <header className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-fd-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-fd-primary">
-              v0.8.0
+              v0.10.0
             </span>
             <span className="text-xs text-fd-muted-foreground">
               Rust CLI Framework
             </span>
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
-            One Command Core, Three Terminal Modes
+            Commands as Values, Four Execution Modes
           </h1>
           <p className="text-lg text-fd-muted-foreground">
-            Author your command logic once with Clap. Execute it noninteractively,
-            through conversational questionnaires on stderr, or inside a full-screen Ratatui terminal UI.
+            Author your command logic once in pure Rust. Execute it noninteractively (flags or structured JSON),
+            through conversational questionnaires on stderr, inside a full-screen Ratatui terminal UI, or as a Model Context Protocol tool server.
           </p>
         </header>
 

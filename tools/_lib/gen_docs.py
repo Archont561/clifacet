@@ -21,6 +21,8 @@ DECISIONS_DIR = ROOT / "backlog" / "decisions"
 
 
 def generate_features_mdx() -> str:
+    root_manifest = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    version = str(root_manifest["workspace"]["package"]["version"])
     manifest_text = CARGO_TOML.read_text(encoding="utf-8")
     data = tomllib.loads(manifest_text)
     features = data.get("features", {})
@@ -100,7 +102,7 @@ To enable specific features in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-clifacet = {{ version = "0.8.0", features = ["interactive", "tui", "schema", "completions"] }}
+clifacet = {{ version = "{version}", features = ["interactive", "tui", "schema", "completions"] }}
 ```
 """
 

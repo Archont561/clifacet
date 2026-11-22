@@ -354,7 +354,7 @@ fn structured_output_snippet_1() {
         name: "fleet".to_string(),
         about: Some("Manage fleet services".to_string()),
         long_about: None,
-        version: Some("0.8.0".to_string()),
+        version: Some("0.10.0".to_string()),
         author: None,
         arguments: vec![
             ArgumentMetadata {

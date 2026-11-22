@@ -3,8 +3,8 @@ title: Async Commands and Cancellation
 description: Execute asynchronous commands with cooperative cancellation tokens and decoupled progress reporting.
 ---
 
-<Callout type="warn">
-**Unreleased (on `main`)**: Native async traits and contexts were introduced in CLI-79 (decision-26) and will be published in v0.10.0.
+<Callout type="info">
+Native async traits and execution contexts were introduced in decision-26 and are available as of v0.10.0 under the `async` and `tokio` feature flags.
 </Callout>
 
 Modern CLI commands often perform asynchronous I/O: downloading large assets, querying remote databases, or streaming events. Clifacet provides a native async execution model built without mandatory third-party runtime dependencies.

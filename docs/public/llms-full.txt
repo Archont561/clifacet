@@ -1,17 +1,17 @@
 # Clifacet Documentation (Full Context for LLMs)
 
 Clifacet is a Rust CLI framework providing:
-- **One command core**: Command logic is authored once, taking validated input and returning data or a failure.
-- **Three execution modes**: Noninteractive (flags and arguments), Interactive (conversational prompts on stderr), and Full-Screen TUI (Ratatui forms on alternate buffer).
+- **Commands as values**: Command logic is authored once, taking validated input and returning data or a failure.
+- **Four execution modes**: Noninteractive (flags and structured JSON), Interactive (conversational prompts on stderr), Full-Screen TUI (Ratatui forms on alternate buffer), and Model Context Protocol (MCP stdio tool server).
 - **Deterministic resolution**: A pure function of user intent, application policy, and terminal capabilities selects the lowest mode that can answer.
 - **Strict stream separation**: Result data goes to `stdout`; questions, forms, warnings, and errors go to `stderr`.
-- **Zero-cost dependency boundaries**: 12 optional Cargo features (`interactive`, `tui`, `serde`, `schema`, `skill`, `skill-minijinja`, `mcp`, `completions`, `async`, `settings-toml`, `settings-figment`).
+- **Zero-cost dependency boundaries**: 13 optional Cargo features (`interactive`, `tui`, `serde`, `schema`, `skill`, `skill-minijinja`, `mcp`, `completions`, `async`, `tokio`, `settings-toml`, `settings-figment`).
 
 ## Quickstart
 
 ```toml
 [dependencies]
-clifacet = { version = "0.8.0", features = ["tui", "interactive"] }
+clifacet = { version = "0.10.0", features = ["tui", "interactive"] }
 ```
 
 ```rust
