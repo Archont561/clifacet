@@ -96,7 +96,6 @@ fn id_to_key(id: &serde_json::Value) -> String {
 pub struct McpServer<'a, F> {
     meta: &'a CliMetadata,
     runner: F,
-    active_cancels: Arc<Mutex<HashMap<String, Cancel>>>,
 }
 
 impl<'a, F> McpServer<'a, F>
@@ -106,32 +105,12 @@ where
     /// Creates a new MCP server for the given CLI metadata and command runner.
     #[must_use]
     pub fn new(meta: &'a CliMetadata, runner: F) -> Self {
-        Self {
-            meta,
-            runner,
-            active_cancels: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    /// Returns a reference to the active cancellation tokens map.
-    #[must_use]
-    pub fn active_cancels(&self) -> &Arc<Mutex<HashMap<String, Cancel>>> {
-        &self.active_cancels
-    }
-
-    /// Trips the [`Cancel`] token for the given request ID if one is active.
-    pub fn cancel_call(&self, request_id: &serde_json::Value) {
-        let key = id_to_key(request_id);
-        if let Ok(cancels) = self.active_cancels.lock()
-            && let Some(cancel) = cancels.get(&key)
-        {
-            cancel.cancel();
-        }
+        Self { meta, runner }
     }
 
     /// Handles a parsed JSON-RPC request and returns the response if one should be sent.
     ///
-    /// Notifications (such as `notifications/initialized` or `notifications/cancelled`) return `None`.
+    /// Notifications (such as `notifications/initialized`) return `None`.
     #[must_use]
     #[allow(clippy::too_many_lines)]
     pub fn handle_request(&self, request: &serde_json::Value) -> Option<serde_json::Value> {
@@ -165,15 +144,7 @@ where
         }
 
         match method {
-            "notifications/initialized" => None,
-            "notifications/cancelled" => {
-                if let Some(params) = request.get("params")
-                    && let Some(req_id) = params.get("requestId")
-                {
-                    self.cancel_call(req_id);
-                }
-                None
-            }
+            "notifications/initialized" | "notifications/cancelled" => None,
             "tools/call" => {
                 let req_id = id.unwrap_or(serde_json::Value::Null);
                 let params = request.get("params");
@@ -202,17 +173,7 @@ where
                     .and_then(|p| p.get("arguments"))
                     .unwrap_or(&empty_args);
 
-                let key = id_to_key(&req_id);
-                let cancel = Cancel::new();
-                if let Ok(mut c) = self.active_cancels.lock() {
-                    c.insert(key.clone(), cancel);
-                }
-
                 let outcome = (self.runner)(name, arguments);
-
-                if let Ok(mut c) = self.active_cancels.lock() {
-                    c.remove(&key);
-                }
 
                 match outcome {
                     Ok(output) => {
@@ -913,24 +874,6 @@ pub fn run_stdio_server(
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     run_server_streams(meta, runner, stdin.lock(), stdout.lock())
-}
-
-/// Runs the MCP protocol asynchronously over standard input and standard output streams.
-///
-/// # Errors
-///
-/// Returns a [`Failure`] if reading or writing fails.
-pub async fn run_stdio_server_async<F, Fut>(
-    meta: &CliMetadata,
-    runner: F,
-) -> Result<String, Failure>
-where
-    F: Fn(&str, &serde_json::Value, &RunCx) -> Fut + Send + Sync + Clone + 'static,
-    Fut: Future<Output = Result<String, Failure>> + Send + 'static,
-{
-    let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
-    run_server_streams_async(meta, runner, stdin.lock(), stdout.lock()).await
 }
 
 /// Dispatches an [`AsyncHandler`](crate::r#async::AsyncHandler) command directly for an MCP tool call without nested blocking.
