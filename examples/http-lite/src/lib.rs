@@ -51,7 +51,7 @@ fn build_context(cli: &HttpLiteApp) -> Result<HttpContext, Failure> {
 /// The `http-lite` CLI application controller.
 #[app(
     name = "http-lite",
-    version = "0.9.0",
+    version = "0.10.0",
     about = "Async HTTP client CLI demonstration",
     commands
 )]

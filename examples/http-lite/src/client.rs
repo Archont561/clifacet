@@ -186,7 +186,7 @@ impl RequestBuilder {
 
         let body = self.body.unwrap_or_default();
         let mut req_header = format!(
-            "{} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: clifacet-http-lite/0.9.0\r\nConnection: close\r\nContent-Length: {}\r\n",
+            "{} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: clifacet-http-lite/0.10.0\r\nConnection: close\r\nContent-Length: {}\r\n",
             self.method,
             parsed.path_and_query,
             host_port,

@@ -162,7 +162,7 @@ Each is a consumer of the published API, not a part of the library:
 
 ```toml
 [dependencies]
-clifacet = "0.9.0"
+clifacet = "0.10.0"
 ```
 
 Frontends and integrations are optional features, so an application pays only for what it uses:
@@ -198,7 +198,7 @@ policy](docs/concepts/documentation-policy.md) is what a change owes it.
 
 ## Status
 
-`0.9.0` is the version this README describes — [what each release changed](CHANGELOG.md).
+`0.10.0` is the version this README describes — [what each release changed](CHANGELOG.md).
 The command core, mode policy, interactive prompts, companion derive, full-screen TUI forms, layered Figment settings, structured JSON mode (`--json`), schema introspection (`--schema`), agent skills (`--write-skill`), Model Context Protocol server (`mcp`), and native asynchronous command execution (`async`, `tokio`) are fully implemented and covered across all supported platforms.
 Publishing is a separate, authorized act from merging.
 
